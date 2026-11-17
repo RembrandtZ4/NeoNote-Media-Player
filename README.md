@@ -9,6 +9,42 @@ Die fertigen Dateien gibt es auf der **[Release-Seite](https://github.com/Rembra
 - **Windows 10/11:** `NeoNote-Setup-<Version>.exe`
 - **Linux:** `neonote-<Version>.zip`
 
+## Funktionen
+
+**Bibliothek**
+- Ansichten wie im WMP12: Interpreten und Genres als Kacheln mit aufgefächerten Cover-Stapeln, Alben, Titelliste mit Albumcover-Blöcken und Buchstaben-Trennern
+- Frei wählbare, verschiebbare Spalten (Nr., Titel, Länge, Bewertung, Interpret, Album, Jahr, Genre, Bitrate, Dateipfad …), Sortieren per Klick
+- Bewertungen mit Sternen, Wiedergabezähler, automatische Listen (Favoriten, Meistgespielt, Zuletzt hinzugefügt, Zuletzt gespielt)
+- Überwacht die Musikordner und übernimmt neue, geänderte und gelöschte Dateien automatisch
+- **Bibliothek prüfen:** findet doppelte Titel, Alben ohne Cover, lückenhafte Tags und fehlende Dateien
+- Flüssig auch bei großen Sammlungen (getestet mit 120.000 Titeln und 4.000 Interpreten)
+
+**Wiedergabe**
+- Praktisch alle Audio- und Videoformate (MP3, FLAC, Opus, AAC/ALAC, WAV, DSD …; MP4, MKV, WebM, AVI …)
+- Lückenlose Wiedergabe, 10-Band-Equalizer mit Voreinstellungen, Lautstärkeausgleich (ReplayGain)
+- „Wird gespielt“-Modus mit großem, gespiegeltem Cover vor einem Leuchtband in der Akzentfarbe, Wellenform-Anzeige in der Steuerleiste
+- Videos mit ausblendender Steuerleiste über dem Bild, Vollbild, Untertitel (auch .srt) und Tonspurwahl
+- Wiedergabeliste rechts, per Drag & Drop sortierbar, als M3U/M3U8 speichern und laden (auch PLS, WPL, ZPL)
+- Internetradio mit eigener Senderliste
+- Mini-Player, Symbol in der Systemleiste
+- Kein Standby, solange Musik läuft; bei Videos bleibt der Bildschirm an
+
+**Online**
+- Fehlende Albuminfos und Cover von MusicBrainz und dem Cover Art Archive
+- Albumcover per Drag & Drop oder Rechtsklick ändern
+- Tags direkt in der Liste bearbeiten (`F2`), auch für mehrere Titel gleichzeitig
+- **Jellyfin:** Musik vom eigenen Server streamen, mit wählbarer Qualität für unterwegs, Offline-Kopien und Abgleich von Favoriten und gespielten Titeln
+
+**Oberfläche**
+- Dunkles, flaches Glas-Design mit einstellbarer Transparenz und Weichzeichner, 10 Akzentfarben plus eigene Farbe, 8 Hintergründe (auch hell)
+- Eigene Fensterleiste oder Systemrahmen, frei konfigurierbare Navigationsleiste, ziehbare Bereiche
+- Maustasten Zurück/Vor, Tastenkürzel wie im WMP
+- Deutsch und Englisch (automatisch nach Systemsprache)
+
+**System**
+- Linux: Mediensteuerung von KDE Plasma (MPRIS), Medientasten, Sperrbildschirm
+- Windows: Windows-Mediensteuerung, eigener Installer, Dateizuordnungen mit eigenen Dateisymbolen, Standardplayer festlegen
+
 ## Installation unter CachyOS / Arch (KDE Plasma)
 
 `neonote-<Version>.zip` von der Release-Seite herunterladen, entpacken, im Terminal in den Ordner wechseln und das Installationsskript starten (ohne `sudo`):
