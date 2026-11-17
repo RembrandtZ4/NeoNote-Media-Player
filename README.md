@@ -1,5 +1,7 @@
 # NeoNote Media Player
 
+🇩🇪 **Deutsch** | 🇬🇧 [English](README.en.md)
+
 Ein Musik- und Videoplayer für Linux und Windows, angelehnt an Windows Media Player 12: flaches Design mit Transparenz, anpassbaren Farben, WMP12-Titelliste mit Albumcovern, „Wird gespielt“-Modus, Wiedergabelisten, Internetradio, Jellyfin-Anbindung und Mediensteuerung. Oberfläche auf Deutsch und Englisch.
 
 ![Titelliste mit Albumcovern](docs/screenshots/songs.png)
@@ -160,6 +162,7 @@ Links findest du:
 - **Wiedergabelisten**: das „+“ legt eine neue an
 - **Internetradio**
 - **Wird gespielt**
+- **Bibliothek prüfen**
 - **Wiedergabeliste**: die aktuelle Liste, mit der Anzahl der Titel
 
 Ein Rechtsklick auf eine automatische Liste spielt sie ab oder speichert sie als feste Wiedergabeliste.
@@ -219,12 +222,14 @@ Mit `python-jeepney` meldet sich NeoNote bei Plasma an (MPRIS). Dann gilt:
 
 ## Einstellungen
 
-Zahnrad oben rechts oder **Organisieren ▸ Einstellungen…**. Es gibt vier Reiter:
+Zahnrad oben rechts oder **Organisieren ▸ Einstellungen…**. Es gibt sechs Reiter:
 
 - **Bibliothek:** Musikordner hinzufügen oder entfernen und die Bibliothek komplett neu einlesen. Dazu kommen die Ordnerüberwachung (an), die Suche beim Start (an) und die Aufnahme von Dateien aus Dolphin (aus). Beim Neueinlesen liest der Player nur geänderte Dateien, das geht auch bei großen Sammlungen in Sekunden.
-- **Darstellung:** Farben, Transparenz, Covergröße und Fensterleiste (siehe unten).
+- **Darstellung:** Farben, Transparenz, Covergröße, Fensterleiste und Sprache (siehe unten).
 - **Online-Informationen:** wohin gefundene Angaben und Cover gespeichert werden, und ob von Hand bearbeitete Tags in die Dateien geschrieben werden (an).
-- **System:** Symbol in der Systemleiste, Verhalten des Schließen-Buttons und KDE-Mediensteuerung.
+- **System:** Symbol in der Systemleiste, Verhalten des Schließen-Buttons, Mediensteuerung, mpv, lückenlose Wiedergabe und Standby-Sperre.
+- **Navigation:** Navigationsleiste anpassen.
+- **Jellyfin:** Verbindung zu deinem Jellyfin-Server.
 
 ## Tags bearbeiten
 
@@ -295,12 +300,13 @@ Wenn die Schrift bei fraktionaler Skalierung (z. B. 125 %) unscharf wirkt, schal
 | Aus der Wiedergabeliste entfernen | Markieren und `Entf` |
 | Wiedergabe / Pause | `Strg+P` oder Medientaste |
 | Nächster / vorheriger Titel | `Strg+→` / `Strg+←` |
-| Zurück / Vor | `Alt+←` / `Alt+→` oder die Pfadleiste oben anklicken |
+| Zurück / Vor | `Alt+←` / `Alt+→`, die Zurück-/Vor-Tasten der Maus oder die Pfadleiste oben anklicken |
 | Suchen | `Strg+F` |
 | Datei öffnen | `Strg+O` |
 | Vollbild | Doppelklick aufs Video / `F11`, beenden mit `Esc` |
 | Mini-Player | `Strg+M` |
 | Equalizer | `Strg+E` |
+| Wiedergabeliste rechts ein-/ausblenden | `Strg+L` |
 
 Die Kacheln zeigen wie bei WMP12 links das Cover, bei mehreren Alben als aufgefächerten Stapel, und rechts Anzahl, Spieldauer und den Sterne-Durchschnitt. In der Interpreten- und Genre-Ansicht trennen Buchstaben-Überschriften die Einträge. Wie bei WMP12 wird ein führendes „The“ ignoriert, „The Hooters“ steht also unter H. Die Albumansicht ist nach Interpret gruppiert.
 
@@ -318,6 +324,10 @@ Ein Titel zählt als gespielt, sobald 30 Sekunden bzw. die Hälfte gelaufen sind
 - Jellyfin-Cache und Offline-Kopien: `~/.local/share/neonote/jellyfin*`
 - Einstellungen, Radiosender, letzte Sitzung: `~/.config/NeoNote/NeoNote.conf`
 - Unter Windows: Daten in `%APPDATA%\NeoNote`, Cover und mpv in `%LOCALAPPDATA%\NeoNote`, Einstellungen in der Registry (`HKEY_CURRENT_USER\Software\NeoNote`)
+
+## Fehler und Ideen
+
+Einen Fehler gefunden oder eine Idee? Einfach ein **[Issue](https://github.com/RembrandtZ4/NeoNote-Media-Player/issues/new/choose)** anlegen – auf Deutsch oder Englisch.
 
 ## Lizenz
 
