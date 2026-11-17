@@ -31,7 +31,7 @@ Ein Musik- und Videoplayer für Linux und Windows, angelehnt an Windows Media Pl
 Die fertigen Dateien gibt es auf der **[Release-Seite](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest)**:
 
 - **Windows 10/11:** `NeoNote-Setup-<Version>.exe`
-- **Linux:** `neonote-<Version>-linux-arch.zip`
+- **Linux (Arch, CachyOS, Manjaro …):** `neonote-<Version>-linux-arch.zip`
 
 ## Funktionen
 
