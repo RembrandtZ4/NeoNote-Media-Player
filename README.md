@@ -10,7 +10,7 @@ Ein Musik- und Videoplayer für Linux und Windows, angelehnt an Windows Media Pl
 | **„Wird gespielt“** | **Akzentfarbe Silber auf Schwarz** |
 | ![Wird gespielt](docs/screenshots/nowplaying.png) | ![Silber](docs/screenshots/silver.png) |
 
-<sub>Interpreten, Alben und Cover in den Bildern sind frei erfunden.</sub>
+<sub>Transparenz 70 % mit Weichzeichner (KDE Plasma). Interpreten, Alben, Cover und Hintergrund in den Bildern sind frei erfunden.</sub>
 
 ## Download
 
