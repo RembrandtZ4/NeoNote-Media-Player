@@ -31,7 +31,7 @@ Ein Musik- und Videoplayer für Linux und Windows, angelehnt an Windows Media Pl
 Die fertigen Dateien gibt es auf der **[Release-Seite](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest)**:
 
 - **Windows 10/11:** `NeoNote-Setup-<Version>.exe`
-- **Linux:** `neonote-<Version>.zip`
+- **Linux:** `neonote-<Version>-linux-arch.zip`
 
 ## Funktionen
 
@@ -71,7 +71,7 @@ Die fertigen Dateien gibt es auf der **[Release-Seite](https://github.com/Rembra
 
 ## Installation unter CachyOS / Arch (KDE Plasma)
 
-`neonote-<Version>.zip` von der Release-Seite herunterladen, entpacken, im Terminal in den Ordner wechseln und das Installationsskript starten (ohne `sudo`):
+`neonote-<Version>-linux-arch.zip` von der Release-Seite herunterladen, entpacken, im Terminal in den Ordner wechseln und das Installationsskript starten (ohne `sudo`):
 
 ```bash
 cd neonote
