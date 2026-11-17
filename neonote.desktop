@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=NeoNote Media Player
+GenericName=Medienplayer
+Comment=Musik- und Videoplayer im Stil von Windows Media Player 12
+Exec=neonote %F
+Icon=neonote
+Terminal=false
+StartupWMClass=neonote
+Categories=AudioVideo;Audio;Video;Player;
+Keywords=Musik;Music;Video;Player;Radio;Wiedergabeliste;
+MimeType=audio/mpeg;audio/mp3;audio/flac;audio/x-flac;audio/ogg;audio/x-vorbis+ogg;audio/opus;audio/x-opus+ogg;audio/mp4;audio/x-m4a;audio/x-m4b;audio/aac;audio/x-aac;audio/wav;audio/x-wav;audio/x-ms-wma;audio/x-ape;audio/x-wavpack;audio/x-aiff;audio/x-musepack;audio/x-tta;audio/x-matroska;audio/ac3;audio/vnd.dts;audio/x-speex;audio/x-dsf;audio/x-dff;audio/amr;audio/basic;audio/x-mpegurl;audio/x-scpls;video/mp4;video/x-m4v;video/x-matroska;video/webm;video/x-msvideo;video/avi;video/quicktime;video/x-ms-wmv;video/x-ms-asf;video/x-flv;video/mpeg;video/mp2t;video/3gpp;video/ogg;video/dv;
