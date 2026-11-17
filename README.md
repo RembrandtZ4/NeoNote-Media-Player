@@ -327,3 +327,7 @@ Dieses Programm ist freie Software: Du kannst es unter den Bedingungen der **GNU
 
 Verwendete Bibliotheken und ihre Lizenzen: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+---
+
+NeoNote wurde von RembrandtZ4 gemeinsam mit [Claude](https://claude.ai) (Anthropic) entwickelt.
+
