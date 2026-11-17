@@ -2,6 +2,16 @@
 
 Ein Musik- und Videoplayer für Linux und Windows, angelehnt an Windows Media Player 12: flaches Design mit Transparenz, anpassbaren Farben, WMP12-Titelliste mit Albumcovern, „Wird gespielt“-Modus, Wiedergabelisten, Internetradio, Jellyfin-Anbindung und Mediensteuerung. Oberfläche auf Deutsch und Englisch.
 
+![Titelliste mit Albumcovern](docs/screenshots/songs.png)
+
+| Interpreten | Alben |
+|---|---|
+| ![Interpreten](docs/screenshots/artists.png) | ![Alben](docs/screenshots/albums.png) |
+| **„Wird gespielt“** | **Akzentfarbe Silber auf Schwarz** |
+| ![Wird gespielt](docs/screenshots/nowplaying.png) | ![Silber](docs/screenshots/silver.png) |
+
+<sub>Interpreten, Alben und Cover in den Bildern sind frei erfunden.</sub>
+
 ## Download
 
 Die fertigen Dateien gibt es auf der **[Release-Seite](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest)**:
