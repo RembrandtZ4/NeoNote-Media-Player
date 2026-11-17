@@ -1,0 +1,61 @@
+name: Fehler melden / Bug report
+description: Etwas funktioniert nicht wie erwartet. – Something doesn't work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke, dass du einen Fehler meldest! Je genauer die Angaben, desto schneller lässt er sich beheben.
+        Thanks for reporting! You can write in German or English.
+  - type: input
+    id: version
+    attributes:
+      label: NeoNote-Version / NeoNote version
+      description: Steht unter Organisieren ▸ Über NeoNote. – See Organize ▸ About NeoNote.
+      placeholder: "1.1.5"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Betriebssystem / Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux – Arch / CachyOS / Manjaro
+        - Linux – Debian / Ubuntu / Mint
+        - Linux – Fedora / openSUSE
+        - Linux – andere / other
+    validations:
+      required: true
+  - type: input
+    id: desktop
+    attributes:
+      label: Desktop (nur Linux) / Desktop (Linux only)
+      placeholder: "KDE Plasma 6, Wayland"
+  - type: textarea
+    id: what
+    attributes:
+      label: Was ist passiert? / What happened?
+      description: Was hast du erwartet, und was ist stattdessen passiert? – What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Schritte zum Nachstellen / Steps to reproduce
+      placeholder: |
+        1. Ansicht „Titel“ öffnen
+        2. Auf … klicken
+        3. …
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Einfach hier hineinziehen. – Drag & drop images here.
+  - type: textarea
+    id: log
+    attributes:
+      label: Fehlermeldung / Error message
+      description: Falls eine Meldung erschien, bitte den Text hier einfügen. – If an error message appeared, paste it here.
+      render: text

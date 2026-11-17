@@ -1,0 +1,19 @@
+name: Idee / Feature request
+description: Vorschlag für eine neue Funktion. – Suggest a new feature.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Was wünschst du dir? / What would you like?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Wofür brauchst du es? / What would you use it for?
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Beispiele oder Screenshots / Examples or screenshots
+      description: z. B. wie es im Windows Media Player aussah. – e.g. how it looked in Windows Media Player.
