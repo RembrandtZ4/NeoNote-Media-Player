@@ -10,6 +10,16 @@ Ein Musik- und Videoplayer für Linux und Windows, angelehnt an Windows Media Pl
 | **„Wird gespielt“** | **Akzentfarbe Silber auf Schwarz** |
 | ![Wird gespielt](docs/screenshots/nowplaying.png) | ![Silber](docs/screenshots/silver.png) |
 
+**Helle Version und weitere Farben** – 10 Akzentfarben (oder eine eigene) und 8 Hintergründe lassen sich frei kombinieren:
+
+| Hell · Blau | Hell · Rot |
+|---|---|
+| ![Hell, Blau](docs/screenshots/theme_light.png) | ![Hell, Rot](docs/screenshots/theme_light_artists.png) |
+| **Violett auf Aubergine** | **Grün auf Wald** |
+| ![Violett](docs/screenshots/theme_violet.png) | ![Grün](docs/screenshots/theme_green.png) |
+| **Orange auf Anthrazit** | **Pink auf Mitternacht** |
+| ![Orange](docs/screenshots/theme_orange.png) | ![Pink](docs/screenshots/theme_pink.png) |
+
 <sub>Transparenz 70 % mit Weichzeichner (KDE Plasma). Interpreten, Alben, Cover und Hintergrund in den Bildern sind frei erfunden.</sub>
 
 ## Download
