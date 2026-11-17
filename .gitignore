@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+# Windows-Build
+windows/build/
+windows/dist/
+windows/icons/
+windows/version_info.txt
+*.exe
+# Linux-Paketbau (makepkg)
+pkg/
+src/
+*.pkg.tar.*
+*.zip
