@@ -19,6 +19,8 @@ Ein Musik- und Videoplayer für Linux und Windows, angelehnt an Windows Media Pl
 | ![Violett](docs/screenshots/theme_violet.png) | ![Grün](docs/screenshots/theme_green.png) |
 | **Orange auf Anthrazit** | **Pink auf Mitternacht** |
 | ![Orange](docs/screenshots/theme_orange.png) | ![Pink](docs/screenshots/theme_pink.png) |
+| **Silber auf Graphit** (schwarz-weiß-silbern, ganz ohne Farbe) | |
+| ![Silber](docs/screenshots/theme_silver.png) | |
 
 <sub>Transparenz 70 % mit Weichzeichner (KDE Plasma). Interpreten, Alben, Cover und Hintergrund in den Bildern sind frei erfunden.</sub>
 
