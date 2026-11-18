@@ -327,6 +327,8 @@ Ein Titel zählt als gespielt, sobald 30 Sekunden bzw. die Hälfte gelaufen sind
 
 ## Fehler und Ideen
 
+Was als Nächstes geplant ist, steht in der [Roadmap](ROADMAP.md).
+
 Einen Fehler gefunden oder eine Idee? Einfach ein **[Issue](https://github.com/RembrandtZ4/NeoNote-Media-Player/issues/new/choose)** anlegen – auf Deutsch oder Englisch.
 
 ## Lizenz

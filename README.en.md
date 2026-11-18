@@ -329,6 +329,8 @@ A track counts as played after 30 seconds or half its length.
 
 ## Bugs and ideas
 
+What's planned next: see the [roadmap](ROADMAP.md#roadmap-english).
+
 Found a bug or have an idea? Open an **[issue](https://github.com/RembrandtZ4/NeoNote-Media-Player/issues/new/choose)** – in English or German.
 
 ## License
