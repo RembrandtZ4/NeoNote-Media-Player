@@ -7013,23 +7013,14 @@ class MainWindow(QMainWindow):
                 self.central.setStyleSheet(css)
         self._apply_blur()
 
-    _win_sizing = False
-
     def _apply_blur(self):
         if IS_WIN and not self.frameless:
-            return
-        if self._win_sizing:                 # während die Größe gezogen wird: aus (siehe nativeEvent)
             return
         if self.isVisible():
             set_window_blur(self, bool(self.theme_dict.get("blur")), self.corner_radius())
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        if self._win_sizing:
-            # Beim Ziehen sofort neu zeichnen statt auf die Ereignisschleife zu warten – sonst zeigt
-            # Windows das transparente Fenster kurz in der neuen Größe mit altem Inhalt (Flackern)
-            self.repaint()
-            return
         if getattr(self, "_blur_timer", None):
             self._blur_timer.start()
 
@@ -7158,17 +7149,6 @@ class MainWindow(QMainWindow):
             try:
                 from ctypes import wintypes
                 msg = wintypes.MSG.from_address(int(message))
-                if msg.message == 0x0214:                         # WM_SIZING: Größe wird gerade gezogen
-                    # Den DWM-Weichzeichner beim Ziehen aussetzen: er hinkt bei jeder Größenänderung
-                    # hinterher und ließ das Fenster flackern. Danach wieder einschalten.
-                    if not self._win_sizing:
-                        self._win_sizing = True
-                        if self.theme_dict.get("blur"):
-                            set_window_blur(self, False, 0)
-                elif msg.message == 0x0232:                       # WM_EXITSIZEMOVE: Maustaste losgelassen
-                    if self._win_sizing:
-                        self._win_sizing = False
-                        QTimer.singleShot(0, self._apply_blur)
                 if msg.message == 0x0083 and msg.wParam:          # WM_NCCALCSIZE: ganze Fläche ist Inhalt
                     u = ctypes.windll.user32
                     if u.IsZoomed(msg.hWnd):

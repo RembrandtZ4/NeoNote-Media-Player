@@ -7,7 +7,7 @@
 - Ziehen der Fenstergröße deutlich flüssiger: Kacheln werden als fertige Bilder gezeichnet, ihre Größe liest Qt direkt aus dem Modell, der Fensterhintergrund wird schneller gefüllt (bei 800 Interpreten etwa doppelt so schnell).
 
 **Fehlerbehebungen**
-- Windows: Beim Ziehen der Fenstergröße flackerte die Oberfläche. Der Weichzeichner wird nicht mehr bei jeder kurzen Pause neu gesetzt, ist während des Ziehens ausgesetzt (er hinkt der Größenänderung sonst hinterher) und das Fenster wird bei jedem Schritt sofort neu gezeichnet.
+- Windows: Der Weichzeichner wird beim Ziehen der Fenstergröße nicht mehr bei jeder kurzen Pause neu gesetzt (das ganze Fenster wurde dabei neu gezeichnet).
 - Der Größenpfeil vom Fensterrand blieb stehen, wenn man die Maus ohne Klick zurück ins Fenster bewegte.
 
 ## 1.1.5 – 17.11.2026
