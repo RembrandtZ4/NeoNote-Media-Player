@@ -80,7 +80,7 @@ HIDDEN_FILE = DATA_DIR / "hidden.json"
 JF_CACHE_FILE = DATA_DIR / "jellyfin.json"
 JF_OFFLINE_DIR = DATA_DIR / "jellyfin-offline"
 PLAYLIST_DIR = DATA_DIR / "playlists"
-APP_VERSION = "1.1.5"
+APP_VERSION = "1.1.6"
 
 # ── Sprache ───────────────────────────────────────────────────────────────
 LANGUAGES = [("auto", "Automatisch (Systemsprache)"), ("de", "Deutsch"), ("en", "English")]
@@ -590,22 +590,34 @@ def set_win_blur(widget, on, radius=0):
         try:
             win = widget.window()
             rounded = not (win.isMaximized() or win.isFullScreen() or getattr(win, "_fs", False))
-            pref = ctypes.c_int(2 if rounded else 1)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(pref), ctypes.sizeof(pref))
+            want = (int(widget.winId()), 2 if rounded else 1)
+            if getattr(widget, "_nn_corner", None) != want:
+                pref = ctypes.c_int(want[1])
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(pref), ctypes.sizeof(pref))
+                widget._nn_corner = want
         except Exception:
             pass
-        accent = ACCENT(3 if on else 0, 0, 0, 0)            # 3 = ACCENT_ENABLE_BLURBEHIND
-        data = WCAD(19, ctypes.cast(ctypes.pointer(accent), ctypes.c_void_p), ctypes.sizeof(accent))
-        user32.SetWindowCompositionAttribute(hwnd, ctypes.byref(data))
-        # Weichzeichner nur innerhalb der runden Ecken: Fensterbereich abrunden
+        # Nur ändern, was sich wirklich geändert hat: jedes erneute Setzen (vor allem SetWindowRgn)
+        # zeichnet das ganze Fenster neu – beim Ziehen der Fenstergröße sah man das als Flackern.
         dpr = widget.devicePixelRatioF()
         w, h = int(widget.width() * dpr), int(widget.height() * dpr)
         r = int(round(radius * dpr))
-        if on and r > 0:
+        rgn_key = (w, h, r) if (on and r > 0) else None
+        last = getattr(widget, "_nn_win_blur", None)
+        key = (int(widget.winId()), bool(on), rgn_key)
+        if last == key:
+            return True
+        if last is None or last[0] != key[0] or last[1] != key[1]:
+            accent = ACCENT(3 if on else 0, 0, 0, 0)            # 3 = ACCENT_ENABLE_BLURBEHIND
+            data = WCAD(19, ctypes.cast(ctypes.pointer(accent), ctypes.c_void_p), ctypes.sizeof(accent))
+            user32.SetWindowCompositionAttribute(hwnd, ctypes.byref(data))
+        # Weichzeichner nur innerhalb der runden Ecken: Fensterbereich abrunden
+        if rgn_key is not None:
             rgn = ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, w + 1, h + 1, 2 * r, 2 * r)
             user32.SetWindowRgn(hwnd, rgn, True)
-        else:
+        elif last is None or last[0] != key[0] or last[2] is not None:
             user32.SetWindowRgn(hwnd, None, True)
+        widget._nn_win_blur = key
         return True
     except Exception:
         return False
@@ -3801,11 +3813,21 @@ class RootWidget(QWidget):
         if not w.testAttribute(Qt.WA_TranslucentBackground):
             p.fillRect(self.rect(), T.bg)                 # deckendes Fenster (Windows mit Systemrahmen)
             return
+        bg = T.bga()
+        if not r:                                           # eckig (Windows, maximiert): schnelle Füllung
+            p.fillRect(self.rect(), bg)
+            return
+        # Großteil ohne Kantenglättung füllen (schnell), nur die vier Ecken geglättet zeichnen
+        W, H = self.width(), self.height()
+        p.fillRect(QRect(r, 0, W - 2 * r, H), bg)
+        p.fillRect(QRect(0, r, r, H - 2 * r), bg)
+        p.fillRect(QRect(W - r, r, r, H - 2 * r), bg)
         p.setRenderHint(QPainter.Antialiasing)
-        p.setPen(QPen(T.ov(0.14), 1) if r else Qt.NoPen)
-        p.setBrush(T.bga())
-        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5) if r else QRectF(self.rect())
-        p.drawRoundedRect(rect, r, r)
+        p.setPen(Qt.NoPen); p.setBrush(bg)
+        for cx, cy, a0 in ((r, r, 90), (W - r, r, 0), (W - r, H - r, 270), (r, H - r, 180)):
+            p.drawPie(QRectF(cx - r, cy - r, 2 * r, 2 * r), a0 * 16, 90 * 16)
+        p.setPen(QPen(T.ov(0.14), 1)); p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), r, r)
 
 
 class MouseNavFilter(QObject):
@@ -3816,6 +3838,14 @@ class MouseNavFilter(QObject):
         self.win = win
 
     def eventFilter(self, obj, ev):
+        if ev.type() == QEvent.Enter:
+            # Größenpfeil vom Fensterrand zurücksetzen, sobald die Maus ins Fensterinnere wandert
+            # (das Innere erbt sonst den Pfeil, weil der Rand kein „Verlassen“ meldet)
+            c = getattr(self.win, "central", None)
+            if c is not None and obj is not c and c.testAttribute(Qt.WA_SetCursor) \
+                    and isinstance(obj, QWidget) and obj.window() is self.win:
+                c.unsetCursor()
+            return False
         if ev.type() == QEvent.MouseButtonPress and ev.button() in (Qt.BackButton, Qt.ForwardButton) \
                 and isinstance(obj, QWidget) and obj.window() is self.win:
             w = self.win
@@ -4458,12 +4488,10 @@ class TileDelegate(QStyledItemDelegate):
         super().__init__(parent)
         self.covers = covers
         self._stacks = OrderedDict()     # fertig gezeichnete Coverstapel – beim Scrollen nur noch ein drawPixmap
+        self._tiles = OrderedDict()      # fertig gezeichnete Kacheln
 
-    def sizeHint(self, _o, idx):
-        if idx.data(ROLE_KIND) == "sep":
-            view = self.parent()
-            return QSize(max(TILE_W, view.viewport().width() - 2), 36)
-        return QSize(TILE_W, TILE_H)
+    # Größe steht als SizeHintRole direkt im Modell (siehe render_grid) – Qt liest sie dann selbst,
+    # ohne für jede Kachel Python aufzurufen. Das macht das Ziehen der Fenstergröße deutlich flüssiger.
 
     def _paint_sep(self, p, opt, idx):
         p.save()
@@ -4551,8 +4579,33 @@ class TileDelegate(QStyledItemDelegate):
             p.setBrush(T.acc(0.22) if sel else T.ov(0.06))
             p.drawRoundedRect(QRectF(r).adjusted(.5, .5, -.5, -.5), 4, 4)
         kind, keys = idx.data(ROLE_KIND), idx.data(ROLE_COVERS) or [""]
-        cr = QRect(r.left() + 16, r.top() + (r.height() - ART) // 2, ART, ART)
         dpr = p.device().devicePixelRatioF() if p.device() else 1.0
+        # Ganze Kachel (Coverstapel, Texte, Sterne) als fertiges Bild – beim Scrollen und beim
+        # Ziehen der Fenstergröße wird dann nur noch kopiert statt neu gesetzt.
+        text, subs, rating = idx.data(Qt.DisplayRole) or "", tuple(idx.data(ROLE_SUB) or ()), idx.data(ROLE_RATING) or 0
+        tk = (kind, tuple(keys[:5]), text, subs, rating, r.width(), r.height(), round(dpr * 100), opt.font.key(),
+              T.fg.name(), T.dim.name(), T.accent.name(), self.covers.gen)
+        tile = self._tiles.get(tk)
+        if tile is None and self._stack(kind, keys, dpr) is not None:
+            tile = QPixmap(round(r.width() * dpr), round(r.height() * dpr))
+            tile.setDevicePixelRatio(dpr); tile.fill(Qt.transparent)
+            q = QPainter(tile)
+            q.setRenderHint(QPainter.Antialiasing); q.setRenderHint(QPainter.SmoothPixmapTransform)
+            self._paint_content(q, QRect(0, 0, r.width(), r.height()), opt, idx, kind, keys, dpr)
+            q.end()
+            self._tiles[tk] = tile
+            while len(self._tiles) > 600:
+                self._tiles.popitem(last=False)
+        elif tile is not None:
+            self._tiles.move_to_end(tk)
+        if tile is not None:
+            p.drawPixmap(r.topLeft(), tile)
+        else:
+            self._paint_content(p, r, opt, idx, kind, keys, dpr)
+        p.restore()
+
+    def _paint_content(self, p, r, opt, idx, kind, keys, dpr):
+        cr = QRect(r.left() + 16, r.top() + (r.height() - ART) // 2, ART, ART)
         stack = self._stack(kind, keys, dpr)
         if stack is not None:
             p.drawPixmap(cr.topLeft() - QPoint(self.STACK_M, self.STACK_M), stack)
@@ -4595,7 +4648,6 @@ class TileDelegate(QStyledItemDelegate):
                     p.setClipRect(QRectF(tx + 6 + i * 13 - 6, y, 12 * fill, lh))
                     p.setPen(Qt.NoPen); p.setBrush(T.accent); p.drawPolygon(poly)
                     p.restore()
-        p.restore()
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -6221,8 +6273,9 @@ class MainWindow(QMainWindow):
 
     # ── Steuerleiste als Overlay über dem Video ───────────────────────────
     def _ovl_items(self):
+        """Was über dem Video ein- und ausblendet. Bei Musik bleibt die schmale Leiste einfach stehen."""
         items = [self.controls]
-        if self._winbox_on:
+        if self._winbox_on and self._overlay:
             items.append(self.winbox)
         return items
 
@@ -6230,9 +6283,11 @@ class MainWindow(QMainWindow):
         """Läuft ein Video im „Wird gespielt“-Modus, schwebt die Steuerleiste transparent über dem Bild;
         oben bleiben nur Minimieren/Maximieren/Schließen."""
         want = bool(self.np_mode and self.video.has_video)
-        winbox = want and self.frameless and not self._fs
+        # „Wird gespielt“ (Musik wie Video): statt Titelleiste mit Suche nur die schmale Leiste
+        winbox = bool(self.np_mode and self.frameless and not self._fs)
         if want == self._overlay and winbox == self._winbox_on:
-            if want:
+            self.video.lib_btn.setVisible(self.np_mode and not want and not winbox)
+            if want or winbox:
                 self._place_overlay()
             return
         root = self.central.layout()
@@ -6253,11 +6308,9 @@ class MainWindow(QMainWindow):
         self._winbox_on = winbox
         self.winbox.setVisible(winbox)
         # schlanke Ansicht: Titelleiste weg, Bibliotheks-Knopf im Bild weg (gibt es unten in der Leiste)
-        if want:
+        if want or winbox:
             self.topbar.hide()
-        elif self.np_mode and self.frameless and not self._fs:
-            self.topbar.show()
-        self.video.lib_btn.setVisible(self.np_mode and not want)
+        self.video.lib_btn.setVisible(self.np_mode and not want and not winbox)
         if want:
             for w in self._ovl_items():
                 eff = QGraphicsOpacityEffect(w); eff.setOpacity(1.0); w.setGraphicsEffect(eff)
@@ -6268,18 +6321,21 @@ class MainWindow(QMainWindow):
             self._place_overlay()
         else:
             c.show()
+            if winbox:
+                self._place_overlay()
 
     def _place_overlay(self):
-        if not self._overlay:
+        if not (self._overlay or self._winbox_on):
             return
         m = self.central.layout().contentsMargins()
-        h = self.controls.height()
-        self.controls.setGeometry(m.left(), self.central.height() - m.bottom() - h,
-                                  self.central.width() - m.left() - m.right(), h)
-        self.controls.raise_()
+        if self._overlay:
+            h = self.controls.height()
+            self.controls.setGeometry(m.left(), self.central.height() - m.bottom() - h,
+                                      self.central.width() - m.left() - m.right(), h)
+            self.controls.raise_()
         if self._winbox_on:
             t = self.cur["t"]["title"] if self.cur else ""
-            self.ovl_title.setText(t)
+            self.ovl_title.setText(disp(t))
             self.winbox.setGeometry(m.left(), m.top(), self.central.width() - m.left() - m.right(),
                                     self.winbox.sizeHint().height())
             self.winbox.raise_()
@@ -6991,6 +7047,13 @@ class MainWindow(QMainWindow):
         return e
 
     def eventFilter(self, obj, ev):
+        if getattr(self, "grid", None) is not None and obj is self.grid.viewport() and ev.type() == QEvent.Resize:
+            w = max(TILE_W, obj.width() - 2)
+            if w != getattr(self, "_grid_sep_w", None):
+                self._grid_sep_w = w
+                for sep in getattr(self, "_grid_seps", []):
+                    sep.setData(QSize(w, 36), Qt.SizeHintRole)
+            return False
         if getattr(self, "grid", None) is not None and obj is self.grid.viewport() and ev.type() in (
                 QEvent.DragEnter, QEvent.DragMove, QEvent.Drop):
             md = ev.mimeData()
@@ -7020,7 +7083,7 @@ class MainWindow(QMainWindow):
         if obj is getattr(self, "controls", None) and ev.type() == QEvent.Resize:
             self._layout_controls()
             return False
-        if obj is getattr(self, "central", None) and ev.type() == QEvent.Resize and self._overlay:
+        if obj is getattr(self, "central", None) and ev.type() == QEvent.Resize and (self._overlay or self._winbox_on):
             QTimer.singleShot(0, self._place_overlay)
         if obj is getattr(self, "central", None) and self.frameless and not self.isMaximized():
             t = ev.type()
@@ -7970,15 +8033,21 @@ class MainWindow(QMainWindow):
                 sections.setdefault(a["artist"], []).append(
                     ("album", a["title"], lines, [a["key"]], a["key"], self._avg_rating(a["tracks"])))
         n = 0
+        seps, tile_size = [], QSize(TILE_W, TILE_H)
+        sep_w = max(TILE_W, self.grid.viewport().width() - 2)
+        self._grid_seps, self._grid_sep_w = seps, sep_w
         for head, items in sections.items():
             items = [x for x in items if not q or q in x[1].lower() or any(q in l.lower() for l in x[2])]
             if not items:
                 continue
             sep = QStandardItem(head); sep.setEditable(False)
             sep.setFlags(Qt.ItemIsEnabled); sep.setData("sep", ROLE_KIND)
+            sep.setData(QSize(sep_w, 36), Qt.SizeHintRole)
             self.grid_model.appendRow(sep)
+            seps.append(sep)
             for kind, title, lines, keys, key, rating in items:
                 it = QStandardItem(disp(title)); it.setEditable(False)
+                it.setData(tile_size, Qt.SizeHintRole)
                 it.setData(kind, ROLE_KIND); it.setData(keys, ROLE_COVERS); it.setData(lines, ROLE_SUB)
                 it.setData(key, ROLE_KEY); it.setData(rating, ROLE_RATING)
                 it.setToolTip(title + "\n" + "\n".join(lines))
@@ -8415,6 +8484,7 @@ class MainWindow(QMainWindow):
             self.np_title.setText(tr_("Keine Wiedergabe")); self.np_artist.setText("")
             self.np_cover.setPixmap(CoverCache.placeholder(42))
             self.setWindowTitle(APP_TITLE)
+        self.ovl_title.setText(disp(t["title"]) if t else "")
         self._update_vis()
 
     def toggle_play(self):
