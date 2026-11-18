@@ -6052,6 +6052,7 @@ class MainWindow(QMainWindow):
         self._fs_was_max = False
         self._overlay = False
         self._winbox_on = False
+        self._ovl_video = False
         self._fades = {}
         self._fs_timer = QTimer(self, singleShot=True, interval=2500)
         self._fs_timer.timeout.connect(self._fs_hide_controls)
@@ -6275,28 +6276,31 @@ class MainWindow(QMainWindow):
     def _ovl_items(self):
         """Was über dem Video ein- und ausblendet. Bei Musik bleibt die schmale Leiste einfach stehen."""
         items = [self.controls]
-        if self._winbox_on and self._overlay:
+        if self._winbox_on and self._ovl_video:
             items.append(self.winbox)
         return items
 
     def _sync_overlay(self):
         """Läuft ein Video im „Wird gespielt“-Modus, schwebt die Steuerleiste transparent über dem Bild;
         oben bleiben nur Minimieren/Maximieren/Schließen."""
-        want = bool(self.np_mode and self.video.has_video)
-        # „Wird gespielt“ (Musik wie Video): statt Titelleiste mit Suche nur die schmale Leiste
+        # „Wird gespielt“ (Musik wie Video): Steuerleiste schwebt transparent über dem Bild,
+        # oben statt Titelleiste mit Suche nur die schmale Leiste. Ausblenden nur bei Videos.
+        want = bool(self.np_mode)
+        vid = bool(want and self.video.has_video)
         winbox = bool(self.np_mode and self.frameless and not self._fs)
-        if want == self._overlay and winbox == self._winbox_on:
+        if want == self._overlay and winbox == self._winbox_on and vid == self._ovl_video:
             self.video.lib_btn.setVisible(self.np_mode and not want and not winbox)
             if want or winbox:
                 self._place_overlay()
             return
         root = self.central.layout()
         c = self.controls
-        for w in self._ovl_items():
+        for w in (self.controls, self.winbox):
             if self._fades.get(w):
                 self._fades[w].stop()
             w.setGraphicsEffect(None)
         self._fades = {}
+        self._ovl_video = vid
         if want != self._overlay:
             if want:
                 root.removeWidget(c)
@@ -6312,12 +6316,13 @@ class MainWindow(QMainWindow):
             self.topbar.hide()
         self.video.lib_btn.setVisible(self.np_mode and not want and not winbox)
         if want:
-            for w in self._ovl_items():
+            for w in (self._ovl_items() if vid else []):
                 eff = QGraphicsOpacityEffect(w); eff.setOpacity(1.0); w.setGraphicsEffect(eff)
                 a = QPropertyAnimation(eff, b"opacity", self); a.setDuration(260)
                 a.finished.connect(lambda w=w: self._fade_done(w))
                 self._fades[w] = a
                 w.show()
+            c.show()
             self._place_overlay()
         else:
             c.show()
@@ -7008,14 +7013,23 @@ class MainWindow(QMainWindow):
                 self.central.setStyleSheet(css)
         self._apply_blur()
 
+    _win_sizing = False
+
     def _apply_blur(self):
         if IS_WIN and not self.frameless:
+            return
+        if self._win_sizing:                 # während die Größe gezogen wird: aus (siehe nativeEvent)
             return
         if self.isVisible():
             set_window_blur(self, bool(self.theme_dict.get("blur")), self.corner_radius())
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
+        if self._win_sizing:
+            # Beim Ziehen sofort neu zeichnen statt auf die Ereignisschleife zu warten – sonst zeigt
+            # Windows das transparente Fenster kurz in der neuen Größe mit altem Inhalt (Flackern)
+            self.repaint()
+            return
         if getattr(self, "_blur_timer", None):
             self._blur_timer.start()
 
@@ -7144,6 +7158,17 @@ class MainWindow(QMainWindow):
             try:
                 from ctypes import wintypes
                 msg = wintypes.MSG.from_address(int(message))
+                if msg.message == 0x0214:                         # WM_SIZING: Größe wird gerade gezogen
+                    # Den DWM-Weichzeichner beim Ziehen aussetzen: er hinkt bei jeder Größenänderung
+                    # hinterher und ließ das Fenster flackern. Danach wieder einschalten.
+                    if not self._win_sizing:
+                        self._win_sizing = True
+                        if self.theme_dict.get("blur"):
+                            set_window_blur(self, False, 0)
+                elif msg.message == 0x0232:                       # WM_EXITSIZEMOVE: Maustaste losgelassen
+                    if self._win_sizing:
+                        self._win_sizing = False
+                        QTimer.singleShot(0, self._apply_blur)
                 if msg.message == 0x0083 and msg.wParam:          # WM_NCCALCSIZE: ganze Fläche ist Inhalt
                     u = ctypes.windll.user32
                     if u.IsZoomed(msg.hWnd):
@@ -7424,7 +7449,7 @@ class MainWindow(QMainWindow):
         root.addWidget(top)
         # Bei Videos: statt der Titelleiste nur Minimieren/Maximieren/Schließen oben rechts über dem Bild
         wb = DragBar(self); wb.setParent(central); wb.setObjectName("winbox"); self.winbox = wb
-        wl = QHBoxLayout(wb); wl.setContentsMargins(12, 1, 2, 1); wl.setSpacing(0)
+        wl = QHBoxLayout(wb); wl.setContentsMargins(12, 1, 2, 12); wl.setSpacing(0)   # unten Platz zum sanften Auslaufen
         self.ovl_title = QLabel(); self.ovl_title.setObjectName("ovlTitle"); self.ovl_title.setTextFormat(Qt.PlainText)
         wl.addWidget(self.ovl_title); wl.addStretch(1)
         self.ovl_min = self._icon_btn("minimize", 14, tr_("Minimieren"), self.showMinimized, obj="ovlwin")
@@ -9040,10 +9065,10 @@ QMainWindow#main {{ background: transparent; }}
 #root QFrame#queue {{ background: {pan(0.025)}; }}
 #root QFrame#queueHead {{ border-bottom: {sep}; }}
 #root QFrame#controls {{ background: {pan(0.045)}; border-top: {sep}; }}
-#root QFrame#winbox {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {css(_ova(0.80))}, stop:1 {css(_ova(0.55))});
-    border-bottom: 1px solid {css(T.ov(0.08))}; }}
+#root QFrame#winbox {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {css(_ova(0.42))}, stop:0.55 {css(_ova(0.16))}, stop:1 {css(_ova(0.0))});
+    border: none; }}
 #root QLabel#ovlTitle {{ color: {fg}; font-size: 9pt; }}
-#root QFrame#controls[overlay="true"] {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {css(_ova(0.45))}, stop:1 {css(_ova(0.86))}); border-top: 1px solid {css(T.ov(0.10))}; }}
+#root QFrame#controls[overlay="true"] {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {css(_ova(0.0))}, stop:0.35 {css(_ova(0.35))}, stop:1 {css(_ova(0.72))}); border: none; }}
 #root QToolButton#navbtn {{ background: transparent; border: none; border-radius: 6px; padding: 6px; }}
 #root QToolButton#navbtn:hover {{ background: {css(T.ov(0.09))}; }}
 #root QToolButton#navbtn:pressed {{ background: {css(T.ov(0.15))}; }}

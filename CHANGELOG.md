@@ -3,11 +3,11 @@
 ## 1.1.6 – 18.11.2026
 
 **Verbessert**
-- „Wird gespielt“ bei Musik: Statt der Titelleiste mit Suche und Navigation gibt es jetzt – wie beim Video – nur noch die schmale Leiste mit Titel, Minimieren, Maximieren und Schließen.
+- „Wird gespielt“ bei Musik wie bei Videos: Statt der Titelleiste mit Suche gibt es nur noch eine schmale Leiste mit Titel, Minimieren, Maximieren und Schließen. Oben und unten laufen die Leisten jetzt durchgehend transparent ins Bild aus – ohne Kanten und Trennlinien.
 - Ziehen der Fenstergröße deutlich flüssiger: Kacheln werden als fertige Bilder gezeichnet, ihre Größe liest Qt direkt aus dem Modell, der Fensterhintergrund wird schneller gefüllt (bei 800 Interpreten etwa doppelt so schnell).
 
 **Fehlerbehebungen**
-- Windows: Beim Ziehen der Fenstergröße flackerte die Oberfläche manchmal. Ursache war, dass der Weichzeichner nach jeder kurzen Pause neu gesetzt und dabei das ganze Fenster neu gezeichnet wurde.
+- Windows: Beim Ziehen der Fenstergröße flackerte die Oberfläche. Der Weichzeichner wird nicht mehr bei jeder kurzen Pause neu gesetzt, ist während des Ziehens ausgesetzt (er hinkt der Größenänderung sonst hinterher) und das Fenster wird bei jedem Schritt sofort neu gezeichnet.
 - Der Größenpfeil vom Fensterrand blieb stehen, wenn man die Maus ohne Klick zurück ins Fenster bewegte.
 
 ## 1.1.5 – 17.11.2026
