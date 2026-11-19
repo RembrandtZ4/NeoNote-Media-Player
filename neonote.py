@@ -3050,12 +3050,17 @@ def _av_version_in_file(folder, pattern):
 
 def mpv_versions(win=None):
     """(mpv-Version, FFmpeg-Version in mpv) – aus der laufenden mpv-Instanz, sonst nur die API-Version."""
-    mp = getattr(getattr(win, "player", None), "mp", None)
-    if mp is not None:
+    be = getattr(getattr(win, "player", None), "mp", None)
+    m = getattr(be, "m", None)
+    if m is not None:
         try:
-            mv = str(mp["mpv-version"] or "").removeprefix("mpv ")
-            fv = str(mp["ffmpeg-version"] or "")
-            return mv or _mpv_version(), (fv[1:] if re.match(r"n\d", fv) else fv)
+            mv = str(m.mpv_version or "").removeprefix("mpv ").removeprefix("v")
+            fv = str(m.ffmpeg_version or "")
+            if re.match(r"n\d", fv):
+                fv = fv[1:]
+            elif fv.startswith("N-"):        # Git-Stand von FFmpeg (z. B. in den Windows-Builds von mpv)
+                fv = tr_("Entwicklungsstand {0}").format(fv)
+            return mv or _mpv_version(), fv
         except Exception:
             pass
     return _mpv_version(), ""
@@ -10370,6 +10375,17 @@ def _selftest():
         except Exception as e:
             out.append(f"{mod}: FEHLT ({e})")
     out.append(f"mpv: {'ok' if mpv_available() else 'nicht vorhanden'}")
+    try:
+        import mpv
+        out.append(f"libmpv: {getattr(mpv.backend, '_name', '?')}")
+        m = mpv.MPV(vo="null", ao="null")
+        out.append(f"mpv-Version: {m.mpv_version} | FFmpeg in mpv: {m.ffmpeg_version}")
+        m.terminate()
+    except Exception as e:
+        out.append(f"mpv-Test: {e}")
+    out.append(f"FFmpeg (Qt): {ffmpeg_version_qt()}")
+    if IS_WIN:
+        out.append(f"alte Kopie in {MPV_DIR}: {'noch da' if (MPV_DIR / 'libmpv-2.dll').exists() else 'keine'}")
     try:
         import ssl
         ctx = ssl.create_default_context(); out.append(f"Zertifikate: {len(ctx.get_ca_certs())}")
