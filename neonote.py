@@ -6745,7 +6745,7 @@ class MainWindow(QMainWindow):
             widgets.append(self.topbar)
         for w in widgets:
             w.hide()
-        self.crumb.setText(tr_("<span style=\"color:{0}\">Wird gespielt</span>").format(T.fg.name()))
+        self.crumb.setText("")          # oben nur Zurück/Vor und die Fensterknöpfe
         self.stack.setCurrentWidget(self.video)
         self.video.set_np_mode(True)
         self._update_mode_btn()
