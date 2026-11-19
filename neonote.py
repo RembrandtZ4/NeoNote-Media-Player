@@ -6651,9 +6651,10 @@ class MainWindow(QMainWindow):
         splash_step(tr_("Öffne die letzte Ansicht …"), 72)
         last = self.settings.value("session/view", "artists") or "artists"
         try:
-            self.navigate(last)
+            if not self._restore_history(last):
+                self.navigate(last)
         except Exception:
-            self.history, self.hpos = [], -1
+            self.history, self.hpos, self._scroll_pos = [], -1, {}
             self.navigate("artists")
         self.refresh_playlists_nav()
         splash_step(tr_("Verbinde die Mediensteuerung …"), 86)
@@ -8400,6 +8401,47 @@ class MainWindow(QMainWindow):
         if w is self.tracks or w is self.grid:
             self._scroll_pos[self.hpos] = (self.history[self.hpos], w.verticalScrollBar().value())
 
+    # ── Verlauf für Zurück/Vor über einen Neustart hinweg ─────────────────
+    HISTORY_KEEP = 50
+
+    @staticmethod
+    def _history_ok(st):
+        return isinstance(st, str) and st and not st.startswith(("search", "np", "playing"))
+
+    def _save_history(self):
+        try:
+            self._remember_scroll()
+            keep = [(i, st) for i, st in enumerate(self.history) if self._history_ok(st)]
+            if not keep:
+                self.settings.remove("session/history")
+                return
+            pos = max([n for n, (i, _st) in enumerate(keep) if i <= self.hpos] or [0])
+            start = max(0, min(pos, len(keep) - self.HISTORY_KEEP))
+            keep = keep[start:start + self.HISTORY_KEEP]
+            pos -= start
+            scroll = {str(n): self._scroll_pos[i][1] for n, (i, st) in enumerate(keep)
+                      if i in self._scroll_pos and self._scroll_pos[i][0] == st}
+            self.settings.setValue("session/history", json.dumps(
+                {"h": [st for _i, st in keep], "pos": pos, "scroll": scroll}))
+        except Exception:
+            pass
+
+    def _restore_history(self, last):
+        """Verlauf vom letzten Mal laden und die damalige Ansicht öffnen. False, wenn es keinen gibt."""
+        try:
+            d = json.loads(self.settings.value("session/history", "") or "{}")
+            hist = [st for st in d.get("h", []) if self._history_ok(st)]
+            pos = int(d.get("pos", len(hist) - 1))
+        except (ValueError, TypeError, AttributeError):
+            return False
+        if not hist or not (0 <= pos < len(hist)) or hist[pos] != last:
+            return False
+        self.history, self.hpos = hist, pos
+        self._scroll_pos = {int(k): (hist[int(k)], int(v)) for k, v in d.get("scroll", {}).items()
+                            if str(k).isdigit() and int(k) < len(hist)}
+        self.navigate(hist[pos], push=False)
+        return True
+
     def _restore_scroll(self, came_from):
         saved = self._scroll_pos.get(self.hpos)
         w = self.stack.currentWidget()
@@ -9769,6 +9811,7 @@ class MainWindow(QMainWindow):
             self.settings.setValue("window/maximized", self.isMaximized())
         if self.state and not str(self.state).startswith(("search", "np", "playing")):
             self.settings.setValue("session/view", self.state)
+        self._save_history()
         if self.mpris:
             self.mpris.stop()
         self.player.shutdown()
