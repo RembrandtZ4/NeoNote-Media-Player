@@ -37,11 +37,11 @@ from collections import OrderedDict, defaultdict, deque
 from pathlib import Path
 
 import mutagen
-from PySide6.QtCore import (QDate, QPropertyAnimation, QEasingCurve, QProcess, QAbstractItemModel, QBuffer, QEvent, QFileSystemWatcher, QLocale, QObject, QItemSelection,
+from PySide6.QtCore import (QDate, QMimeData, QPropertyAnimation, QEasingCurve, QProcess, QAbstractItemModel, QBuffer, QEvent, QFileSystemWatcher, QLocale, QObject, QItemSelection,
                             QItemSelectionModel, QModelIndex, QPoint, QPointF, QRect,
                             QRectF, QSettings, QSize, Qt, QThread, QTimer,
                             QUrl, Signal, qVersion)
-from PySide6.QtGui import (QRegion, QAction, QActionGroup, QColor, QFont, QFontMetrics, QGuiApplication, QLinearGradient, QRadialGradient, QTransform,
+from PySide6.QtGui import (QRegion, QAction, QDrag, QActionGroup, QColor, QFont, QFontMetrics, QGuiApplication, QLinearGradient, QRadialGradient, QTransform,
                            QIcon, QImage, QImageReader, QKeySequence, QPainter,
                            QPainterPath, QPalette, QPen, QPixmap, QPolygonF,
                            QShortcut, QStandardItem, QStandardItemModel, QDesktopServices)
@@ -4865,8 +4865,30 @@ class PlayButton(QAbstractButton):
 # ════════════════════════════════════════════════════════════════════════════
 #  Kachelansicht (Interpret / Album / Genre)
 # ════════════════════════════════════════════════════════════════════════════
+ARTIST_MIME = "application/x-neonote-artists"
+
+
 class GridView(QListView):
     """Kachelansicht. Tippen springt wie im WMP12 zum Eintrag und zeigt ihn oben statt am unteren Rand."""
+
+    can_drag = None          # Funktion: dürfen gerade Interpreten gezogen werden?
+
+    def startDrag(self, actions):
+        if not (self.can_drag and self.can_drag()):
+            return
+        keys = [i.data(ROLE_KEY) for i in self.selectedIndexes()
+                if i.data(ROLE_KIND) == "artist" and i.data(ROLE_KEY) != VARIOUS]
+        if not keys:
+            return
+        md = QMimeData(); md.setData(ARTIST_MIME, json.dumps(keys).encode("utf-8"))
+        drag = QDrag(self); drag.setMimeData(md)
+        idx = self.currentIndex()
+        if idx.isValid():
+            r = self.visualRect(idx)
+            pm = self.viewport().grab(r)
+            pm = pm.scaledToWidth(max(60, int(r.width() * 0.6)), Qt.SmoothTransformation)
+            drag.setPixmap(pm); drag.setHotSpot(QPoint(pm.width() // 2, pm.height() // 2))
+        drag.exec(Qt.MoveAction)
 
     def keyboardSearch(self, text):
         before = self.currentIndex()
@@ -7659,6 +7681,22 @@ class MainWindow(QMainWindow):
         if getattr(self, "grid", None) is not None and obj is self.grid.viewport() and ev.type() in (
                 QEvent.DragEnter, QEvent.DragMove, QEvent.Drop):
             md = ev.mimeData()
+            if md.hasFormat(ARTIST_MIME):          # Interpret auf Interpret: zusammenführen
+                try:
+                    keys = json.loads(bytes(md.data(ARTIST_MIME)).decode("utf-8"))
+                except ValueError:
+                    keys = []
+                idx = self.grid.indexAt(ev.position().toPoint())
+                target = idx.data(ROLE_KEY) if idx.isValid() and idx.data(ROLE_KIND) == "artist" else None
+                if ev.type() == QEvent.DragEnter:
+                    ev.acceptProposedAction()
+                elif target and target not in keys and self.can_merge_artists():
+                    ev.acceptProposedAction()
+                    if ev.type() == QEvent.Drop:
+                        QTimer.singleShot(0, lambda k=keys, t=target: self.merge_artists(k, t))
+                else:
+                    ev.ignore()
+                return True
             if not mime_has_image(md):
                 return False
             album = None
@@ -7828,13 +7866,18 @@ class MainWindow(QMainWindow):
         elif key in ("title", "album", "artist") and not value:
             self.flash(tr_("Das Feld darf nicht leer sein.")); return
         changes = {t["path"]: {key: value} for t in tracks if t.get(key) != value}
+        self.apply_tag_changes(tracks, changes)
+
+    def apply_tag_changes(self, tracks, changes):
+        """Geänderte Tags übernehmen: {Pfad: {Feld: Wert, …}} – in die Dateien (falls eingestellt) und die Bibliothek."""
         if not changes:
             return
         # Albumwechsel: vorhandenes Cover für den neuen Albumschlüssel übernehmen
         for t in tracks:
-            if key in ("album", "albumartist", "artist"):
-                aa = value if key == "albumartist" else t.get("albumartist") or t["artist"]
-                al = value if key == "album" else t["album"]
+            ch = changes.get(t["path"])
+            if ch and any(k in ch for k in ("album", "albumartist", "artist")):
+                aa = ch.get("albumartist") or t.get("albumartist") or ch.get("artist") or t["artist"]
+                al = ch.get("album", t["album"])
                 new_key = album_key(aa, al)
                 src, dst = cover_path(t['cover']), cover_path(new_key)
                 if src.exists() and not dst.exists():
@@ -7860,7 +7903,7 @@ class MainWindow(QMainWindow):
                 t = bypath.get(path)
                 if t:
                     t.update(ch)
-                    if key == "albumartist":            # selbst gesetzt: keine automatische Sampler-Erkennung mehr
+                    if "albumartist" in ch:             # selbst gesetzt: keine automatische Sampler-Erkennung mehr
                         t.pop("aa_auto", None); t.pop("aa_va", None)
                     try:
                         t["mtime"] = os.stat(path).st_mtime; t["size"] = os.stat(path).st_size
@@ -7869,7 +7912,8 @@ class MainWindow(QMainWindow):
                 if not write or path in failed:
                     self.local_lib.overrides.setdefault(path, {}).update(ch)
                 elif path in self.local_lib.overrides:
-                    self.local_lib.overrides[path].pop(key, None)
+                    for k in ch:
+                        self.local_lib.overrides[path].pop(k, None)
             self.local_lib.save_overrides()
             if failed:
                 self.flash(tr_("{0} Datei(en) konnten nicht beschrieben werden. Die Änderung ist in der Bibliothek gespeichert.").format(len(failed)), 9000)
@@ -8144,6 +8188,7 @@ class MainWindow(QMainWindow):
         self.grid.activated.connect(self._grid_activated)
         self.grid.setContextMenuPolicy(Qt.CustomContextMenu)
         self.grid.setAcceptDrops(True); self.grid.viewport().setAcceptDrops(True)
+        self.grid.setDragEnabled(True); self.grid.can_drag = self.can_merge_artists
         self.grid.viewport().installEventFilter(self)
         self.grid.customContextMenuRequested.connect(self._grid_menu)
         self.stack.addWidget(self.grid)
@@ -8796,6 +8841,41 @@ class MainWindow(QMainWindow):
         self._update_count()
 
     # ── Aktionen in den Ansichten ─────────────────────────────────────────
+    # ── Interpreten zusammenführen (Kachel auf Kachel ziehen, wie im WMP12) ──
+    def can_merge_artists(self):
+        return self.state == "artists" and self._src != "jf" and not self.search.text()
+
+    def merge_artists(self, sources, target):
+        sources = [x for x in sources if x and x != target and x != VARIOUS]
+        if not sources or not target:
+            return
+        srcset = set(sources)
+        tracks = [t for s_ in sources for t in self.tracks_for_item("artist", s_)]
+        if not tracks:
+            return
+        q1, q2 = ("„", "“") if LANG == "de" else ("“", "”")
+        names = ", ".join(f"{q1}{disp(x)}{q2}" for x in sources)
+        write = self.settings.value("edit/write_files", True, type=bool)
+        msg = (tr_("{0} mit „{1}“ zusammenführen?").format(names, disp(target)) + "\n\n" +
+               tr_("{0} Titel erscheinen danach bei „{1}“. Interpret bzw. Albuminterpret wird dafür auf „{1}“ gesetzt.")
+               .format(len(tracks), disp(target)) + "\n" +
+               (tr_("Die Änderung wird in die Musikdateien geschrieben.") if write else
+                tr_("Die Änderung wird nur in der Bibliothek gespeichert, die Dateien bleiben unverändert.")))
+        if QMessageBox.question(self, tr_("Interpreten zusammenführen"), msg) != QMessageBox.Yes:
+            return
+        changes = {}
+        for t in tracks:
+            ch = {}
+            if (t.get("albumartist") or "") in srcset and not t.get("aa_auto"):
+                ch["albumartist"] = target
+            if t.get("artist") in srcset:
+                ch["artist"] = target
+            if not ch:            # Gruppiert über einen abweichenden Namen (z. B. Groß-/Kleinschreibung)
+                ch["albumartist"] = target
+            changes[t["path"]] = ch
+        self.apply_tag_changes(tracks, changes)
+        self.flash(tr_("{0} mit „{1}“ zusammengeführt.").format(names, disp(target)))
+
     def tracks_for_item(self, kind, key):
         if kind == "album":
             a = self.lib.albums.get(key)

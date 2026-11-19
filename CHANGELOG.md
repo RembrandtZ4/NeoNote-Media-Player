@@ -2,6 +2,9 @@
 
 ## Nächste Version (in Arbeit)
 
+**Neu**
+- **Interpreten zusammenführen** wie im WMP12: In der Interpretenansicht eine Kachel (oder mehrere markierte) auf einen anderen Interpreten ziehen. Nach einer Rückfrage wandern alle Titel dorthin – Interpret bzw. Albuminterpret wird auf den Zielnamen gesetzt (in die Dateien geschrieben oder nur in der Bibliothek, je nach Einstellung).
+
 **Verbessert**
 - Wie im WMP12 lässt sich das Fenster jetzt auch an der Steuerleiste unten verschieben – an allen freien Stellen und über Titel und Interpret. Doppelklick dort maximiert, wie oben.
 - Zurück und Vor merken sich ihren Verlauf jetzt auch über einen Neustart hinweg (die letzten 50 Ansichten, mit Scrollposition).
