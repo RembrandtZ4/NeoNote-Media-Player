@@ -6696,6 +6696,14 @@ class MainWindow(QMainWindow):
             self.settings.setValue(f"theme/{k}", v)
 
     def apply_theme(self, d):
+        # Nur die Befehlsleiste ein-/ausblenden? Dann nicht die ganze Darstellung neu aufbauen.
+        cur = getattr(self, "theme_dict", None)
+        if cur is not None and hasattr(self, "top_menu"):
+            diff = {k for k in set(d) | set(cur) if d.get(k) != cur.get(k)}
+            if diff and diff <= {"cmdbar"}:
+                self.theme_dict = dict(d); T.update(d)
+                self._apply_cmdbar()
+                return
         old_cover = T.cover
         self.theme_dict = dict(d)
         T.update(d)
