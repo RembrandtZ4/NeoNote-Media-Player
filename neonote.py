@@ -6350,6 +6350,7 @@ class MainWindow(QMainWindow):
         self._fs_was_max = False
         self._overlay = False
         self._winbox_on = False
+        self._scroll_pos = {}
         self._ovl_video = False
         self._fades = {}
         self._fs_timer = QTimer(self, singleShot=True, interval=2500)
@@ -8078,14 +8079,52 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(ms, self._update_count)
 
     # ── Navigation ────────────────────────────────────────────────────────
+    def _remember_scroll(self):
+        """Scrollposition der aktuellen Ansicht merken – damit „Zurück“ wieder an dieselbe Stelle führt."""
+        if not getattr(self, "history", None) or self.hpos < 0 or self.np_mode:
+            return
+        w = self.stack.currentWidget()
+        if w is self.tracks or w is self.grid:
+            self._scroll_pos[self.hpos] = (self.history[self.hpos], w.verticalScrollBar().value())
+
+    def _restore_scroll(self, came_from):
+        saved = self._scroll_pos.get(self.hpos)
+        w = self.stack.currentWidget()
+        if w is self.grid and came_from:
+            # den eben geöffneten Interpreten / das Album wieder markieren, wie im WMP12
+            key = came_from.split(":", 1)[1] if ":" in came_from and not came_from.startswith("jf:") else \
+                (came_from.split(":", 2)[2] if came_from.count(":") >= 2 else None)
+            if key:
+                for r in range(self.grid_model.rowCount()):
+                    it = self.grid_model.item(r)
+                    if it.data(ROLE_KEY) == key:
+                        self.grid.selectionModel().setCurrentIndex(
+                            it.index(), QItemSelectionModel.ClearAndSelect)
+                        break
+        if not saved or saved[0] != self.state or w not in (self.tracks, self.grid):
+            return
+        val = saved[1]
+
+        def apply():
+            sb = w.verticalScrollBar()
+            sb.setValue(min(val, sb.maximum()))
+        if w is self.grid:
+            self.grid.doItemsLayout()          # Kachel-Layout sofort, sonst ist die Liste noch „leer“
+        apply()
+        QTimer.singleShot(0, apply)
+
     def navigate(self, state, push=True):
         if state == "playing":
             self.enter_np_mode()
             return
+        came_from = self.state if not push else None
+        if push:
+            self._remember_scroll()
         if self.np_mode:
             self.exit_np_mode()
         if push:
             self.history = self.history[:self.hpos + 1]
+            self._scroll_pos = {k: v for k, v in self._scroll_pos.items() if k <= self.hpos}
             if not self.history or self.history[-1] != state:
                 self.history.append(state)
             self.hpos = len(self.history) - 1
@@ -8093,18 +8132,24 @@ class MainWindow(QMainWindow):
         if self.search.text():
             self.search.blockSignals(True); self.search.clear(); self.search.blockSignals(False)
         self.render()
-        if self.stack.currentWidget() is self.tracks:
+        if not push and self._scroll_pos.get(self.hpos):
+            self._restore_scroll(came_from)
+        elif self.stack.currentWidget() is self.tracks:
             self.tracks.scrollToTop()
         else:
             self.grid.scrollToTop()
+            if not push:
+                self._restore_scroll(came_from)
 
     def go_back(self):
         if self.hpos > 0:
+            self._remember_scroll()
             self.hpos -= 1
             self.navigate(self.history[self.hpos], push=False)
 
     def go_forward(self):
         if self.hpos < len(self.history) - 1:
+            self._remember_scroll()
             self.hpos += 1
             self.navigate(self.history[self.hpos], push=False)
 

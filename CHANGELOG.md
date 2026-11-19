@@ -10,6 +10,7 @@
 - **Sampler:** Alben mit vielen verschiedenen Interpreten erscheinen als ein Album unter „Verschiedene Interpreten“ statt verstreut bei jedem einzelnen Interpreten. Erkannt am Sampler-Kennzeichen in den Tags oder daran, dass im selben Ordner mindestens drei Interpreten dasselbe Album ohne Albuminterpreten haben. An den Dateien ändert sich nichts; ein selbst gesetzter Albuminterpret hat immer Vorrang.
 
 **Fehlerbehebungen**
+- „Zurück“ aus einem Interpreten oder Album führte in der Interpreten- und Albenansicht wieder ganz nach oben. Jetzt landest du an derselben Stelle wie vorher, und der eben geöffnete Eintrag ist markiert (auch mit „Vor“).
 - Musikordner mit Ordner-Verknüpfungen (Symlinks), die auf einen übergeordneten Ordner zeigen, wurden mehrfach eingelesen – Titel erschienen doppelt. Jeder Ordner wird jetzt nur einmal gelesen.
 
 ## 1.1.7 – 19.11.2026
