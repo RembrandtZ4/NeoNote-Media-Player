@@ -8,6 +8,9 @@
   - Linux: Hinweis mit „Was ist neu?“; aktualisiert wird über die Paketverwaltung.
 - **Installer:** Desktop-Verknüpfung, „Öffnen mit“ und Standardplayer sind bei der Installation nicht mehr vorausgewählt – du entscheidest selbst. Updates aus NeoNote heraus übernehmen die bisherige Einrichtung.
 
+**Fehlerbehebungen**
+- Musikordner mit Ordner-Verknüpfungen (Symlinks), die auf einen übergeordneten Ordner zeigen, wurden mehrfach eingelesen – Titel erschienen doppelt. Jeder Ordner wird jetzt nur einmal gelesen.
+
 ## 1.1.7 – 19.11.2026
 
 **Fehlerbehebungen**

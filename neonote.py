@@ -3102,8 +3102,16 @@ class Scanner(QThread):
         bei tausenden Dateien spart das einen Großteil der Zeit beim Prüfen auf Änderungen."""
         stack = [folder]
         n = 0
+        seen = self.__dict__.setdefault("_seen_dirs", set())
         while stack:
             d = stack.pop()
+            try:                                    # Ordner-Verknüpfungen (Symlinks) nur einmal – sonst Endlosschleife
+                real = os.path.realpath(d)
+            except OSError:
+                continue
+            if real in seen:
+                continue
+            seen.add(real)
             dirs.append(d)
             try:
                 it = os.scandir(d)
