@@ -13,7 +13,7 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [ ] **Songtexte**, zeitgesteuert im „Wird gespielt“-Modus (z. B. über LRCLIB) und aus den Dateien selbst
 - [ ] **Scrobbeln** zu Last.fm und ListenBrainz
 - [ ] **Flatpak / Flathub** – für Ubuntu, Fedora, Mint und andere Distributionen
-- [ ] **Updater für Windows** – neue Versionen direkt aus NeoNote installieren
+- [x] **Updater für Windows** – neue Versionen direkt aus NeoNote installieren *(fertig, kommt mit der nächsten Version)*
 - [ ] **Überblenden** zwischen Titeln
 - [ ] **Ordneransicht** – durch die Musikordner stöbern
 - [ ] **Einschlaf-Timer** („nach 30 Minuten“, „nach diesem Album“)
@@ -40,7 +40,7 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [ ] **Lyrics**, synced in “Now playing” mode (e.g. via LRCLIB) and from the files themselves
 - [ ] **Scrobbling** to Last.fm and ListenBrainz
 - [ ] **Flatpak / Flathub** – for Ubuntu, Fedora, Mint and other distributions
-- [ ] **Updater for Windows** – install new versions right from NeoNote
+- [x] **Updater for Windows** – install new versions right from NeoNote *(done, coming with the next version)*
 - [ ] **Crossfade** between tracks
 - [ ] **Folder view** – browse your music folders
 - [ ] **Sleep timer** (“after 30 minutes”, “after this album”)

@@ -1,5 +1,13 @@
 # Änderungen
 
+## Nächste Version (in Arbeit)
+
+**Neu**
+- **Updates:** NeoNote sucht auf Wunsch nach neuen Versionen – bei jedem Start, einmal am Tag (Standard), einmal pro Woche oder nie (Einstellungen ▸ System ▸ Updates, außerdem „Nach Updates suchen“ unter Über NeoNote). Es wird nur die Release-Seite auf GitHub gelesen.
+  - Windows: „Jetzt aktualisieren“ lädt den Installer (Prüfsumme wird kontrolliert), installiert ihn still und startet NeoNote neu. Alternativ: automatisch herunterladen und beim Beenden installieren.
+  - Linux: Hinweis mit „Was ist neu?“; aktualisiert wird über die Paketverwaltung.
+- **Installer:** Desktop-Verknüpfung, „Öffnen mit“ und Standardplayer sind bei der Installation nicht mehr vorausgewählt – du entscheidest selbst. Updates aus NeoNote heraus übernehmen die bisherige Einrichtung.
+
 ## 1.1.7 – 19.11.2026
 
 **Fehlerbehebungen**

@@ -46,7 +46,7 @@ from PySide6.QtGui import (QRegion, QActionGroup, QColor, QFont, QFontMetrics, Q
                            QShortcut, QStandardItem, QStandardItemModel, QDesktopServices)
 from PySide6.QtMultimedia import QAudioOutput, QMediaMetaData, QMediaPlayer, QVideoSink
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from PySide6.QtWidgets import (QAbstractButton, QAbstractItemView, QGraphicsOpacityEffect,
+from PySide6.QtWidgets import (QScrollArea, QTextBrowser, QAbstractButton, QAbstractItemView, QGraphicsOpacityEffect,
                                QApplication, QButtonGroup, QCheckBox,
                                QColorDialog, QComboBox, QDialog,
                                QDialogButtonBox, QFileDialog, QFormLayout,
@@ -2754,6 +2754,137 @@ class CheckPage(QWidget):
         self.run()
 
 
+# ════════════════════════════════════════════════════════════════════════════
+#  Updates (Release-Seite auf GitHub)
+# ════════════════════════════════════════════════════════════════════════════
+GITHUB_REPO = "RembrandtZ4/NeoNote-Media-Player"
+RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
+UPDATE_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+
+
+def version_tuple(v):
+    return tuple(int(x) for x in re.findall(r"\d+", str(v))[:4]) or (0,)
+
+
+def is_newer(v):
+    return version_tuple(v) > version_tuple(APP_VERSION)
+
+
+def installed_by_package():
+    """Linux: über pacman/AUR installiert (dann kümmert sich die Paketverwaltung um Updates)."""
+    return not IS_WIN and str(Path(__file__).resolve()).startswith("/usr/")
+
+
+def release_notes_for_lang(body):
+    """Die Release-Texte sind zweisprachig (oben Englisch, nach „---“ Deutsch): passenden Teil wählen."""
+    body = (body or "").replace("\r\n", "\n")
+    parts = [x.strip() for x in re.split(r"\n-{3,}\n", body) if x.strip()]
+    if len(parts) >= 2:
+        txt = parts[1] if LANG == "de" else parts[0]
+    else:
+        txt = body.strip()
+    lines = txt.splitlines()
+    if lines and ("English" in lines[0] and "Deutsch" in lines[0]):
+        lines = lines[1:]
+    # Download-Tabelle weglassen – im Player interessiert nur, was neu ist
+    first = next((i for i, l in enumerate(lines) if l.startswith("**")), None)
+    if first is not None:
+        lines = lines[first:]
+    return "\n".join(lines).strip()
+
+
+class UpdateCheck(QThread):
+    """Fragt die neueste Release-Seite ab. Es werden keine Daten übertragen, nur diese eine Seite gelesen."""
+    result = Signal(dict)
+    failed = Signal(str)
+
+    def run(self):
+        try:
+            req = urllib.request.Request(UPDATE_API, headers={"User-Agent": f"{APP_NAME}/{APP_VERSION}",
+                                                             "Accept": "application/vnd.github+json"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                d = json.loads(r.read().decode("utf-8"))
+            assets = {}
+            for a in d.get("assets") or []:
+                assets[a.get("name", "")] = {"url": a.get("browser_download_url", ""), "size": int(a.get("size") or 0),
+                                             "digest": a.get("digest") or ""}
+            ver = (d.get("tag_name") or "").lstrip("vV")
+            if not ver:
+                raise ValueError("no version")
+            self.result.emit({"version": ver, "notes": d.get("body") or "", "url": d.get("html_url") or RELEASES_URL,
+                              "assets": assets})
+        except Exception as e:
+            self.failed.emit(str(e))
+
+
+class UpdateDownload(QThread):
+    """Lädt den Windows-Installer herunter und prüft Größe und – falls GitHub sie liefert – die SHA-256-Prüfsumme."""
+    progress = Signal(int, int)
+    done = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, url, name, size, digest):
+        super().__init__()
+        self.url, self.name, self.size, self.digest = url, name, size, digest
+
+    def run(self):
+        import tempfile
+        try:
+            if not self.url.startswith("https://github.com/") and not self.url.startswith("https://objects.githubusercontent.com/"):
+                raise ValueError("unexpected download address")
+            d = Path(tempfile.gettempdir()) / "NeoNote-Update"
+            d.mkdir(parents=True, exist_ok=True)
+            out = d / os.path.basename(self.name)
+            part = out.with_suffix(out.suffix + ".part")
+            h = hashlib.sha256()
+            req = urllib.request.Request(self.url, headers={"User-Agent": f"{APP_NAME}/{APP_VERSION}"})
+            got = 0
+            with urllib.request.urlopen(req, timeout=30) as r, open(part, "wb") as f:
+                total = int(r.headers.get("Content-Length") or self.size or 0)
+                while True:
+                    if self.isInterruptionRequested():
+                        raise RuntimeError("cancelled")
+                    chunk = r.read(256 * 1024)
+                    if not chunk:
+                        break
+                    f.write(chunk); h.update(chunk); got += len(chunk)
+                    self.progress.emit(got, total)
+            if self.size and got != self.size:
+                raise ValueError(tr_("Die Datei ist unvollständig."))
+            if self.digest.startswith("sha256:") and h.hexdigest() != self.digest.split(":", 1)[1].lower():
+                raise ValueError(tr_("Die Prüfsumme stimmt nicht."))
+            part.replace(out)
+            self.done.emit(str(out))
+        except Exception as e:
+            self.failed.emit(str(e))
+
+
+def win_run_update(setup, restart):
+    """Startet den Installer still mit Administratorrechten. Ein unsichtbarer, normaler PowerShell-Prozess
+    wartet, bis er fertig ist, und startet NeoNote danach wieder – ohne Administratorrechte."""
+    def q(x):
+        return "'" + str(x).replace("'", "''") + "'"
+    ps = f"try {{ Start-Process -FilePath {q(setup)} -ArgumentList '/S' -Verb RunAs -Wait }} catch {{ }}"
+    if restart:
+        ps += f"; Start-Sleep -Milliseconds 600; Start-Process -FilePath {q(sys.executable)}"
+    subprocess.Popen(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
+                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+class WhatsNewDialog(QDialog):
+    def __init__(self, parent, info):
+        super().__init__(parent)
+        self.setWindowTitle(tr_("Neu in NeoNote {0}").format(info["version"]))
+        self.resize(620, 520)
+        lay = QVBoxLayout(self); lay.setContentsMargins(18, 16, 18, 14)
+        tb = QTextBrowser(); tb.setOpenExternalLinks(True)
+        tb.setMarkdown(release_notes_for_lang(info.get("notes", "")))
+        lay.addWidget(tb, 1)
+        bb = QDialogButtonBox(QDialogButtonBox.Close); bb.rejected.connect(self.reject)
+        bb.button(QDialogButtonBox.Close).setText(tr_("Schließen"))
+        lay.addWidget(bb)
+
+
 class AboutDialog(QDialog):
     """Über NeoNote: Version, verwendete Bausteine mit Lizenzen, Datenordner."""
 
@@ -2804,6 +2935,11 @@ class AboutDialog(QDialog):
         sl = QLabel(tr_("Einstellungen: {0}").format(sp)); sl.setObjectName("hint"); sl.setWordWrap(True)
         sl.setTextFormat(Qt.PlainText); sl.setTextInteractionFlags(Qt.TextSelectableByMouse)
         lay.addWidget(sl)
+        urow = QHBoxLayout(); urow.setSpacing(10)
+        ub = QPushButton(tr_("Nach Updates suchen"))
+        self.ulbl = QLabel(""); self.ulbl.setObjectName("hint"); self.ulbl.setWordWrap(True)
+        ub.clicked.connect(lambda: win.check_updates(manual=True, report=self.ulbl.setText))
+        urow.addWidget(ub); urow.addWidget(self.ulbl, 1); lay.addLayout(urow)
         bb = QDialogButtonBox(QDialogButtonBox.Close); bb.rejected.connect(self.reject); bb.accepted.connect(self.accept)
         bb.button(QDialogButtonBox.Close).setText(tr_("Schließen"))
         lay.addWidget(bb)
@@ -5644,6 +5780,35 @@ class SettingsDialog(QDialog):
         self.s_splash.setChecked(win.settings.value("ui/splash", True, type=bool))
         sv.addWidget(self.s_splash)
         sv.addSpacing(8)
+        sv.addWidget(QLabel(tr_("<b>Updates</b>")))
+        ug = QGridLayout(); ug.setHorizontalSpacing(12); ug.setVerticalSpacing(6)
+        ug.addWidget(QLabel(tr_("Nach neuen Versionen suchen")), 0, 0)
+        self.s_ucheck = QComboBox()
+        for key, label in (("start", tr_("Bei jedem Start")), ("daily", tr_("Einmal am Tag")),
+                           ("weekly", tr_("Einmal pro Woche")), ("never", tr_("Nie (nur von Hand)"))):
+            self.s_ucheck.addItem(label, key)
+        self.s_ucheck.setCurrentIndex(max(0, self.s_ucheck.findData(win.settings.value("update/check", "daily"))))
+        ug.addWidget(self.s_ucheck, 0, 1)
+        self.s_umode = None
+        if IS_WIN:
+            ug.addWidget(QLabel(tr_("Wenn eine neue Version da ist")), 1, 0)
+            self.s_umode = QComboBox()
+            self.s_umode.addItem(tr_("Nur Bescheid geben"), "notify")
+            self.s_umode.addItem(tr_("Herunterladen und beim Beenden installieren"), "auto")
+            self.s_umode.setCurrentIndex(max(0, self.s_umode.findData(win.settings.value("update/mode", "notify"))))
+            ug.addWidget(self.s_umode, 1, 1)
+        ug.setColumnStretch(2, 1)
+        sv.addLayout(ug)
+        urow = QHBoxLayout()
+        ubtn = QPushButton(tr_("Jetzt nach Updates suchen"))
+        ulbl = QLabel(""); ulbl.setObjectName("hint"); ulbl.setWordWrap(True)
+        ubtn.clicked.connect(lambda: win.check_updates(manual=True, report=ulbl.setText))
+        urow.addWidget(ubtn); urow.addWidget(ulbl, 1); sv.addLayout(urow)
+        uh = QLabel(tr_("NeoNote fragt dafür nur die Release-Seite des Projekts auf GitHub ab – es werden keine Daten übertragen.")
+                    if IS_WIN or not installed_by_package() else
+                    tr_("NeoNote zeigt neue Versionen nur an. Aktualisiert wird über die Paketverwaltung (z. B. „yay -Syu“ oder Discover)."))
+        uh.setObjectName("hint"); uh.setWordWrap(True); sv.addWidget(uh)
+        sv.addSpacing(8)
         sv.addWidget(QLabel(tr_("<b>Wiedergabe</b>")))
         self.s_mpv = QCheckBox(tr_("Musik und Internetradio über mpv abspielen (Equalizer, lückenlose Wiedergabe)"))
         self.s_mpv.setChecked(win.settings.value("audio/mpv", True, type=bool))
@@ -5702,7 +5867,9 @@ class SettingsDialog(QDialog):
         mh = QLabel(mt); mh.setObjectName("hint"); mh.setWordWrap(True); mh.setTextFormat(Qt.RichText)
         sv.addWidget(mh)
         sv.addStretch()
-        self.tabs.addTab(sysw, tr_("System"))
+        sysa = QScrollArea(); sysa.setWidgetResizable(True); sysa.setFrameShape(QFrame.NoFrame)
+        sysa.setWidget(sysw); sysa.viewport().setAutoFillBackground(False); sysw.setAutoFillBackground(False)
+        self.tabs.addTab(sysa, tr_("System"))
 
         navw = QWidget(); nv = QVBoxLayout(navw); nv.setContentsMargins(16, 16, 16, 16); nv.setSpacing(10)
         nh = QLabel(tr_("Häkchen = in der Leiste anzeigen. Die Reihenfolge änderst du per Ziehen oder mit den Pfeilen, "
@@ -5767,6 +5934,9 @@ class SettingsDialog(QDialog):
         w.settings.setValue("system/close_to_tray", self.s_close.isChecked())
         w.settings.setValue("system/mpris", self.s_mpris.isChecked())
         w.settings.setValue("ui/splash", self.s_splash.isChecked())
+        w.settings.setValue("update/check", self.s_ucheck.currentData())
+        if self.s_umode is not None:
+            w.settings.setValue("update/mode", self.s_umode.currentData())
         w.settings.setValue("audio/mpv", self.s_mpv.isChecked())
         w.settings.setValue("audio/gapless", self.s_gapless.isChecked())
         w.settings.setValue("system/no_sleep", self.s_nosleep.isChecked())
@@ -6194,6 +6364,7 @@ class MainWindow(QMainWindow):
         elif self.folders() and (self.settings.value("library/scan_on_start", True, type=bool)
                                  or self.settings.value("library/watch", True, type=bool)):
             QTimer.singleShot(2500, lambda: self.rescan(quiet=True))   # erst, wenn das Fenster steht
+        QTimer.singleShot(8000, self._auto_update_check)
 
     def _relayout_covers(self):
         """Albumspalte schmaler/breiter gezogen: Cover passt sich an, die Blöcke werden passend hoch."""
@@ -6298,7 +6469,7 @@ class MainWindow(QMainWindow):
         if self.np_mode:
             return
         self.np_mode = True
-        widgets = [self.cmdbar, self.nav, self.qpanel]
+        widgets = [self.cmdbar, self.nav, self.qpanel, self.update_bar]
         if not self.frameless:
             widgets.append(self.topbar)
         for w in widgets:
@@ -6322,6 +6493,7 @@ class MainWindow(QMainWindow):
             w.show()
         self.cmdbar.setVisible(bool(self.theme_dict.get("cmdbar", True)))
         self.qpanel.setVisible(self.queue_visible)
+        self.update_bar.setVisible(self._update_bar_wanted())
         self.video.unsetCursor()
         self.video.set_np_mode(False)
         self._update_mode_btn()
@@ -7568,6 +7740,27 @@ class MainWindow(QMainWindow):
         self.btn_cancel.hide()
         cl.addWidget(self.progress); cl.addWidget(self.btn_cancel); cl.addSpacing(8); cl.addWidget(self.count_label); cl.addSpacing(6); cl.addWidget(self.btn_queue); cl.addWidget(gear)
         root.addWidget(cmd)
+
+        # Hinweis auf eine neue Version (dezent, unter der Befehlsleiste)
+        ub = QFrame(); ub.setObjectName("updatebar"); self.update_bar = ub
+        ubl = QHBoxLayout(ub); ubl.setContentsMargins(14, 5, 6, 5); ubl.setSpacing(8)
+        self.update_lbl = QLabel(); self.update_lbl.setTextFormat(Qt.PlainText)
+        self.update_new = QPushButton(tr_("Was ist neu?")); self.update_new.setObjectName("ghost")
+        self.update_go = QPushButton(tr_("Jetzt aktualisieren"))
+        self.update_close = self._icon_btn("close", 12, tr_("Später"),
+                                           lambda: (setattr(self, "_update_dismissed", True), self.update_bar.hide()))
+        self.update_prog = QProgressBar(); self.update_prog.setFixedSize(140, 6); self.update_prog.setTextVisible(False)
+        self.update_prog.hide()
+        ubl.addWidget(self.update_lbl, 1); ubl.addWidget(self.update_prog); ubl.addWidget(self.update_new)
+        ubl.addWidget(self.update_go); ubl.addWidget(self.update_close)
+        self.update_new.clicked.connect(lambda: self._update_info and WhatsNewDialog(self, self._update_info).exec())
+        self.update_go.clicked.connect(self._update_action)
+        ub.hide()
+        root.addWidget(ub)
+        self._update_info = None
+        self._update_file = None
+        self._update_checker = None
+        self._update_dl = None
 
         split = GripSplitter(self); self.split = split
         self.nav = QTreeWidget(); self.nav.setObjectName("nav"); self.nav.setHeaderHidden(True)
@@ -8863,6 +9056,139 @@ class MainWindow(QMainWindow):
         text = self._srt[i][2] if i >= 0 and pos <= self._srt[i][1] else ""
         self.video.set_subtitle(text)
 
+    # ── Updates ──────────────────────────────────────────────────────────
+    def _auto_update_check(self):
+        mode = self.settings.value("update/check", "daily")
+        if mode == "never":
+            return
+        last = float(self.settings.value("update/last_check", 0) or 0)
+        gap = {"start": 0, "daily": 20 * 3600, "weekly": 6.5 * 86400}.get(mode, 20 * 3600)
+        if time.time() - last >= gap:
+            self.check_updates(manual=False)
+
+    def check_updates(self, manual=False, report=None):
+        """Neueste Version auf GitHub nachsehen. report: Rückruf für einen Statustext (Einstellungen, „Über“)."""
+        if self._update_checker is not None and self._update_checker.isRunning():
+            return
+        if report:
+            report(tr_("Suche nach Updates …"))
+        th = UpdateCheck(self)
+        self._update_checker = th
+
+        def ok(info):
+            self.settings.setValue("update/last_check", time.time())
+            if not is_newer(info["version"]):
+                if report:
+                    report(tr_("NeoNote ist auf dem neuesten Stand ({0}).").format(APP_VERSION))
+                return
+            if report:
+                report(tr_("Version {0} ist verfügbar.").format(info["version"]))
+            self._update_found(info, manual)
+
+        def bad(_e):
+            if report:
+                report(tr_("Keine Verbindung zu GitHub – bitte später noch einmal versuchen."))
+
+        th.result.connect(ok); th.failed.connect(bad)
+        th.start()
+
+    def _update_asset(self, info):
+        name = f"NeoNote-Setup-{info['version']}.exe"
+        a = info["assets"].get(name)
+        if a is None:   # sonst irgendein Windows-Installer der Release
+            for n, x in info["assets"].items():
+                if n.lower().startswith("neonote-setup") and n.lower().endswith(".exe"):
+                    return n, x
+            return None, None
+        return name, a
+
+    def _update_bar_wanted(self):
+        return self._update_info is not None and not self.np_mode and not getattr(self, "_update_dismissed", False)
+
+    def _update_found(self, info, manual):
+        self._update_info = info
+        self._update_dismissed = False
+        can_install = IS_WIN and getattr(sys, "frozen", False) and self._update_asset(info)[0]
+        if can_install:
+            self.update_go.setText(tr_("Jetzt aktualisieren")); self.update_go.show()
+        elif not IS_WIN and installed_by_package():
+            self.update_go.hide()
+        else:
+            self.update_go.setText(tr_("Zur Downloadseite")); self.update_go.show()
+        if can_install and self._update_file and Path(self._update_file).exists():
+            self._update_ready()
+        else:
+            msg = tr_("NeoNote {0} ist verfügbar.").format(info["version"])
+            if not IS_WIN and installed_by_package():
+                msg += " " + tr_("Aktualisieren über die Paketverwaltung (z. B. „yay -Syu“).")
+            self.update_lbl.setText(msg)
+            if can_install and not manual and self.settings.value("update/mode", "notify") == "auto":
+                self._download_update(install_now=False)
+        self.update_bar.setVisible(self._update_bar_wanted())
+
+    def _update_action(self):
+        info = self._update_info
+        if not info:
+            return
+        if not (IS_WIN and getattr(sys, "frozen", False) and self._update_asset(info)[0]):
+            QDesktopServices.openUrl(QUrl(info.get("url") or RELEASES_URL))
+            return
+        if self._update_file and Path(self._update_file).exists():
+            self._install_update(restart=True)
+        else:
+            self._download_update(install_now=True)
+
+    def _download_update(self, install_now):
+        if self._update_dl is not None and self._update_dl.isRunning():
+            self._update_install_now = self._update_install_now or install_now
+            return
+        name, a = self._update_asset(self._update_info)
+        if not a:
+            return
+        self._update_install_now = install_now
+        th = UpdateDownload(a["url"], name, a["size"], a["digest"])
+        self._update_dl = th
+        self.update_lbl.setText(tr_("Lade NeoNote {0} herunter …").format(self._update_info["version"]))
+        self.update_prog.setRange(0, 0); self.update_prog.show(); self.update_go.setEnabled(False)
+
+        def prog(got, total):
+            if total:
+                self.update_prog.setRange(0, total); self.update_prog.setValue(got)
+
+        def done(path):
+            self._update_file = path
+            self.update_prog.hide(); self.update_go.setEnabled(True)
+            if self._update_install_now:
+                self._install_update(restart=True)
+            else:
+                self._update_ready()
+
+        def bad(e):
+            self.update_prog.hide(); self.update_go.setEnabled(True)
+            self.update_lbl.setText(tr_("Das Update konnte nicht geladen werden: {0}").format(e))
+
+        th.progress.connect(prog); th.done.connect(done); th.failed.connect(bad)
+        th.start()
+
+    def _update_ready(self):
+        self.update_lbl.setText(tr_("NeoNote {0} ist geladen und wird beim Beenden installiert.").format(
+            self._update_info["version"]))
+        self.update_go.setText(tr_("Jetzt neu starten")); self.update_go.show()
+
+    def _install_update(self, restart):
+        f = self._update_file
+        if not (f and Path(f).exists()):
+            return
+        self._update_file = None
+        try:
+            win_run_update(f, restart)
+        except Exception as e:
+            self.update_lbl.setText(tr_("Das Update konnte nicht gestartet werden: {0}").format(e))
+            return
+        if restart:
+            self.quit_app()
+            QApplication.instance().quit()
+
     def quit_app(self):
         self._really_quit = True
         self.close()
@@ -8992,6 +9318,8 @@ class MainWindow(QMainWindow):
         self.player.shutdown()
         if self.covers.loader is not None:
             self.covers.loader.stop()
+        if IS_WIN and self._update_file and Path(self._update_file).exists():   # „beim Beenden installieren“
+            self._install_update(restart=False)
         self.sleep_guard.set(None)
         self.settings.setValue("layout/splitter", self.split.saveState())
         self.settings.setValue("trackview/header", self.tracks.header().saveState())
@@ -9128,6 +9456,8 @@ QMainWindow#main {{ background: transparent; }}
 
 #root QFrame#topbar {{ background: {pan(0.035)}; border-bottom: {sep}; }}
 #root QFrame#cmdbar {{ border-bottom: {sep}; }}
+#root QFrame#updatebar {{ background: {css(T.acc(0.16))}; border-bottom: {sep}; }}
+#root QFrame#updatebar QPushButton {{ padding: 3px 12px; }}
 #root QFrame#cmdbar QToolButton {{ padding: 5px 10px; }}
 #root QTreeWidget#nav {{ background: {pan(0.025)}; border: none; padding-top: 6px;
                          show-decoration-selected: 0; }}
@@ -9482,11 +9812,12 @@ class SetupWindow(QWidget):
         self.btn_browse = QPushButton(tr_("Ändern …")); self.btn_browse.setObjectName("ghost")
         self.btn_browse.clicked.connect(self._browse)
         row.addWidget(self.path, 1); row.addWidget(self.btn_browse); lay.addLayout(row)
-        self.cb_desk = NeoCheck(tr_("Verknüpfung auf dem Desktop")); self.cb_desk.setChecked(True)
+        # Alles freiwillig (Opt-in): der Nutzer setzt selbst die Haken, die er möchte
+        self.cb_desk = NeoCheck(tr_("Verknüpfung auf dem Desktop")); self.cb_desk.setChecked(False)
         self.cb_assoc = NeoCheck(tr_("Für Musik und Videos anbieten (Öffnen mit, Standard-Apps)"))
-        self.cb_assoc.setChecked(True)
+        self.cb_assoc.setChecked(False)
         self.cb_default = NeoCheck(tr_("NeoNote als Standardplayer für alle Musik- und Videodateien festlegen"))
-        self.cb_default.setChecked(True)
+        self.cb_default.setChecked(False); self.cb_default.setEnabled(False)
         self.cb_assoc.toggled.connect(lambda v: (self.cb_default.setEnabled(v), v or self.cb_default.setChecked(False)))
         lay.addWidget(self.cb_desk); lay.addWidget(self.cb_assoc); lay.addWidget(self.cb_default)
         lay.addStretch()
@@ -9602,6 +9933,22 @@ class SetupWindow(QWidget):
         super().closeEvent(e)
 
 
+def _win_has_desktop_link():
+    pub = Path(os.environ.get("PUBLIC", r"C:\Users\Public")) / "Desktop" / "NeoNote Media Player.lnk"
+    return pub.exists()
+
+
+def _win_has_assoc():
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"Software\RegisteredApplications", 0,
+                            winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
+            winreg.QueryValueEx(k, "NeoNote")
+        return True
+    except OSError:
+        return False
+
+
 def run_setup():
     """Einstieg für den Installer: NeoNote.exe --setup --version x.y.z"""
     args = sys.argv
@@ -9614,7 +9961,11 @@ def run_setup():
     st = QSettings(APP_NAME, APP_NAME)        # Farben des Benutzers übernehmen, falls schon eingestellt
     T.update({k: st.value(f"theme/{k}", v, type=type(v)) for k, v in DEFAULT_THEME.items()})
     w = SetupWindow(src, version)
-    if "--silent" in args:                     # NeoNote-Setup.exe /S: ohne Fenster mit Standardwerten
+    if "--silent" in args:                     # NeoNote-Setup.exe /S (z. B. Update aus NeoNote): ohne Fenster
+        # Bestehende Einrichtung beibehalten: Desktop-Verknüpfung und „Öffnen mit“ nur, wenn schon vorhanden
+        w.cb_desk.setChecked(_win_has_desktop_link())
+        w.cb_assoc.setChecked(_win_has_assoc())
+        w.cb_default.setChecked(False)
         w.th = None
         w._go()
         w.th.done.connect(lambda ok, _e: (w.th.wait(), QApplication.instance().exit(0 if ok else 1)))
