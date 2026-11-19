@@ -41,7 +41,7 @@ from PySide6.QtCore import (QDate, QPropertyAnimation, QEasingCurve, QProcess, Q
                             QItemSelectionModel, QModelIndex, QPoint, QPointF, QRect,
                             QRectF, QSettings, QSize, Qt, QThread, QTimer,
                             QUrl, Signal, qVersion)
-from PySide6.QtGui import (QRegion, QActionGroup, QColor, QFont, QFontMetrics, QGuiApplication, QLinearGradient, QRadialGradient, QTransform,
+from PySide6.QtGui import (QRegion, QAction, QActionGroup, QColor, QFont, QFontMetrics, QGuiApplication, QLinearGradient, QRadialGradient, QTransform,
                            QIcon, QImage, QImageReader, QKeySequence, QPainter,
                            QPainterPath, QPalette, QPen, QPixmap, QPolygonF,
                            QShortcut, QStandardItem, QStandardItemModel, QDesktopServices)
@@ -8022,7 +8022,7 @@ class MainWindow(QMainWindow):
         m.addAction(tr_("Equalizer…\tStrg+E"), self.open_equalizer)
         m.addAction(tr_("Einstellungen…"), self.open_settings)
         m.addAction(tr_("Darstellung…"), lambda: self.open_settings(SettingsDialog.TAB_LOOK))
-        m.addSeparator()
+        about_sep = m.addSeparator()
         m.addAction(tr_("Über {0}").format(APP_NAME), lambda: self.open_settings(SettingsDialog.TAB_ABOUT))
         org.setMenu(m)
         # dasselbe Menü als ☰ neben dem Zahnrad – in der Befehlsleiste und oben, wenn sie ausgeblendet ist
@@ -8030,8 +8030,8 @@ class MainWindow(QMainWindow):
         tm.addAction(tr_("Alle wiedergeben"), self.play_all_visible)
         tm.addSeparator()
         tm.addActions(m.actions())
-        tm.addSeparator()
-        self.act_cmdbar = tm.addAction(tr_("Befehlsleiste anzeigen"))
+        self.act_cmdbar = QAction(tr_("Befehlsleiste anzeigen"), tm)
+        tm.insertAction(about_sep, self.act_cmdbar)     # bei den Ansichts-Einträgen, über „Über NeoNote“
         self.act_cmdbar.setCheckable(True)
         self.act_cmdbar.triggered.connect(lambda on: self.set_cmdbar_visible(on))
         tm.aboutToShow.connect(lambda: self.act_cmdbar.setChecked(bool(self.theme_dict.get("cmdbar", True))))

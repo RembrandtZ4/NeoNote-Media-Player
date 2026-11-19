@@ -4,6 +4,7 @@
 
 **Verbessert**
 - Wie im WMP12 lässt sich das Fenster jetzt auch an der Steuerleiste unten verschieben – an allen freien Stellen und über Titel und Interpret. Doppelklick dort maximiert, wie oben.
+- Im Menü ☰ steht „Befehlsleiste anzeigen“ jetzt bei „Darstellung…“ statt ganz unten.
 
 ## 1.1.8 – 19.11.2026
 
