@@ -124,7 +124,7 @@ def tr_(text):
     return text.split("@", 1)[0] if "@" in text else text    # „Titel@nav“: Kontext nur für die Übersetzung
 
 
-_PLACEHOLDERS = {"Unbekannter Interpret", "Unbekanntes Album", "Unbekanntes Genre", "Unbekannter Titel", "Videos",
+_PLACEHOLDERS = {"Verschiedene Interpreten", "Unbekannter Interpret", "Unbekanntes Album", "Unbekanntes Genre", "Unbekannter Titel", "Videos",
                  "Datei fehlt", "Internetradio"}
 
 
@@ -320,6 +320,9 @@ def cover_path(key):
     return COVER_DIR / f"{str(key).split('~', 1)[0]}.jpg"
 
 
+VARIOUS = "Verschiedene Interpreten"
+
+
 def read_track(path):
     try:
         f = mutagen.File(path, easy=True)
@@ -330,7 +333,10 @@ def read_track(path):
     tags = f.tags or {}
     title = first_tag(tags, "title", "Title") or Path(path).stem
     artist = first_tag(tags, "artist", "Author") or "Unbekannter Interpret"
-    albumartist = first_tag(tags, "albumartist", "album artist", "WM/AlbumArtist") or artist
+    aa_tag = first_tag(tags, "albumartist", "album artist", "WM/AlbumArtist")
+    comp = str(first_tag(tags, "compilation", "WM/IsCompilation", "cpil")).strip().lower() in ("1", "true", "yes")
+    # Sampler ohne Albuminterpret: unter „Verschiedene Interpreten“ statt bei jedem einzelnen Interpreten
+    albumartist = aa_tag or (VARIOUS if comp else artist)
     album = first_tag(tags, "album", "WM/AlbumTitle") or "Unbekanntes Album"
     info = getattr(f, "info", None)
     try:
@@ -348,6 +354,7 @@ def read_track(path):
         "bitrate": int((getattr(info, "bitrate", 0) or 0) // 1000),
         "size": size, "type": Path(path).suffix.lower().lstrip("."),
         "cover": album_key(albumartist, album),
+        **({"aa_auto": True} if not aa_tag else {}),
         **({"wr": wr} if (wr := read_rating(path)) else {}),
     }
 
@@ -3221,6 +3228,10 @@ class Library:
         for t in tracks:
             if t["path"] in self.overrides:
                 t.update(self.overrides[t["path"]])
+                if "albumartist" in self.overrides[t["path"]]:
+                    t["aa_manual"] = True
+        self._detect_compilations(tracks)
+        for t in tracks:
             if not t.get("stream") and not t.get("remote"):
                 t["cover"] = album_key(t.get("albumartist") or t["artist"], t["album"])
             t["akey"] = t["cover"]
@@ -3234,6 +3245,27 @@ class Library:
             a["tracks"].sort(key=lambda t: (t.get("disc", 1), t.get("track", 0), t["title"].lower()))
         self.albums = OrderedDict(sorted(albums.items(), key=lambda kv: (
             sort_name(kv[1]["artist"]), kv[1]["year"] or "9999", kv[1]["title"].lower())))
+
+    @staticmethod
+    def _detect_compilations(tracks):
+        """Sampler ohne Albuminterpreten erkennen: gleicher Albumtitel im selben Ordner, mindestens drei
+        verschiedene Interpreten → als ein Album unter „Verschiedene Interpreten“ (nur in der Bibliothek)."""
+        groups = defaultdict(list)
+        for t in tracks:
+            if t.get("stream") or t.get("remote") or t.get("aa_manual"):
+                continue
+            auto = t.get("aa_auto", t.get("albumartist") == t.get("artist")) or t.get("aa_va")
+            if auto and t.get("album") and t["album"] != "Unbekanntes Album":
+                groups[(os.path.dirname(t["path"]), t["album"].casefold())].append(t)
+        for ts in groups.values():
+            if len({t["artist"].casefold() for t in ts}) >= 3:
+                for t in ts:
+                    t["albumartist"] = VARIOUS
+                    t["aa_va"] = True
+            else:
+                for t in ts:
+                    if t.pop("aa_va", None):
+                        t["albumartist"] = t["artist"]
 
     @staticmethod
     def _split_editions(albums):
@@ -7523,6 +7555,8 @@ class MainWindow(QMainWindow):
                 t = bypath.get(path)
                 if t:
                     t.update(ch)
+                    if key == "albumartist":            # selbst gesetzt: keine automatische Sampler-Erkennung mehr
+                        t.pop("aa_auto", None); t.pop("aa_va", None)
                     try:
                         t["mtime"] = os.stat(path).st_mtime; t["size"] = os.stat(path).st_size
                     except OSError:
