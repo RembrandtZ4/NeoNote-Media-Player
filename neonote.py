@@ -595,6 +595,34 @@ def set_window_blur(widget, on, radius=0):
     return set_kde_blur(widget, on, radius)
 
 
+def win_titlebar_color(widget):
+    """Windows 11: Titelleiste eines Fensters mit Systemrahmen in der Farbe der Fensterfläche (durchgehende Fläche).
+    DWMWA_USE_IMMERSIVE_DARK_MODE = 20, BORDER_COLOR = 34, CAPTION_COLOR = 35, TEXT_COLOR = 36.
+    Windows 10 kennt nur den dunklen Modus, die Farben ignoriert es."""
+    if not IS_WIN:
+        return
+    try:
+        hwnd = ctypes.c_void_p(int(widget.winId()))
+        bg, fg = QColor(T.solid), QColor(T.fg)
+        dwm = ctypes.windll.dwmapi
+        dark = ctypes.c_int(1 if bg.lightness() < 128 else 0)
+        dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark), ctypes.sizeof(dark))
+        for attr, col in ((35, bg), (34, bg), (36, fg)):
+            ref = ctypes.c_uint(col.red() | (col.green() << 8) | (col.blue() << 16))
+            dwm.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(ref), ctypes.sizeof(ref))
+    except Exception:
+        pass
+
+
+class DialogTitleStyler(QObject):
+    """Gibt jedem Dialog beim Anzeigen die passende Titelleiste (nur Windows)."""
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QEvent.Show and isinstance(obj, QDialog) and obj.isWindow():
+            win_titlebar_color(obj)
+        return False
+
+
 def set_win_blur(widget, on, radius=0):
     try:
         from ctypes import wintypes
@@ -6548,6 +6576,9 @@ class MainWindow(QMainWindow):
         self.settings = QSettings(APP_NAME, APP_NAME)
         self.theme_dict = self.load_theme()
         T.update(self.theme_dict)
+        if IS_WIN:      # Dialoge mit Titelleiste in Fensterfarbe
+            self._title_styler = DialogTitleStyler(self)
+            QApplication.instance().installEventFilter(self._title_styler)
         self.local_lib, self.stats, self.covers = Library(), Stats(), CoverCache()
         self.covers.attach_loader(self)
         self._cover_upd = QTimer(self); self._cover_upd.setSingleShot(True); self._cover_upd.setInterval(16)
@@ -6695,6 +6726,15 @@ class MainWindow(QMainWindow):
         for k, v in d.items():
             self.settings.setValue(f"theme/{k}", v)
 
+    def _restyle_titlebars(self):
+        if not IS_WIN:
+            return
+        for tw in QApplication.topLevelWidgets():
+            if isinstance(tw, QDialog) and tw.isVisible():
+                win_titlebar_color(tw)
+        if not self.frameless:
+            win_titlebar_color(self)
+
     def apply_theme(self, d):
         # Nur die Befehlsleiste ein-/ausblenden? Dann nicht die ganze Darstellung neu aufbauen.
         cur = getattr(self, "theme_dict", None)
@@ -6725,6 +6765,7 @@ class MainWindow(QMainWindow):
         self._update_corners()
         if hasattr(self, "top_menu"):
             self._apply_cmdbar()
+        self._restyle_titlebars()
         if hasattr(self, "split"):
             for i in range(self.split.count()):
                 self.split.handle(i).update()
@@ -7534,6 +7575,8 @@ class MainWindow(QMainWindow):
             self.show()
             if IS_WIN and self.frameless:
                 QTimer.singleShot(50, self._win_anim_style)
+            elif IS_WIN:
+                QTimer.singleShot(50, lambda: win_titlebar_color(self))
 
     def _update_frame_margin(self):
         m = 5 if self.frameless and not self.isMaximized() and not self._fs else 0
