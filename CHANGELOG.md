@@ -18,6 +18,7 @@
 - „Wird gespielt“ bei Musik wieder wie in 1.1.5: normale Titelleiste oben mit Zurück/Vor und den Fensterknöpfen (ohne Suche und Überschrift), Steuerleiste unten. Der doppelte Bibliotheks-Knopf oben rechts im Bild entfällt – er sitzt unten rechts in der Steuerleiste. Die über dem Bild schwebenden, ausblendenden Leisten gibt es weiterhin bei Videos.
 
 **Fehlerbehebungen**
+- Das Einstellungsfenster schloss sich mit ✕ oder „Abbrechen“ spürbar verzögert, weil die ganze Darstellung neu aufgebaut wurde – auch ohne Änderungen. Jetzt wird nur zurückgenommen, was du wirklich geändert hast.
 - Bei Titeln über einer Stunde wurde die Zeitanzeige abgeschnitten („12:01 …:03:11“). Das Feld passt sich jetzt an.
 - „Zurück“ aus einem Interpreten oder Album führte in der Interpreten- und Albenansicht wieder ganz nach oben. Jetzt landest du an derselben Stelle wie vorher, und der eben geöffnete Eintrag ist markiert (auch mit „Vor“).
 - Musikordner mit Ordner-Verknüpfungen (Symlinks), die auf einen übergeordneten Ordner zeigen, wurden mehrfach eingelesen – Titel erschienen doppelt. Jeder Ordner wird jetzt nur einmal gelesen.

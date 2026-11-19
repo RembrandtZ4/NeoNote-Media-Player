@@ -6349,9 +6349,15 @@ class SettingsDialog(QDialog):
                 self.win.write_pending()
 
     def reject(self):
-        self.win.apply_theme(self.orig_theme)
-        self.win.apply_nav_layout(self.orig_nav, save=False)
-        self.win.set_frameless(self.win.settings.value("window/frameless", True, type=bool))
+        # Vorschau zurücknehmen – aber nur, was sich wirklich geändert hat (Darstellung neu aufbauen ist teuer)
+        w = self.win
+        if w.theme_dict != self.orig_theme:
+            w.apply_theme(self.orig_theme)
+        if self._layout_from_list() != self.orig_nav:
+            w.apply_nav_layout(self.orig_nav, save=False)
+        fl = w.settings.value("window/frameless", True, type=bool)
+        if fl != w.frameless:
+            w.set_frameless(fl)
         super().reject()
 
 
