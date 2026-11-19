@@ -8,8 +8,17 @@
   - Linux: Hinweis mit „Was ist neu?“; aktualisiert wird über die Paketverwaltung.
 - **Installer:** Desktop-Verknüpfung, „Öffnen mit“ und Standardplayer sind bei der Installation nicht mehr vorausgewählt – du entscheidest selbst. Updates aus NeoNote heraus übernehmen die bisherige Einrichtung.
 - **Sampler:** Alben mit vielen verschiedenen Interpreten erscheinen als ein Album unter „Verschiedene Interpreten“ statt verstreut bei jedem einzelnen Interpreten. Erkannt am Sampler-Kennzeichen in den Tags oder daran, dass im selben Ordner mindestens drei Interpreten dasselbe Album ohne Albuminterpreten haben. An den Dateien ändert sich nichts; ein selbst gesetzter Albuminterpret hat immer Vorrang.
+- **Menü ☰ neben dem Zahnrad:** Alles aus „Organisieren“ gibt es jetzt auch als Menü rechts neben dem Zahnrad. Ist die Befehlsleiste ausgeblendet, erscheinen Zahnrad und Menü oben in der Titelleiste, und über das Menü lässt sich die Befehlsleiste wieder einblenden.
+- **Einstellungen ▸ Über:** „Über NeoNote“ ist jetzt ein eigener Reiter in den Einstellungen – mit Datum der Version, Credits, den genauen Versionen von FFmpeg (für Videos und für Musik in mpv), Qt und mpv sowie „Versionen kopieren“ für Fehlermeldungen.
+- **Einstellungen ▸ Video:** Hardwarebeschleunigung wählbar (Automatisch, nur Prozessor oder ein bestimmtes Verfahren wie D3D11VA, VA-API oder CUDA) und GPU-Umwandlung abschaltbar – hilfreich, wenn ein Video ruckelt oder schwarz bleibt. Außerdem: bevorzugte Tonspur, Untertitel automatisch einschalten (nie, bei fremdsprachigem Ton oder immer) mit Wunschsprache, und ob eine gleichnamige .srt-Datei automatisch geladen wird.
+- **Zeitanzeige:** Ein Klick wechselt jetzt zwischen drei Anzeigen: verstrichene Zeit / Länge, Restzeit / Länge und nur die Restzeit.
+- **Windows: mpv ist dabei.** `libmpv-2.dll` liegt dem Installer bei – Equalizer und lückenlose Wiedergabe laufen sofort, ohne Download. Mit jedem Update kommt auch eine aktuelle libmpv (mit eigenem FFmpeg). Eine früher heruntergeladene Kopie wird entfernt.
+
+**Geändert**
+- „Wird gespielt“ bei Musik wieder wie in 1.1.5: normale Titelleiste oben mit Zurück/Vor und den Fensterknöpfen (ohne Suche), Steuerleiste unten. Die über dem Bild schwebenden, ausblendenden Leisten gibt es weiterhin bei Videos.
 
 **Fehlerbehebungen**
+- Bei Titeln über einer Stunde wurde die Zeitanzeige abgeschnitten („12:01 …:03:11“). Das Feld passt sich jetzt an.
 - „Zurück“ aus einem Interpreten oder Album führte in der Interpreten- und Albenansicht wieder ganz nach oben. Jetzt landest du an derselben Stelle wie vorher, und der eben geöffnete Eintrag ist markiert (auch mit „Vor“).
 - Musikordner mit Ordner-Verknüpfungen (Symlinks), die auf einen übergeordneten Ordner zeigen, wurden mehrfach eingelesen – Titel erschienen doppelt. Jeder Ordner wird jetzt nur einmal gelesen.
 

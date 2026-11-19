@@ -20,6 +20,7 @@ import html
 import json
 import math
 import os
+import platform
 import random
 import subprocess
 import sys
@@ -36,7 +37,7 @@ from collections import OrderedDict, defaultdict, deque
 from pathlib import Path
 
 import mutagen
-from PySide6.QtCore import (QPropertyAnimation, QEasingCurve, QProcess, QAbstractItemModel, QBuffer, QEvent, QFileSystemWatcher, QLocale, QObject, QItemSelection,
+from PySide6.QtCore import (QDate, QPropertyAnimation, QEasingCurve, QProcess, QAbstractItemModel, QBuffer, QEvent, QFileSystemWatcher, QLocale, QObject, QItemSelection,
                             QItemSelectionModel, QModelIndex, QPoint, QPointF, QRect,
                             QRectF, QSettings, QSize, Qt, QThread, QTimer,
                             QUrl, Signal, qVersion)
@@ -81,6 +82,8 @@ JF_CACHE_FILE = DATA_DIR / "jellyfin.json"
 JF_OFFLINE_DIR = DATA_DIR / "jellyfin-offline"
 PLAYLIST_DIR = DATA_DIR / "playlists"
 APP_VERSION = "1.1.7"
+APP_DATE = "2026-11-19"          # Datum der Version (wird beim Veröffentlichen gesetzt)
+APP_AUTHOR = "RembrandtZ4"
 
 # ── Sprache ───────────────────────────────────────────────────────────────
 LANGUAGES = [("auto", "Automatisch (Systemsprache)"), ("de", "Deutsch"), ("en", "English")]
@@ -154,10 +157,16 @@ if IS_WIN:
         ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x8000)   # SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX
     except Exception:
         pass
-    # libmpv-2.dll: im Programmordner oder von NeoNote heruntergeladen.
-    # Sie braucht vulkan-1.dll; NeoNote bringt einen aktuellen Vulkan-Loader mit, der vor System32 gefunden wird.
-    _dll_dirs = [MPV_DIR, Path(getattr(sys, "_MEIPASS", Path(sys.argv[0]).resolve().parent)),
-                 Path(sys.executable).resolve().parent]
+    # libmpv-2.dll: liegt seit 1.1.8 dem Installer bei (Programmordner hat Vorrang), sonst von NeoNote
+    # heruntergeladen. Sie braucht vulkan-1.dll; NeoNote bringt einen aktuellen Vulkan-Loader mit,
+    # der vor System32 gefunden wird.
+    _APP_DIR = Path(getattr(sys, "_MEIPASS", Path(sys.argv[0]).resolve().parent))
+    _dll_dirs = [_APP_DIR, Path(sys.executable).resolve().parent, MPV_DIR]
+    if (_APP_DIR / "libmpv-2.dll").is_file() and (MPV_DIR / "libmpv-2.dll").is_file():
+        try:   # früher heruntergeladene Kopie wird nicht mehr gebraucht
+            (MPV_DIR / "libmpv-2.dll").unlink()
+        except OSError:
+            pass
     os.environ["PATH"] = os.pathsep.join(str(d) for d in _dll_dirs) + os.pathsep + os.environ.get("PATH", "")
     for _d in _dll_dirs:
         try:
@@ -2892,33 +2901,44 @@ class WhatsNewDialog(QDialog):
         lay.addWidget(bb)
 
 
-class AboutDialog(QDialog):
-    """Über NeoNote: Version, verwendete Bausteine mit Lizenzen, Datenordner."""
+class AboutPage(QWidget):
+    """Über NeoNote: Version, Credits, verwendete Bausteine mit Versionen und Lizenzen, Datenordner."""
 
-    def __init__(self, win):
-        super().__init__(win)
+    def __init__(self, win, parent=None):
+        super().__init__(parent)
         self.win = win
-        self.setWindowTitle(tr_("Über {0}").format(APP_NAME))
-        self.setMinimumWidth(560)
-        lay = QVBoxLayout(self); lay.setContentsMargins(26, 22, 26, 18); lay.setSpacing(10)
+        lay = QVBoxLayout(self); lay.setContentsMargins(16, 16, 16, 12); lay.setSpacing(10)
         head = QHBoxLayout(); head.setSpacing(16)
-        ic = QLabel(); ic.setPixmap(app_icon().pixmap(72, 72)); head.addWidget(ic)
+        ic = QLabel(); ic.setPixmap(app_icon().pixmap(72, 72)); head.addWidget(ic, 0, Qt.AlignTop)
         tv = QVBoxLayout(); tv.setSpacing(2)
         t1 = QLabel(APP_TITLE); f = t1.font(); f.setPointSizeF(f.pointSizeF() + 6); f.setWeight(QFont.DemiBold); t1.setFont(f)
-        t2 = QLabel(tr_("Version {0}").format(APP_VERSION)); t2.setObjectName("hint")
+        t2 = QLabel(tr_("Version {0} vom {1}").format(APP_VERSION, app_date_text())); t2.setObjectName("hint")
         t3 = QLabel(tr_("Musik und Videos im Stil des Windows Media Player 12 – für Linux und Windows."))
         t3.setWordWrap(True)
         tv.addWidget(t1); tv.addWidget(t2); tv.addSpacing(4); tv.addWidget(t3)
         head.addLayout(tv, 1); lay.addLayout(head)
-        lay.addSpacing(6)
+        lay.addSpacing(4)
+        lay.addWidget(QLabel(tr_("<b>Credits</b>")))
+        url = f"https://github.com/{GITHUB_REPO}"
+        cr = QLabel(tr_("Idee, Gestaltung und Tests: <b>{0}</b><br>Programmiert gemeinsam mit Claude (Anthropic)<br>"
+                        "© {1} {0} · Lizenz: GPL-3.0 · <a href=\"{2}\">{3}</a>").format(
+                            APP_AUTHOR, APP_DATE[:4], url, url.removeprefix("https://")))
+        cr.setTextFormat(Qt.RichText); cr.setOpenExternalLinks(True); cr.setWordWrap(True)
+        lay.addWidget(cr)
+        th = QLabel(tr_("Danke an alle Projekte unten – ohne sie gäbe es NeoNote nicht."))
+        th.setObjectName("hint"); th.setWordWrap(True); lay.addWidget(th)
+        lay.addSpacing(4)
         lay.addWidget(QLabel(tr_("<b>Verwendete Bausteine</b>")))
+        mpv_v, mpv_ff = mpv_versions(win)
         rows = [("Python", platform_version(), tr_("PSF-Lizenz")),
                 ("Qt / PySide6", f"{qVersion()} / {_pyside_version()}", "LGPL-3.0"),
-                ("FFmpeg", tr_("in Qt Multimedia"), "LGPL-2.1+"),
-                ("mpv / libmpv", _mpv_version(), "LGPL-2.1+ / GPL-2.0+"),
-                ("mutagen", _mod_version("mutagen", "version_string"), "GPL-2.0+"),
-                ("python-mpv", "", "LGPL-2.1+ / GPL-2.0+")]
-        rows.append(("WinRT-Anbindung (pywinrt)", "", "MIT") if IS_WIN else ("jeepney (D-Bus)", "", "MIT"))
+                (tr_("FFmpeg (Videos, Qt Multimedia)"), ffmpeg_version_qt() or tr_("unbekannt"), "LGPL-2.1+"),
+                ("mpv / libmpv", mpv_v, "LGPL-2.1+ / GPL-2.0+")]
+        if mpv_ff:
+            rows.append((tr_("FFmpeg (Musik, in mpv)"), mpv_ff, "LGPL-2.1+ / GPL-2.0+"))
+        rows += [("mutagen", _mod_version("mutagen", "version_string"), "GPL-2.0+"),
+                 ("python-mpv", _dist_version("mpv"), "LGPL-2.1+ / GPL-2.0+")]
+        rows.append(("WinRT-Anbindung (pywinrt)", "", "MIT") if IS_WIN else ("jeepney (D-Bus)", _mod_version("jeepney", "__version__"), "MIT"))
         rows.append((tr_("Albumdaten"), "MusicBrainz", "CC0"))
         rows.append((tr_("Cover"), tr_("Cover Art Archive"), tr_("je nach Bild")))
         grid = QGridLayout(); grid.setHorizontalSpacing(18); grid.setVerticalSpacing(3)
@@ -2927,9 +2947,17 @@ class AboutDialog(QDialog):
             b.setObjectName("hint"); c.setObjectName("hint")
             for w in (a, b, c):
                 w.setTextFormat(Qt.PlainText)
+            b.setTextInteractionFlags(Qt.TextSelectableByMouse)
             grid.addWidget(a, i, 0); grid.addWidget(b, i, 1); grid.addWidget(c, i, 2)
+        grid.setColumnStretch(3, 1)
         lay.addLayout(grid)
-        lay.addSpacing(6)
+        copy = QPushButton(tr_("Versionen kopieren")); copy.setObjectName("ghost")
+        copy.setToolTip(tr_("Für Fehlermeldungen auf GitHub"))
+        txt = f"{APP_NAME} {APP_VERSION} ({APP_DATE}), {platform.system()} {platform.release()}\n" + \
+              "\n".join(f"{n}: {v}" for n, v, _l in rows[:6] if v)
+        copy.clicked.connect(lambda: (QApplication.clipboard().setText(txt), copy.setText(tr_("Kopiert"))))
+        lay.addWidget(copy, 0, Qt.AlignLeft)
+        lay.addSpacing(4)
         lay.addWidget(QLabel(tr_("<b>Deine Daten</b>")))
         brow = QHBoxLayout(); brow.setSpacing(8)
         for label, path in ((tr_("Bibliothek und Wiedergabelisten"), DATA_DIR), (tr_("Cover"), COVER_DIR.parent if IS_WIN else COVER_DIR)):
@@ -2947,9 +2975,98 @@ class AboutDialog(QDialog):
         self.ulbl = QLabel(""); self.ulbl.setObjectName("hint"); self.ulbl.setWordWrap(True)
         ub.clicked.connect(lambda: win.check_updates(manual=True, report=self.ulbl.setText))
         urow.addWidget(ub); urow.addWidget(self.ulbl, 1); lay.addLayout(urow)
-        bb = QDialogButtonBox(QDialogButtonBox.Close); bb.rejected.connect(self.reject); bb.accepted.connect(self.accept)
+        lay.addStretch()
+
+
+class AboutDialog(QDialog):
+    def __init__(self, win):
+        super().__init__(win)
+        self.setWindowTitle(tr_("Über {0}").format(APP_NAME))
+        self.setMinimumWidth(580)
+        lay = QVBoxLayout(self); lay.setContentsMargins(10, 8, 10, 12)
+        lay.addWidget(AboutPage(win, self))
+        bb = QDialogButtonBox(QDialogButtonBox.Close); bb.rejected.connect(self.reject)
         bb.button(QDialogButtonBox.Close).setText(tr_("Schließen"))
         lay.addWidget(bb)
+
+
+def app_date_text():
+    try:
+        d = QDate.fromString(APP_DATE, "yyyy-MM-dd")
+        return QLocale(QLocale.German if LANG == "de" else QLocale.English).toString(d, "d. MMMM yyyy" if LANG == "de" else "MMMM d, yyyy")
+    except Exception:
+        return APP_DATE
+
+
+def _av_version(lib):
+    try:
+        lib.av_version_info.restype = ctypes.c_char_p
+        v = (lib.av_version_info() or b"").decode("ascii", "replace")
+        return v[1:] if re.match(r"n\d", v) else v
+    except Exception:
+        return ""
+
+
+def ffmpeg_version_qt():
+    """Version des FFmpeg, mit dem Qt Multimedia Videos abspielt."""
+    try:
+        import PySide6
+        base = Path(PySide6.__file__).parent       # bringt PySide6 ein eigenes FFmpeg mit (Windows, pip)?
+        own = sorted(base.glob("avutil-*.dll")) if IS_WIN else sorted(base.glob("Qt/lib/libavutil.so*"))
+        if own:
+            try:
+                v = _av_version(ctypes.CDLL(str(own[0])))
+            except OSError:      # lässt sich allein nicht laden (Abhängigkeiten) → Kennung in der Datei suchen
+                v = ""
+            return v or _av_version_in_file(own[0].parent, "avcodec-*.dll" if IS_WIN else "libavcodec.so.*")
+        if IS_WIN:
+            return ""
+        path = None
+        try:     # schon geladen (Qt-FFmpeg-Plugin)? Dann genau diese Bibliothek
+            with open("/proc/self/maps", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    if "/libavutil.so" in line:
+                        path = line.split(None, 5)[-1].strip(); break
+        except OSError:
+            pass
+        path = path or ctypes.util.find_library("avutil")
+        return _av_version(ctypes.CDLL(path)) if path else ""
+    except Exception:
+        return ""
+
+
+def _av_version_in_file(folder, pattern):
+    import mmap
+    for f in sorted(Path(folder).glob(pattern)):
+        try:
+            with open(f, "rb") as fh, mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                m = re.search(rb"FFmpeg version n?([0-9][0-9A-Za-z.~+_-]{0,40})", mm)
+                if m:
+                    return m.group(1).decode("ascii", "replace")
+        except (OSError, ValueError):
+            pass
+    return ""
+
+
+def mpv_versions(win=None):
+    """(mpv-Version, FFmpeg-Version in mpv) – aus der laufenden mpv-Instanz, sonst nur die API-Version."""
+    mp = getattr(getattr(win, "player", None), "mp", None)
+    if mp is not None:
+        try:
+            mv = str(mp["mpv-version"] or "").removeprefix("mpv ")
+            fv = str(mp["ffmpeg-version"] or "")
+            return mv or _mpv_version(), (fv[1:] if re.match(r"n\d", fv) else fv)
+        except Exception:
+            pass
+    return _mpv_version(), ""
+
+
+def _dist_version(name):
+    try:
+        from importlib.metadata import version
+        return version("python-mpv" if name == "mpv" else name)
+    except Exception:
+        return ""
 
 
 def platform_version():
@@ -3754,6 +3871,10 @@ def make_icon(name, size=20, color=None):
         p.drawEllipse(QPointF(0, 0), .14 * s, .1 * s); p.restore()
         p.drawRect(QRectF(.44 * s, .18 * s, .07 * s, .55 * s))
         p.drawPolygon(QPolygonF([P(.44, .18), P(.76, .26), P(.76, .38), P(.51, .31)]))
+    elif name == "menu":
+        lp = QPen(c, 1.7); lp.setCapStyle(Qt.RoundCap); p.setPen(lp)
+        for y in (.3, .5, .7):
+            p.drawLine(P(.2, y), P(.8, y))
     elif name in ("list", "queue"):
         lp = QPen(c, 1.6); lp.setCapStyle(Qt.RoundCap); p.setPen(lp)
         for y in (.28, .5, .72):
@@ -5601,8 +5722,41 @@ class ThemePage(QWidget):
             self.blur_hint.setText(tr_("Wird beim nächsten Start des Players aktiviert (läuft dann über XWayland)."))
 
 
+# Hardware-Decoder von Qt Multimedia (FFmpeg); werden vor dem Start über Umgebungsvariablen gesetzt
+HWDEC_CHOICES = ([("d3d11va", "Direct3D 11 (D3D11VA)"), ("d3d12va", "Direct3D 12 (D3D12VA)"),
+                  ("dxva2", "DXVA2"), ("cuda", "NVIDIA CUDA"), ("qsv", "Intel Quick Sync")] if IS_WIN else
+                 [("vaapi", "VA-API (Intel, AMD)"), ("cuda", "NVIDIA CUDA"), ("vdpau", "VDPAU"), ("vulkan", "Vulkan")])
+VIDEO_LANGS = ("de", "en", "fr", "es", "it", "nl", "pl", "pt", "sv", "da", "no", "fi", "cs", "hu", "tr", "ru",
+               "uk", "el", "ja", "ko", "zh")
+
+
+def lang_label(code):
+    n = QLocale(code).nativeLanguageName()
+    return (n[:1].upper() + n[1:]) if n else code
+
+
+def apply_video_env(settings):
+    """Vor dem Erzeugen der QApplication: Einstellungen zur Hardwarebeschleunigung an Qt Multimedia geben.
+    Von außen gesetzte Variablen haben Vorrang."""
+    hw = settings.value("video/hwdec", "auto")
+    if hw != "auto" and "QT_FFMPEG_DECODING_HW_DEVICE_TYPES" not in os.environ:
+        os.environ["QT_FFMPEG_DECODING_HW_DEVICE_TYPES"] = "," if hw == "off" else hw
+    if not settings.value("video/hwtex", True, type=bool):
+        os.environ.setdefault("QT_DISABLE_HW_TEXTURES_CONVERSION", "1")
+
+
+def active_hwdec_text():
+    v = os.environ.get("QT_FFMPEG_DECODING_HW_DEVICE_TYPES")
+    if v is None:
+        return ""
+    if not v.strip(", "):
+        return tr_("nur Prozessor")
+    names = dict(HWDEC_CHOICES)
+    return ", ".join(names.get(x, x) for x in v.split(",") if x)
+
+
 class SettingsDialog(QDialog):
-    TAB_LIBRARY, TAB_LOOK, TAB_ONLINE, TAB_SYSTEM, TAB_NAV, TAB_JF = range(6)
+    TAB_LIBRARY, TAB_LOOK, TAB_ONLINE, TAB_SYSTEM, TAB_VIDEO, TAB_NAV, TAB_JF, TAB_ABOUT = range(8)
 
     # ── Reiter Navigation ─────────────────────────────────────────────────
     def _fill_navlist(self, layout):
@@ -5910,6 +6064,7 @@ class SettingsDialog(QDialog):
         sysa = QScrollArea(); sysa.setWidgetResizable(True); sysa.setFrameShape(QFrame.NoFrame)
         sysa.setWidget(sysw); sysa.viewport().setAutoFillBackground(False); sysw.setAutoFillBackground(False)
         self.tabs.addTab(sysa, tr_("System"))
+        self._build_video_tab(win)
 
         navw = QWidget(); nv = QVBoxLayout(navw); nv.setContentsMargins(16, 16, 16, 16); nv.setSpacing(10)
         nh = QLabel(tr_("Häkchen = in der Leiste anzeigen. Die Reihenfolge änderst du per Ziehen oder mit den Pfeilen, "
@@ -5936,6 +6091,9 @@ class SettingsDialog(QDialog):
         self.navlist.model().rowsMoved.connect(lambda *_: self._nav_preview())
         self.navlist.itemDoubleClicked.connect(lambda _it: self._nav_rename())
         self._build_jf_tab(win)
+        ab = QScrollArea(); ab.setWidgetResizable(True); ab.setFrameShape(QFrame.NoFrame)
+        ap = AboutPage(win); ab.setWidget(ap); ab.viewport().setAutoFillBackground(False); ap.setAutoFillBackground(False)
+        self.tabs.addTab(ab, tr_("Über"))
 
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.button(QDialogButtonBox.Ok).setText(tr_("Übernehmen"))
@@ -5980,6 +6138,12 @@ class SettingsDialog(QDialog):
         w.settings.setValue("audio/mpv", self.s_mpv.isChecked())
         w.settings.setValue("audio/gapless", self.s_gapless.isChecked())
         w.settings.setValue("system/no_sleep", self.s_nosleep.isChecked())
+        w.settings.setValue("video/hwdec", self.v_hw.currentData())
+        w.settings.setValue("video/hwtex", self.v_tex.isChecked())
+        w.settings.setValue("video/audio_lang", self.v_alang.currentData())
+        w.settings.setValue("video/sub_lang", self.v_slang.currentData())
+        w.settings.setValue("video/subs", self.v_subs.currentData())
+        w.settings.setValue("video/srt_auto", self.v_srt.isChecked())
         w.update_sleep_guard()
         w.apply_nav_layout(self._layout_from_list(), save=True)
         w._prepare_next()
@@ -5997,6 +6161,71 @@ class SettingsDialog(QDialog):
     def _batch_now(self):
         self.accept()
         self.win.start_batch()
+
+    # ── Reiter Video ──────────────────────────────────────────────────────
+    def _build_video_tab(self, win):
+        st = win.settings
+        w = QWidget(); v = QVBoxLayout(w); v.setContentsMargins(16, 16, 16, 16); v.setSpacing(10)
+        v.addWidget(QLabel(tr_("<b>Hardwarebeschleunigung</b>")))
+        g = QGridLayout(); g.setHorizontalSpacing(12); g.setVerticalSpacing(6)
+        g.addWidget(QLabel(tr_("Videos decodieren mit")), 0, 0)
+        self.v_hw = QComboBox()
+        self.v_hw.addItem(tr_("Automatisch (empfohlen)"), "auto")
+        self.v_hw.addItem(tr_("Nur Prozessor (keine Beschleunigung)"), "off")
+        for key, label in HWDEC_CHOICES:
+            self.v_hw.addItem(label, key)
+        self.v_hw.setCurrentIndex(max(0, self.v_hw.findData(st.value("video/hwdec", "auto"))))
+        g.addWidget(self.v_hw, 0, 1); g.setColumnStretch(2, 1)
+        v.addLayout(g)
+        self.v_tex = QCheckBox(tr_("Bilder direkt auf der Grafikkarte umwandeln (weniger Prozessorlast)"))
+        self.v_tex.setChecked(st.value("video/hwtex", True, type=bool))
+        v.addWidget(self.v_tex)
+        hh = QLabel(tr_("Die Grafikkarte entlastet den Prozessor und spart bei 4K- und HEVC-Videos viel Strom. "
+                        "Ruckelt ein Video, bleibt das Bild schwarz oder stimmen die Farben nicht, stell hier "
+                        "„Nur Prozessor“ ein oder nimm das Häkchen darunter weg. Änderungen wirken nach einem "
+                        "Neustart von NeoNote."))
+        hh.setObjectName("hint"); hh.setWordWrap(True); v.addWidget(hh)
+        cur = active_hwdec_text()
+        if cur:
+            ch = QLabel(tr_("Zurzeit: {0}").format(cur)); ch.setObjectName("hint"); v.addWidget(ch)
+        v.addSpacing(8)
+        v.addWidget(QLabel(tr_("<b>Tonspur und Untertitel</b>")))
+        g2 = QGridLayout(); g2.setHorizontalSpacing(12); g2.setVerticalSpacing(6)
+
+        def lang_box(key, first):
+            b = QComboBox(); b.addItem(first, "")
+            for code in VIDEO_LANGS:
+                b.addItem(lang_label(code), code)
+            b.setCurrentIndex(max(0, b.findData(st.value(key, ""))))
+            return b
+        g2.addWidget(QLabel(tr_("Bevorzugte Tonspur")), 0, 0)
+        self.v_alang = lang_box("video/audio_lang", tr_("Wie in der Datei vorgegeben"))
+        g2.addWidget(self.v_alang, 0, 1)
+        g2.addWidget(QLabel(tr_("Untertitel einschalten")), 1, 0)
+        self.v_subs = QComboBox()
+        for key, label in (("off", tr_("Nie automatisch")),
+                           ("foreign", tr_("Wenn die Tonspur eine andere Sprache hat")),
+                           ("always", tr_("Immer, wenn vorhanden"))):
+            self.v_subs.addItem(label, key)
+        self.v_subs.setCurrentIndex(max(0, self.v_subs.findData(st.value("video/subs", "off"))))
+        g2.addWidget(self.v_subs, 1, 1)
+        g2.addWidget(QLabel(tr_("Sprache der Untertitel")), 2, 0)
+        self.v_slang = lang_box("video/sub_lang", tr_("Sprache von NeoNote"))
+        g2.addWidget(self.v_slang, 2, 1)
+        g2.setColumnStretch(2, 1)
+        lw = max(QFontMetrics(self.font()).horizontalAdvance(t) for t in
+                 (tr_("Videos decodieren mit"), tr_("Bevorzugte Tonspur"), tr_("Untertitel einschalten"),
+                  tr_("Sprache der Untertitel"))) + 16
+        g.setColumnMinimumWidth(0, lw); g2.setColumnMinimumWidth(0, lw)
+        v.addLayout(g2)
+        self.v_srt = QCheckBox(tr_("Gleichnamige Untertiteldatei (.srt) neben dem Video automatisch laden"))
+        self.v_srt.setChecked(st.value("video/srt_auto", True, type=bool))
+        v.addWidget(self.v_srt)
+        sh = QLabel(tr_("Gilt für jedes neu geöffnete Video. Während der Wiedergabe kannst du Tonspur und Untertitel "
+                        "jederzeit über den Knopf in der Steuerleiste wechseln."))
+        sh.setObjectName("hint"); sh.setWordWrap(True); v.addWidget(sh)
+        v.addStretch()
+        self.tabs.addTab(w, tr_("Video"))
 
     # ── Reiter Jellyfin ───────────────────────────────────────────────────
     def _build_jf_tab(self, win):
@@ -6335,6 +6564,7 @@ class MainWindow(QMainWindow):
         self._really_quit = False
         self._mini_was_max = False
         self._sub_auto_done = False
+        self._lang_auto_done = False
         self._srt, self._srt_file, self._srt_starts = None, None, []
         self._quiet_scan = False
         self.watcher = QFileSystemWatcher(self)
@@ -6584,11 +6814,14 @@ class MainWindow(QMainWindow):
     def _sync_overlay(self):
         """Läuft ein Video im „Wird gespielt“-Modus, schwebt die Steuerleiste transparent über dem Bild;
         oben bleiben nur Minimieren/Maximieren/Schließen."""
-        # „Wird gespielt“ (Musik wie Video): Steuerleiste schwebt transparent über dem Bild,
-        # oben statt Titelleiste mit Suche nur die schmale Leiste. Ausblenden nur bei Videos.
-        want = bool(self.np_mode)
-        vid = bool(want and self.video.has_video)
-        winbox = bool(self.np_mode and self.frameless and not self._fs)
+        # Nur bei Videos: Steuerleiste und schmale Fensterleiste schweben über dem Bild und blenden aus.
+        # Bei Musik bleibt es wie im WMP12: normale Titelleiste oben (ohne Suche), Steuerleiste unten.
+        want = bool(self.np_mode and self.video.has_video)
+        vid = want
+        winbox = bool(want and self.frameless and not self._fs)
+        self.search.setVisible(not self.np_mode)
+        if self.np_mode and not want and self.frameless and not self._fs:
+            self.topbar.show()
         if want == self._overlay and winbox == self._winbox_on and vid == self._ovl_video:
             self.video.lib_btn.setVisible(self.np_mode and not want and not winbox)
             if want or winbox:
@@ -7720,9 +7953,10 @@ class MainWindow(QMainWindow):
         # wenn die Befehlsleiste ausgeblendet ist: ihre Funktionen über diese zwei Knöpfe oben
         self.top_queue = self._icon_btn("queue", 16, tr_("Wiedergabeliste rechts ein-/ausblenden (Strg+L)"),
                                         lambda on: self.set_queue_visible(on), checkable=True, obj="navbtn")
-        self.top_menu = self._icon_btn("gear", 16, tr_("Menü"), None, obj="navbtn")
+        self.top_gear = self._icon_btn("gear", 16, tr_("Einstellungen"), lambda: self.open_settings(), obj="navbtn")
+        self.top_menu = self._icon_btn("menu", 16, tr_("Menü"), None, obj="navbtn")
         self.top_menu.setPopupMode(QToolButton.InstantPopup)
-        tl.addSpacing(4); tl.addWidget(self.top_queue); tl.addWidget(self.top_menu)
+        tl.addSpacing(4); tl.addWidget(self.top_queue); tl.addWidget(self.top_gear); tl.addWidget(self.top_menu)
         tl.addSpacing(8)
         self.btn_min = self._icon_btn("minimize", 16, tr_("Minimieren"), self.showMinimized, obj="winbtn")
         self.btn_max = self._icon_btn("maximize", 16, tr_("Maximieren"), self.toggle_maximize, obj="winbtn")
@@ -7762,14 +7996,18 @@ class MainWindow(QMainWindow):
         m.addAction(tr_("Einstellungen…"), self.open_settings)
         m.addAction(tr_("Darstellung…"), lambda: self.open_settings(SettingsDialog.TAB_LOOK))
         m.addSeparator()
-        m.addAction(tr_("Über {0}").format(APP_NAME), lambda: AboutDialog(self).exec())
+        m.addAction(tr_("Über {0}").format(APP_NAME), lambda: self.open_settings(SettingsDialog.TAB_ABOUT))
         org.setMenu(m)
-        tm = QMenu(self.top_menu)
+        # dasselbe Menü als ☰ neben dem Zahnrad – in der Befehlsleiste und oben, wenn sie ausgeblendet ist
+        tm = QMenu(self)
         tm.addAction(tr_("Alle wiedergeben"), self.play_all_visible)
         tm.addSeparator()
         tm.addActions(m.actions())
         tm.addSeparator()
-        tm.addAction(tr_("Befehlsleiste wieder einblenden"), lambda: self.set_cmdbar_visible(True))
+        self.act_cmdbar = tm.addAction(tr_("Befehlsleiste anzeigen"))
+        self.act_cmdbar.setCheckable(True)
+        self.act_cmdbar.triggered.connect(lambda on: self.set_cmdbar_visible(on))
+        tm.aboutToShow.connect(lambda: self.act_cmdbar.setChecked(bool(self.theme_dict.get("cmdbar", True))))
         self.top_menu.setMenu(tm)
         playall = QToolButton(); playall.setText(tr_("Alle wiedergeben")); playall.clicked.connect(self.play_all_visible)
         cl.addWidget(org); cl.addWidget(playall); cl.addStretch()
@@ -7781,7 +8019,9 @@ class MainWindow(QMainWindow):
                                         lambda on: self.set_queue_visible(on), checkable=True)
         self.btn_cancel = self._icon_btn("clear", 14, tr_("Online-Suche abbrechen"), self.cancel_batch)
         self.btn_cancel.hide()
-        cl.addWidget(self.progress); cl.addWidget(self.btn_cancel); cl.addSpacing(8); cl.addWidget(self.count_label); cl.addSpacing(6); cl.addWidget(self.btn_queue); cl.addWidget(gear)
+        self.cmd_menu = self._icon_btn("menu", 18, tr_("Menü"), None)
+        self.cmd_menu.setPopupMode(QToolButton.InstantPopup); self.cmd_menu.setMenu(tm)
+        cl.addWidget(self.progress); cl.addWidget(self.btn_cancel); cl.addSpacing(8); cl.addWidget(self.count_label); cl.addSpacing(6); cl.addWidget(self.btn_queue); cl.addWidget(gear); cl.addWidget(self.cmd_menu)
         root.addWidget(cmd)
 
         # Hinweis auf eine neue Version (dezent, unter der Befehlsleiste)
@@ -7944,7 +8184,7 @@ class MainWindow(QMainWindow):
         on = bool(self.theme_dict.get("cmdbar", True))
         if not (self.np_mode or self._fs):
             self.cmdbar.setVisible(on)
-        self.top_queue.setVisible(not on); self.top_menu.setVisible(not on)
+        self.top_queue.setVisible(not on); self.top_gear.setVisible(not on); self.top_menu.setVisible(not on)
 
     def set_queue_visible(self, on):
         """Wiedergabeliste rechts ein-/ausblenden (wird gemerkt)."""
@@ -8005,9 +8245,12 @@ class MainWindow(QMainWindow):
         self.vol.valueChanged.connect(self._set_volume)
         # Zeitanzeige wie im WMP12: „33:44 / 58:35“ – Klick wechselt auf Restzeit
         self.lbl_time = QToolButton(); self.lbl_time.setObjectName("timeBtn")
-        self.lbl_time.setToolTip(tr_("Klicken: verstrichene Zeit / Restzeit"))
+        self.lbl_time.setToolTip(tr_("Klicken: verstrichene Zeit / Restzeit / nur Restzeit"))
         self.lbl_time.clicked.connect(self._toggle_remaining)
-        self._time_remaining = self.settings.value("ui/time_remaining", False, type=bool)
+        # 0 = verstrichen / Länge, 1 = Restzeit / Länge, 2 = nur Restzeit
+        self._time_mode = self.settings.value("ui/time_mode", -1, type=int)
+        if self._time_mode not in (0, 1, 2):     # Einstellung aus Versionen bis 1.1.7 übernehmen
+            self._time_mode = 1 if self.settings.value("ui/time_remaining", False, type=bool) else 0
         self.lbl_time.setText("0:00 / 0:00")
         # feste Breite nach Schrift, damit nichts springt, aber eng an den Knöpfen
         self.lbl_time.setFixedWidth(QFontMetrics(self.lbl_time.font()).horizontalAdvance("00:00 / 00:00") + 10)
@@ -8813,6 +9056,7 @@ class MainWindow(QMainWindow):
         self._resume_ready = False
         self.video.show_end(False)
         self.sub_mode, self._srt, self._srt_file, self._sub_auto_done = "off", None, None, False
+        self._lang_auto_done = False
         self.video.set_subtitle("")
         self.btn_tracks.hide()
         self.cur = e
@@ -9078,8 +9322,12 @@ class MainWindow(QMainWindow):
         if self.sub_mode == "off" and not self._sub_auto_done:
             self._sub_auto_done = True
             exact = [x for x in ext if x.stem == Path(self.cur["t"]["path"]).stem] if self.cur else []
-            if exact:
+            if exact and self.settings.value("video/srt_auto", True, type=bool):
                 self._load_srt(exact[0])
+        if not self._lang_auto_done and (audio or subs):
+            self._lang_auto_done = True
+            if self._auto_pick_tracks(audio, subs):
+                return
         m = QMenu(self)
         if audio:
             am = m.addMenu(tr_("Tonspur"))
@@ -9104,6 +9352,44 @@ class MainWindow(QMainWindow):
         sm.addAction(tr_("Untertiteldatei laden…"), self._pick_srt)
         self.btn_tracks.setMenu(m)
         self.btn_tracks.setVisible(self.video.has_video or len(audio) > 1)
+
+    @staticmethod
+    def _md_lang(md):
+        try:
+            lang = md.value(QMediaMetaData.Key.Language)
+            if lang is None:
+                return None
+            lang = QLocale.Language(lang) if not isinstance(lang, QLocale.Language) else lang
+            return None if lang == QLocale.Language.AnyLanguage else lang
+        except Exception:
+            return None
+
+    def _auto_pick_tracks(self, audio, subs):
+        """Bevorzugte Tonspur und Untertitel nach den Video-Einstellungen wählen. True, wenn umgeschaltet wurde."""
+        st = self.settings
+        want_a = st.value("video/audio_lang", "")
+        ai = self.player.activeAudioTrack()
+        if want_a and len(audio) > 1:
+            la = QLocale(want_a).language()
+            for i, md in enumerate(audio):
+                if self._md_lang(md) == la:
+                    if i != ai:
+                        self.player.setActiveAudioTrack(i)
+                    ai = i
+                    break
+        mode = st.value("video/subs", "off")
+        if mode == "off" or self.sub_mode != "off" or not subs:
+            return False
+        ls = QLocale(st.value("video/sub_lang", "") or LANG).language()
+        if mode == "foreign":
+            cur_a = self._md_lang(audio[ai]) if 0 <= ai < len(audio) else None
+            if cur_a is None or cur_a == ls:
+                return False
+        for i, md in enumerate(subs):
+            if self._md_lang(md) == ls:
+                self._subs_embedded(i)
+                return True
+        return False
 
     def _subs_off(self):
         self.sub_mode = "off"; self._srt = None; self._srt_file = None
@@ -9313,13 +9599,26 @@ class MainWindow(QMainWindow):
 
     def _update_time(self, pos):
         d = max(0, self.player.duration()) if hasattr(self, "player") else 0
-        if self._time_remaining and d > 0:
+        if self._time_mode and d > 0:
             left = f"-{fmt_time(max(0, d - pos) / 1000)}"
         else:
             left = fmt_time(pos / 1000)
-        txt = f"{left} / {fmt_time(d / 1000)}"
+        txt = left if (self._time_mode == 2 and d > 0) else f"{left} / {fmt_time(d / 1000)}"
         if txt != self.lbl_time.text():
+            self._fit_time_width(d >= 3600 * 1000)
             self.lbl_time.setText(txt)
+
+    def _fit_time_width(self, hours):
+        """Breite der Zeitanzeige: fest je nach Format (mit/ohne Stunden), damit nichts springt oder abgeschnitten wird."""
+        key = (hours, self._time_mode, self.lbl_time.font().toString())
+        if key == getattr(self, "_time_w_key", None):
+            return
+        self._time_w_key = key
+        tmpl = "0:00:00 / 0:00:00" if hours else "00:00 / 00:00"
+        if self._time_mode:
+            tmpl = "-" + tmpl      # gleiche Breite auch bei „nur Restzeit“, damit die Knöpfe nicht wandern
+        self.lbl_time.ensurePolished()
+        self.lbl_time.setFixedWidth(self.lbl_time.fontMetrics().horizontalAdvance(tmpl) + 10)
 
     # ── Waveform unten links ─────────────────────────────────────────────
     def _show_wave(self):
@@ -9350,8 +9649,8 @@ class MainWindow(QMainWindow):
         self.np_wave.push(self.player.level())
 
     def _toggle_remaining(self):
-        self._time_remaining = not self._time_remaining
-        self.settings.setValue("ui/time_remaining", self._time_remaining)
+        self._time_mode = (self._time_mode + 1) % 3
+        self.settings.setValue("ui/time_mode", self._time_mode)
         self._update_time(self.seek.value())
 
     def _dur_changed(self, d):
@@ -10088,6 +10387,7 @@ def main():
         return
     migrate_from_darkplayer()
     s = QSettings(APP_NAME, APP_NAME)
+    apply_video_env(s)
     blur = s.value("theme/blur", DEFAULT_THEME["blur"], type=bool)
     opacity = s.value("theme/opacity", DEFAULT_THEME["opacity"], type=int)
     # KWin kann Fenster nur über eine X11-Eigenschaft weichzeichnen lassen. Unter Wayland
