@@ -8,12 +8,13 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [ ] **AUR-Paket** – Installation mit `yay -S neonote`
 - [ ] **Intelligente Wiedergabelisten** mit eigenen Regeln (z. B. „Rock aus den 80ern, mindestens 4 Sterne, seit 3 Monaten nicht gespielt“) – wie in Windows Media Player 12
 - [ ] **Feinschliff unter KDE Plasma** (Wayland, Weichzeichner, Dolphin)
+- [ ] **Transparente Dialoge** (Einstellungen, Equalizer …) mit eigener Titelleiste und demselben Weichzeichner wie das Hauptfenster – eine durchgehende Fläche unter Windows und KDE *(geplant für 1.2)*
 
 ## Später
 - [ ] **Songtexte**, zeitgesteuert im „Wird gespielt“-Modus (z. B. über LRCLIB) und aus den Dateien selbst
 - [ ] **Scrobbeln** zu Last.fm und ListenBrainz
 - [ ] **Flatpak / Flathub** – für Ubuntu, Fedora, Mint und andere Distributionen
-- [x] **Updater für Windows** – neue Versionen direkt aus NeoNote installieren *(fertig, kommt mit der nächsten Version)*
+- [x] **Updater für Windows** – neue Versionen direkt aus NeoNote installieren *(seit 1.1.8)*
 - [ ] **Überblenden** zwischen Titeln
 - [ ] **Ordneransicht** – durch die Musikordner stöbern
 - [ ] **Einschlaf-Timer** („nach 30 Minuten“, „nach diesem Album“)
@@ -35,12 +36,13 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [ ] **AUR package** – install with `yay -S neonote`
 - [ ] **Smart playlists** with custom rules (e.g. “80s rock, at least 4 stars, not played for 3 months”) – like in Windows Media Player 12
 - [ ] **KDE Plasma polish** (Wayland, blur, Dolphin)
+- [ ] **Transparent dialogs** (settings, equalizer …) with their own title bar and the same blur as the main window – one continuous surface on Windows and KDE *(planned for 1.2)*
 
 ## Later
 - [ ] **Lyrics**, synced in “Now playing” mode (e.g. via LRCLIB) and from the files themselves
 - [ ] **Scrobbling** to Last.fm and ListenBrainz
 - [ ] **Flatpak / Flathub** – for Ubuntu, Fedora, Mint and other distributions
-- [x] **Updater for Windows** – install new versions right from NeoNote *(done, coming with the next version)*
+- [x] **Updater for Windows** – install new versions right from NeoNote *(since 1.1.8)*
 - [ ] **Crossfade** between tracks
 - [ ] **Folder view** – browse your music folders
 - [ ] **Sleep timer** (“after 30 minutes”, “after this album”)
