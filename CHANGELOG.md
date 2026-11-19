@@ -1,5 +1,12 @@
 # Änderungen
 
+## 1.1.7 – 19.11.2026
+
+**Fehlerbehebungen**
+- Liegt ein Album doppelt vor (z. B. einmal als FLAC, einmal als MP3 in eigenen Ordnern), wurden beide Fassungen zu einem Album zusammengeworfen. Jetzt erscheinen sie wie im WMP12 als getrennte Alben, mit dem Format neben dem Jahr („2000 · FLAC“). Alben, die nur auf mehrere Ordner verteilt sind (CD1/CD2), bleiben zusammen.
+- Springen per Buchstabe in der Interpreten- und Albenansicht: Der Abschnitt erscheint jetzt oben statt am unteren Rand.
+- Fortschrittsbalken und Lautstärkeregler zeigen beim Darüberfahren eine Hand als Mauszeiger.
+
 ## 1.1.6 – 18.11.2026
 
 **Verbessert**

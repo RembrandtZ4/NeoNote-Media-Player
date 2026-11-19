@@ -80,7 +80,7 @@ HIDDEN_FILE = DATA_DIR / "hidden.json"
 JF_CACHE_FILE = DATA_DIR / "jellyfin.json"
 JF_OFFLINE_DIR = DATA_DIR / "jellyfin-offline"
 PLAYLIST_DIR = DATA_DIR / "playlists"
-APP_VERSION = "1.1.6"
+APP_VERSION = "1.1.7"
 
 # ── Sprache ───────────────────────────────────────────────────────────────
 LANGUAGES = [("auto", "Automatisch (Systemsprache)"), ("de", "Deutsch"), ("en", "English")]
@@ -312,6 +312,12 @@ def show_in_file_manager(path):
 
 def album_key(artist, album):
     return hashlib.md5(f"{artist.lower()}|{album.lower()}".encode()).hexdigest()
+
+
+def cover_path(key):
+    """Cover-Datei zu einem Album-Schlüssel. Getrennte Ausgaben desselben Albums (z. B. FLAC und MP3 in eigenen
+    Ordnern) heißen „<schlüssel>~2“ usw. und teilen sich das Cover."""
+    return COVER_DIR / f"{str(key).split('~', 1)[0]}.jpg"
 
 
 def read_track(path):
@@ -549,7 +555,7 @@ def save_cover(path, key):
         return False
     img = img.scaled(400, 400, Qt.KeepAspectRatio, Qt.SmoothTransformation)
     COVER_DIR.mkdir(parents=True, exist_ok=True)
-    return img.save(str(COVER_DIR / f"{key}.jpg"), "JPG", 90)
+    return img.save(str(cover_path(key)), "JPG", 90)
 
 
 def rounded_region(w, h, r):
@@ -1006,7 +1012,7 @@ def write_album(album, changes, cover_bytes, opts, replace_cover):
             img = QImage(); img.loadFromData(jpg)
             COVER_DIR.mkdir(parents=True, exist_ok=True)
             img.scaled(400, 400, Qt.KeepAspectRatio, Qt.SmoothTransformation).save(
-                str(COVER_DIR / f"{album['key']}.jpg"), "JPG", 90)
+                str(cover_path(album['key'])), "JPG", 90)
             if opts.get("embed_cover"):
                 for t in album["tracks"]:
                     try:
@@ -1071,7 +1077,7 @@ class BatchLookup(QThread):
                     continue
                 rel = mb_release(hit["id"])
                 cover = None
-                if not (COVER_DIR / f"{a['key']}.jpg").exists():
+                if not (cover_path(a['key'])).exists():
                     cover = caa_cover(rel["id"], rel["rgid"])
                 changes = plan_changes(a, rel)
                 if self.opts.get("write_tags"):
@@ -1356,7 +1362,7 @@ class Smtc(QObject):
             pass
 
     def _set_thumb(self, t):
-        f = COVER_DIR / f"{t['cover']}.jpg"
+        f = cover_path(t['cover'])
         if not f.exists():
             f = COVER_DIR / f"platzhalter-{T.accent.name().lstrip('#')}.png"
             if not f.exists():
@@ -1411,7 +1417,7 @@ class Mpris(QObject):
 
     # ── Zustand (Hauptthread) ─────────────────────────────────────────────
     def _art_url(self, t):
-        f = COVER_DIR / f"{t['cover']}.jpg"
+        f = cover_path(t['cover'])
         if not f.exists():
             f = COVER_DIR / f"platzhalter-{T.accent.name().lstrip('#')}.png"
             if not f.exists():
@@ -2379,7 +2385,7 @@ class JfCoverFetcher(QThread):
                 img = QImage.fromData(data)
                 if not img.isNull():
                     COVER_DIR.mkdir(parents=True, exist_ok=True)
-                    img.save(str(COVER_DIR / f"{key}.jpg"), "JPG", 90)
+                    img.save(str(cover_path(key)), "JPG", 90)
                     self.loaded.emit(key)
             except Exception:
                 pass
@@ -2445,7 +2451,7 @@ class CheckWorker(QThread):
         res["dups"].sort(key=lambda c: (sort_name(c[0]["artist"]), c[0]["title"].lower()))
         # Alben ohne Cover
         for a in self.albums.values():
-            if a["tracks"] and not a["tracks"][0].get("remote") and not (COVER_DIR / f"{a['key']}.jpg").exists():
+            if a["tracks"] and not a["tracks"][0].get("remote") and not (cover_path(a['key'])).exists():
                 res["nocover"].append(a)
         # lückenhafte Tags
         for t in self.tracks:
@@ -2706,7 +2712,7 @@ class CheckPage(QWidget):
     def _tags_online(self):
         keys, albums = set(), []
         for t, _m in (self.res or {}).get("tags", []):
-            a = self.win.local_lib.albums.get(t.get("cover"))
+            a = self.win.local_lib.albums.get(t.get("akey") or t.get("cover"))
             if a and a["key"] not in keys:
                 keys.add(a["key"]); albums.append(a)
         if albums:
@@ -3013,7 +3019,7 @@ class Scanner(QThread):
                 t["mtime"] = stt.st_mtime
                 k = t["cover"]
                 if k not in have:
-                    if (COVER_DIR / f"{k}.jpg").exists():
+                    if (cover_path(k)).exists():
                         have.add(k)
                     elif attempts[k] < 3:
                         attempts[k] += 1
@@ -3073,15 +3079,62 @@ class Library:
                 t.update(self.overrides[t["path"]])
             if not t.get("stream") and not t.get("remote"):
                 t["cover"] = album_key(t.get("albumartist") or t["artist"], t["album"])
+            t["akey"] = t["cover"]
             a = albums.setdefault(t["cover"], {"key": t["cover"], "title": t["album"], "artist": t["albumartist"],
                                                "year": t.get("year", ""), "genre": t.get("genre", ""), "tracks": []})
             a["tracks"].append(t)
             if not a["year"] and t.get("year"):
                 a["year"] = t["year"]
+        albums = self._split_editions(albums)
         for a in albums.values():
             a["tracks"].sort(key=lambda t: (t.get("disc", 1), t.get("track", 0), t["title"].lower()))
         self.albums = OrderedDict(sorted(albums.items(), key=lambda kv: (
             sort_name(kv[1]["artist"]), kv[1]["year"] or "9999", kv[1]["title"].lower())))
+
+    @staticmethod
+    def _split_editions(albums):
+        """Liegt dasselbe Album mehrfach vor (z. B. einmal als FLAC, einmal als MP3 in eigenen Ordnern), zeigt
+        NeoNote es wie WMP12 als getrennte Alben. Ein Album, das nur auf mehrere Ordner verteilt ist (CD1/CD2),
+        bleibt zusammen: getrennt wird nur, wenn derselbe Titel (CD, Nr., Name) doppelt vorkommt."""
+        out = {}
+        for key, a in albums.items():
+            tracks = a["tracks"]
+            if len(tracks) < 2 or tracks[0].get("remote") or tracks[0].get("stream"):
+                out[key] = a
+                continue
+            seen, dup = set(), False
+            for t in tracks:
+                sig = (t.get("disc", 1), t.get("track", 0), t["title"].strip().lower())
+                if sig in seen:
+                    dup = True
+                    break
+                seen.add(sig)
+            dirs = OrderedDict()
+            for t in tracks:
+                dirs.setdefault(os.path.dirname(t["path"]), []).append(t)
+            if not dup or len(dirs) < 2:
+                out[key] = a
+                continue
+            # Ordner mit gleichem Elternordner + „CD1“/„Disc 2“ … gehören zusammen; sonst je Ordner eine Ausgabe
+            groups = OrderedDict()
+            for d, ts in dirs.items():
+                base = d
+                if re.fullmatch(r"(?i)(cd|disc|disk)\s*\d+", os.path.basename(d) or ""):
+                    base = os.path.dirname(d)
+                groups.setdefault(base, []).extend(ts)
+            if len(groups) < 2:
+                out[key] = a
+                continue
+            # die Ausgabe mit der besten Qualität behält den ursprünglichen Schlüssel
+            order = sorted(groups.values(), key=lambda ts: -sum((t.get("bitrate") or 0) for t in ts) / max(1, len(ts)))
+            for i, ts in enumerate(order):
+                k = key if i == 0 else f"{key}~{i + 1}"
+                types = sorted({(t.get("type") or os.path.splitext(t["path"])[1][1:]).upper() for t in ts if t.get("type") or t["path"]})
+                b = dict(a, key=k, tracks=ts, edition=" / ".join(x for x in types if x))
+                for t in ts:
+                    t["akey"] = k
+                out[k] = b
+        return out
 
     def group_albums(self, field):
         groups = defaultdict(list)
@@ -3170,7 +3223,7 @@ class Stats:
 def load_cover_image(key, size):
     """Cover als quadratisches QImage in Zielgröße laden (thread-sicher).
     Der JPEG-Decoder verkleinert schon beim Entpacken – viel schneller als erst groß laden und dann skalieren."""
-    path = COVER_DIR / f"{key}.jpg"
+    path = cover_path(key)
     if not key or not path.exists():
         return None
     r = QImageReader(str(path))
@@ -3291,7 +3344,7 @@ class CoverCache:
             return self.cache[ck]
         if not key or key in self._missing or self.loader is None or self.sync_mode:
             return self.get(key, size)
-        if key.startswith("jf-") and not (COVER_DIR / f"{key}.jpg").exists():
+        if key.startswith("jf-") and not (cover_path(key)).exists():
             return self.get(key, size)
         self.loader.want(key, size, urgent)
         return None
@@ -3647,6 +3700,7 @@ class JumpSlider(QSlider):
 
     def __init__(self, *a):
         super().__init__(*a)
+        self.setCursor(Qt.PointingHandCursor)       # Hand wie bei Links: man kann überall hinklicken
         self.sliderReleased.connect(lambda: self.seeked.emit(self.value()))
 
     def mousePressEvent(self, e):
@@ -4336,7 +4390,7 @@ class RadioPage(QWidget):
         icon = QIcon(CoverCache.placeholder(44))
         for stn in self.stations():
             key = album_key("Internetradio", stn["name"])
-            pm = QPixmap(str(COVER_DIR / f"{key}.jpg"))
+            pm = QPixmap(str(cover_path(key)))
             it = QListWidgetItem(QIcon(pm) if not pm.isNull() else icon, f"{stn['name']}\n{stn['url']}")
             it.setToolTip(stn["url"])
             self.list.addItem(it)
@@ -4481,6 +4535,24 @@ class PlayButton(QAbstractButton):
 # ════════════════════════════════════════════════════════════════════════════
 #  Kachelansicht (Interpret / Album / Genre)
 # ════════════════════════════════════════════════════════════════════════════
+class GridView(QListView):
+    """Kachelansicht. Tippen springt wie im WMP12 zum Eintrag und zeigt ihn oben statt am unteren Rand."""
+
+    def keyboardSearch(self, text):
+        before = self.currentIndex()
+        super().keyboardSearch(text)
+        idx = self.currentIndex()
+        if not idx.isValid() or idx == before:
+            return
+        # Bei einem Buchstaben zur Überschrift dieses Buchstabens, damit der ganze Abschnitt sichtbar ist
+        m = self.model()
+        r = idx.row()
+        if r > 0 and m.index(r - 1, 0).data(ROLE_KIND) == "sep":
+            self.scrollTo(m.index(r - 1, 0), QAbstractItemView.PositionAtTop)
+        else:
+            self.scrollTo(idx, QAbstractItemView.PositionAtTop)
+
+
 class TileDelegate(QStyledItemDelegate):
     STACK_M = 24            # Rand um das Cover für gedrehte Hintergrund-Cover und Schatten
 
@@ -4697,7 +4769,7 @@ class TrackModel(QAbstractItemModel):
         self.beginResetModel()
         self.flat = True
         la, ja = self.win.local_lib.albums, self.win.jf_lib.albums
-        self.rows = [("track", (ja if t.get("remote") else la).get(t["cover"]) or {"key": t["cover"], "title": t["album"],
+        self.rows = [("track", (ja if t.get("remote") else la).get(t.get("akey") or t["cover"]) or {"key": t["cover"], "title": t["album"],
                                                            "artist": t["albumartist"], "year": t.get("year", ""),
                                                            "genre": t.get("genre", "")}, t, 0, -1, i)
                      for i, t in enumerate(tracks)]
@@ -4931,7 +5003,7 @@ class TrackDelegate(QStyledItemDelegate):
         W, H = rect.width(), rect.height()
         S, beside, bh = album_block(W)
         bh = max(bh, S + 14, 4 * 20 + 8) + H
-        ck = (a["key"], W, H, round(dpr * 100), font.key(), self.win.covers.gen, a["title"], a["artist"], a["genre"], a["year"])
+        ck = (a["key"], W, H, round(dpr * 100), font.key(), self.win.covers.gen, a["title"], a["artist"], a["genre"], a["year"], a.get("edition"))
         pm = self._blocks.get(ck)
         if pm is None:
             cov = self.win.covers.peek(a["key"], S)
@@ -4970,7 +5042,8 @@ class TrackDelegate(QStyledItemDelegate):
             f = QFont(font)
             fb = QFont(f); fb.setWeight(QFont.DemiBold)
             lines = [(disp(a["title"]), fb, T.fg), (disp(a["artist"]), f, T.fg),
-                     (disp(a["genre"]) or tr_("Unbekanntes Genre"), f, T.dim), (a["year"] or tr_("Unbekanntes Jahr"), f, T.dim)]
+                     (disp(a["genre"]) or tr_("Unbekanntes Genre"), f, T.dim),
+                     ((a["year"] or tr_("Unbekanntes Jahr")) + (f" · {a['edition']}" if a.get("edition") else ""), f, T.dim)]
             for i, (txt, fnt, col) in enumerate(lines):
                 p.setFont(fnt); p.setPen(col)
                 lr = QRect(tx, ty + i * lh, tw, lh)
@@ -5872,7 +5945,7 @@ class LookupDialog(QDialog):
         self.r_fill = QRadioButton(tr_("Nur fehlende Angaben ergänzen")); self.r_fill.setChecked(True)
         self.r_over = QRadioButton(tr_("Vorhandene Angaben überschreiben"))
         self.r_over.setToolTip(tr_("Titel, Jahr, Genre und Titelnummern werden durch die Angaben von MusicBrainz ersetzt."))
-        has_cover = (COVER_DIR / f"{album['key']}.jpg").exists()
+        has_cover = (cover_path(album['key'])).exists()
         self.c_cover = QCheckBox(tr_("Cover übernehmen") if not has_cover else tr_("Vorhandenes Cover ersetzen"))
         self.c_cover.setChecked(not has_cover)
         for w in (self.r_fill, self.r_over):
@@ -6911,7 +6984,7 @@ class MainWindow(QMainWindow):
                 t = read_track(f) or basic_track(f)
                 if t is None:
                     continue
-                if not (COVER_DIR / f"{t['cover']}.jpg").exists():
+                if not (cover_path(t['cover'])).exists():
                     try:
                         save_cover(f, t["cover"])
                     except Exception:
@@ -7231,7 +7304,7 @@ class MainWindow(QMainWindow):
                 aa = value if key == "albumartist" else t.get("albumartist") or t["artist"]
                 al = value if key == "album" else t["album"]
                 new_key = album_key(aa, al)
-                src, dst = COVER_DIR / f"{t['cover']}.jpg", COVER_DIR / f"{new_key}.jpg"
+                src, dst = cover_path(t['cover']), cover_path(new_key)
                 if src.exists() and not dst.exists():
                     try:
                         dst.write_bytes(src.read_bytes())
@@ -7337,7 +7410,7 @@ class MainWindow(QMainWindow):
         for a in (albums if albums is not None else self.local_lib.albums.values()):
             if a["title"] in UNKNOWN:
                 continue
-            if (not (COVER_DIR / f"{a['key']}.jpg").exists() or not a["year"]
+            if (not (cover_path(a['key'])).exists() or not a["year"]
                     or a["genre"] in UNKNOWN or any(not t.get("track") for t in a["tracks"])):
                 out.append(a)
         return out
@@ -7495,7 +7568,7 @@ class MainWindow(QMainWindow):
         split.addWidget(self.nav)
 
         self.stack = QStackedWidget()
-        self.grid = QListView()
+        self.grid = GridView()
         self.grid.setViewMode(QListView.IconMode); self.grid.setResizeMode(QListView.Adjust)
         self.grid.setMovement(QListView.Static); self.grid.setUniformItemSizes(False)
         self.grid.setFlow(QListView.LeftToRight); self.grid.setWrapping(True)
@@ -8034,7 +8107,10 @@ class MainWindow(QMainWindow):
             else:
                 albums = list(self.lib.albums.values())
             for a in albums:
-                lines = [disp(a["artist"]), disp(a["genre"]) or tr_("Unbekanntes Genre"), a["year"] or tr_("Unbekanntes Jahr")]
+                yl = a["year"] or tr_("Unbekanntes Jahr")
+                if a.get("edition"):                       # getrennte Ausgaben (FLAC/MP3) unterscheidbar machen
+                    yl = f"{yl} · {a['edition']}"
+                lines = [disp(a["artist"]), disp(a["genre"]) or tr_("Unbekanntes Genre"), yl]
                 sections.setdefault(a["artist"], []).append(
                     ("album", a["title"], lines, [a["key"]], a["key"], self._avg_rating(a["tracks"])))
         n = 0
