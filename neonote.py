@@ -40,7 +40,7 @@ from PySide6.QtCore import (QPropertyAnimation, QEasingCurve, QProcess, QAbstrac
                             QItemSelectionModel, QModelIndex, QPoint, QPointF, QRect,
                             QRectF, QSettings, QSize, Qt, QThread, QTimer,
                             QUrl, Signal, qVersion)
-from PySide6.QtGui import (QActionGroup, QColor, QFont, QFontMetrics, QGuiApplication, QLinearGradient, QRadialGradient, QTransform,
+from PySide6.QtGui import (QRegion, QActionGroup, QColor, QFont, QFontMetrics, QGuiApplication, QLinearGradient, QRadialGradient, QTransform,
                            QIcon, QImage, QImageReader, QKeySequence, QPainter,
                            QPainterPath, QPalette, QPen, QPixmap, QPolygonF,
                            QShortcut, QStandardItem, QStandardItemModel, QDesktopServices)
@@ -5195,6 +5195,21 @@ class TrackView(QTreeView):
             o.state &= ~(QStyle.State_Selected | QStyle.State_MouseOver | QStyle.State_HasFocus)
             self.itemDelegate().paint(p, o, i0)
             return
+        if kind == "track":
+            # Hover- und Auswahlfläche nur über den Titelspalten, nicht über dem Albumcover-Block
+            ci = COL.get("cover", 0)
+            if not self.header().isSectionHidden(ci):
+                x, cw = self.columnViewportPosition(ci), self.columnWidth(ci)
+                cover = QRect(x, opt.rect.top(), cw, opt.rect.height())
+                p.save()
+                p.setClipRegion(QRegion(opt.rect) - QRegion(cover))
+                super().drawRow(p, opt, idx)
+                p.restore()
+                o = QStyleOptionViewItem(opt)
+                o.rect = cover
+                o.state &= ~(QStyle.State_Selected | QStyle.State_MouseOver | QStyle.State_HasFocus)
+                self.itemDelegate().paint(p, o, m.index(idx.row(), ci))
+                return
         super().drawRow(p, opt, idx)
 
     def _group_at(self, idx):
