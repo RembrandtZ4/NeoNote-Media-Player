@@ -104,7 +104,7 @@ Stille Installation (z. B. für Skripte): `NeoNote-Setup-<Version>.exe /S`.
 
 Windows zeigt beim ersten Start eventuell eine SmartScreen-Warnung („Unbekannter Herausgeber“), weil der Installer nicht signiert ist: „Weitere Informationen“ ▸ „Trotzdem ausführen“.
 
-**mpv unter Windows:** Equalizer, Gapless und die Waveform laufen über mpv. Beim ersten Start fragt NeoNote, ob es `libmpv-2.dll` (ca. 30 MB, Projekt shinchiro/mpv-winbuild-cmake auf GitHub) herunterladen soll. Später geht das unter Einstellungen ▸ System. Ohne mpv läuft alles andere über Qt Multimedia.
+**mpv unter Windows:** Equalizer, Gapless und die Waveform laufen über mpv. Seit 1.1.8 liegt `libmpv-2.dll` (Projekt shinchiro/mpv-winbuild-cmake) dem Installer bei – es muss nichts nachgeladen werden, und mit jedem Update kommt eine aktuelle Fassung mit.
 
 **Umstieg vom Windows Media Player:** Musikordner unter Einstellungen ▸ Bibliothek eintragen. Sternbewertungen, die der WMP in die Dateien geschrieben hat, übernimmt NeoNote beim Einlesen. WMP-Wiedergabelisten (`.wpl`) importierst du über Organisieren ▸ Wiedergabeliste importieren.
 
@@ -222,14 +222,16 @@ Mit `python-jeepney` meldet sich NeoNote bei Plasma an (MPRIS). Dann gilt:
 
 ## Einstellungen
 
-Zahnrad oben rechts oder **Organisieren ▸ Einstellungen…**. Es gibt sechs Reiter:
+Zahnrad oben rechts, das Menü ☰ daneben oder **Organisieren ▸ Einstellungen…**. Ist die Befehlsleiste ausgeblendet, sitzen Zahnrad und ☰ oben in der Titelleiste. Es gibt acht Reiter:
 
 - **Bibliothek:** Musikordner hinzufügen oder entfernen und die Bibliothek komplett neu einlesen. Dazu kommen die Ordnerüberwachung (an), die Suche beim Start (an) und die Aufnahme von Dateien aus Dolphin (aus). Beim Neueinlesen liest der Player nur geänderte Dateien, das geht auch bei großen Sammlungen in Sekunden.
 - **Darstellung:** Farben, Transparenz, Covergröße, Fensterleiste und Sprache (siehe unten).
 - **Online-Informationen:** wohin gefundene Angaben und Cover gespeichert werden, und ob von Hand bearbeitete Tags in die Dateien geschrieben werden (an).
-- **System:** Symbol in der Systemleiste, Verhalten des Schließen-Buttons, Mediensteuerung, mpv, lückenlose Wiedergabe und Standby-Sperre.
+- **System:** Symbol in der Systemleiste, Verhalten des Schließen-Buttons, Mediensteuerung, mpv, lückenlose Wiedergabe, Standby-Sperre und Updates (bei jedem Start, täglich, wöchentlich oder nie; unter Windows auf Wunsch automatisch).
+- **Video:** Hardwarebeschleunigung (automatisch, nur Prozessor oder ein bestimmtes Verfahren wie D3D11VA, VA-API oder CUDA), bevorzugte Tonspur, Untertitel automatisch einschalten (nie, bei fremdsprachigem Ton, immer) mit Wunschsprache und das automatische Laden gleichnamiger .srt-Dateien.
 - **Navigation:** Navigationsleiste anpassen.
 - **Jellyfin:** Verbindung zu deinem Jellyfin-Server.
+- **Über:** Version und Datum, Credits, die genauen Versionen von Qt, FFmpeg und mpv („Versionen kopieren“ für Fehlermeldungen) und deine Datenordner.
 
 ## Tags bearbeiten
 
@@ -323,7 +325,7 @@ Ein Titel zählt als gespielt, sobald 30 Sekunden bzw. die Hälfte gelaufen sind
 - Wiedergabelisten: `~/.local/share/neonote/playlists/*.m3u8`
 - Jellyfin-Cache und Offline-Kopien: `~/.local/share/neonote/jellyfin*`
 - Einstellungen, Radiosender, letzte Sitzung: `~/.config/NeoNote/NeoNote.conf`
-- Unter Windows: Daten in `%APPDATA%\NeoNote`, Cover und mpv in `%LOCALAPPDATA%\NeoNote`, Einstellungen in der Registry (`HKEY_CURRENT_USER\Software\NeoNote`)
+- Unter Windows: Daten in `%APPDATA%\NeoNote`, Cover in `%LOCALAPPDATA%\NeoNote`, Einstellungen in der Registry (`HKEY_CURRENT_USER\Software\NeoNote`)
 
 ## Fehler und Ideen
 

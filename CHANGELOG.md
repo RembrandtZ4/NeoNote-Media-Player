@@ -1,6 +1,6 @@
 # Änderungen
 
-## Nächste Version (in Arbeit)
+## 1.1.8 – 19.11.2026
 
 **Neu**
 - **Updates:** NeoNote sucht auf Wunsch nach neuen Versionen – bei jedem Start, einmal am Tag (Standard), einmal pro Woche oder nie (Einstellungen ▸ System ▸ Updates, außerdem „Nach Updates suchen“ unter Über NeoNote). Es wird nur die Release-Seite auf GitHub gelesen.

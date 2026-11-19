@@ -106,7 +106,7 @@ Silent installation (e.g. for scripts): `NeoNote-Setup-<version>.exe /S`.
 
 On first launch Windows may show a SmartScreen warning (“Unknown publisher”) because the installer isn't signed: click “More info” ▸ “Run anyway”.
 
-**mpv on Windows:** the equalizer, gapless playback and the waveform use mpv. On first launch NeoNote asks whether to download `libmpv-2.dll` (about 30 MB, from the shinchiro/mpv-winbuild-cmake project on GitHub). You can do this later under Settings ▸ System. Without mpv, everything else runs via Qt Multimedia.
+**mpv on Windows:** the equalizer, gapless playback and the waveform use mpv. Since 1.1.8, `libmpv-2.dll` (from the shinchiro/mpv-winbuild-cmake project) is included in the installer – nothing needs to be downloaded, and every update brings a current version.
 
 **Switching from Windows Media Player:** add your music folders under Settings ▸ Library. NeoNote picks up star ratings that WMP wrote into the files. Import WMP playlists (`.wpl`) via Organize ▸ Import playlist….
 
@@ -224,14 +224,16 @@ With `python-jeepney`, NeoNote registers with the desktop (MPRIS). Then:
 
 ## Settings
 
-The gear icon at the top right or **Organize ▸ Settings…**. There are six tabs:
+The gear icon at the top right, the ☰ menu next to it or **Organize ▸ Settings…**. If the command bar is hidden, the gear and ☰ move up into the title bar. There are eight tabs:
 
 - **Library:** add or remove music folders and rescan the whole library, plus folder watching (on), scanning at startup (on) and adding files opened from the file manager (off). A rescan only reads changed files, which takes seconds even for large collections.
 - **Appearance:** colors, transparency, cover size, title bar and language (see below).
 - **Online information:** where found information and covers are saved, and whether manually edited tags are written into the files (on).
-- **System:** system tray icon, close button behavior, media controls, mpv, gapless playback and sleep prevention.
+- **System:** system tray icon, close button behavior, media controls, mpv, gapless playback, sleep prevention and updates (at every start, daily, weekly or never; on Windows optionally automatic).
+- **Video:** hardware acceleration (automatic, CPU only or a specific method such as D3D11VA, VA-API or CUDA), preferred audio track, turning on subtitles automatically (never, when the audio is in another language, always) with a preferred language, and auto-loading .srt files with the same name.
 - **Navigation:** customize the navigation bar.
 - **Jellyfin:** connection to your Jellyfin server.
+- **About:** version and date, credits, the exact versions of Qt, FFmpeg and mpv (“Copy versions” for bug reports) and your data folders.
 
 ## Editing tags
 
@@ -325,7 +327,7 @@ A track counts as played after 30 seconds or half its length.
 - Playlists: `~/.local/share/neonote/playlists/*.m3u8`
 - Jellyfin cache and offline copies: `~/.local/share/neonote/jellyfin*`
 - Settings, radio stations, last session: `~/.config/NeoNote/NeoNote.conf`
-- On Windows: data in `%APPDATA%\NeoNote`, covers and mpv in `%LOCALAPPDATA%\NeoNote`, settings in the registry (`HKEY_CURRENT_USER\Software\NeoNote`)
+- On Windows: data in `%APPDATA%\NeoNote`, covers in `%LOCALAPPDATA%\NeoNote`, settings in the registry (`HKEY_CURRENT_USER\Software\NeoNote`)
 
 ## Bugs and ideas
 

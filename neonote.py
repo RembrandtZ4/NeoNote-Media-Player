@@ -81,7 +81,7 @@ HIDDEN_FILE = DATA_DIR / "hidden.json"
 JF_CACHE_FILE = DATA_DIR / "jellyfin.json"
 JF_OFFLINE_DIR = DATA_DIR / "jellyfin-offline"
 PLAYLIST_DIR = DATA_DIR / "playlists"
-APP_VERSION = "1.1.7"
+APP_VERSION = "1.1.8"
 APP_DATE = "2026-11-19"          # Datum der Version (wird beim Veröffentlichen gesetzt)
 APP_AUTHOR = "RembrandtZ4"
 
