@@ -4332,7 +4332,7 @@ class VideoView(QWidget):
         self.update()
 
     def set_np_mode(self, on):
-        self.lib_btn.setVisible(on)
+        self.lib_btn.setVisible(False)    # „Zur Bibliothek“ gibt es unten rechts in der Steuerleiste
         self._place()
 
     def resizeEvent(self, e):
@@ -6823,7 +6823,7 @@ class MainWindow(QMainWindow):
         if self.np_mode and not want and self.frameless and not self._fs:
             self.topbar.show()
         if want == self._overlay and winbox == self._winbox_on and vid == self._ovl_video:
-            self.video.lib_btn.setVisible(self.np_mode and not want and not winbox)
+            self.video.lib_btn.hide()
             if want or winbox:
                 self._place_overlay()
             return
@@ -6848,7 +6848,7 @@ class MainWindow(QMainWindow):
         # schlanke Ansicht: Titelleiste weg, Bibliotheks-Knopf im Bild weg (gibt es unten in der Leiste)
         if want or winbox:
             self.topbar.hide()
-        self.video.lib_btn.setVisible(self.np_mode and not want and not winbox)
+        self.video.lib_btn.hide()
         if want:
             for w in (self._ovl_items() if vid else []):
                 eff = QGraphicsOpacityEffect(w); eff.setOpacity(1.0); w.setGraphicsEffect(eff)

@@ -15,7 +15,7 @@
 - **Windows: mpv ist dabei.** `libmpv-2.dll` liegt dem Installer bei – Equalizer und lückenlose Wiedergabe laufen sofort, ohne Download. Mit jedem Update kommt auch eine aktuelle libmpv (mit eigenem FFmpeg). Eine früher heruntergeladene Kopie wird entfernt.
 
 **Geändert**
-- „Wird gespielt“ bei Musik wieder wie in 1.1.5: normale Titelleiste oben mit Zurück/Vor und den Fensterknöpfen (ohne Suche und Überschrift), Steuerleiste unten. Die über dem Bild schwebenden, ausblendenden Leisten gibt es weiterhin bei Videos.
+- „Wird gespielt“ bei Musik wieder wie in 1.1.5: normale Titelleiste oben mit Zurück/Vor und den Fensterknöpfen (ohne Suche und Überschrift), Steuerleiste unten. Der doppelte Bibliotheks-Knopf oben rechts im Bild entfällt – er sitzt unten rechts in der Steuerleiste. Die über dem Bild schwebenden, ausblendenden Leisten gibt es weiterhin bei Videos.
 
 **Fehlerbehebungen**
 - Bei Titeln über einer Stunde wurde die Zeitanzeige abgeschnitten („12:01 …:03:11“). Das Feld passt sich jetzt an.
