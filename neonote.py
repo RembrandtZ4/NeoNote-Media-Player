@@ -7641,6 +7641,14 @@ class MainWindow(QMainWindow):
         if obj is getattr(self, "controls", None) and ev.type() == QEvent.Resize:
             self._layout_controls()
             return False
+        # Wie im WMP12: auch an freien Stellen der Steuerleiste unten lässt sich das Fenster verschieben
+        if obj is getattr(self, "controls", None) and self.frameless and not self._fs and \
+                ev.type() in (QEvent.MouseButtonPress, QEvent.MouseButtonDblClick) and ev.button() == Qt.LeftButton:
+            if ev.type() == QEvent.MouseButtonDblClick:
+                self.toggle_maximize()
+            elif self.windowHandle():
+                self.windowHandle().startSystemMove()
+            return True
         if obj is getattr(self, "central", None) and ev.type() == QEvent.Resize and (self._overlay or self._winbox_on):
             QTimer.singleShot(0, self._place_overlay)
         if obj is getattr(self, "central", None) and self.frameless and not self.isMaximized():
