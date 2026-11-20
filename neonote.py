@@ -4195,8 +4195,11 @@ def _process_age():
     try:
         if IS_WIN:
             k = ctypes.windll.kernel32
+            k.GetCurrentProcess.restype = ctypes.c_void_p        # Pseudo-Handle −1 – als 64-Bit-Wert übergeben
+            k.GetProcessTimes.argtypes = [ctypes.c_void_p] + [ctypes.c_void_p] * 4
             c, e, kt, ut, now = (ctypes.c_ulonglong() for _ in range(5))
-            k.GetProcessTimes(k.GetCurrentProcess(), ctypes.byref(c), ctypes.byref(e), ctypes.byref(kt), ctypes.byref(ut))
+            if not k.GetProcessTimes(k.GetCurrentProcess(), ctypes.byref(c), ctypes.byref(e), ctypes.byref(kt), ctypes.byref(ut)):
+                return None
             k.GetSystemTimeAsFileTime(ctypes.byref(now))
             return (now.value - c.value) / 1e7
         with open("/proc/self/stat") as f:
@@ -10751,6 +10754,7 @@ def main():
     if s.value("ui/splash", True, type=bool) and not os.environ.get("NEONOTE_NOSPLASH"):
         T.update({k: s.value(f"theme/{k}", v, type=type(v)) for k, v in DEFAULT_THEME.items()})
         _SPLASH = Splash(); _SPLASH.show()
+        _start_mark("Startbild sichtbar")
         splash_step(tr_("Lade die Einstellungen …"), 8)
     w = MainWindow()
     server = QLocalServer(w)
