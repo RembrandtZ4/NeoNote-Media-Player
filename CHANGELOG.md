@@ -4,10 +4,12 @@
 
 **Neu**
 - **Interpreten zusammenführen** wie im WMP12: In der Interpretenansicht eine Kachel (oder mehrere markierte) auf einen anderen Interpreten ziehen. Nach einer Rückfrage wandern alle Titel dorthin – Interpret bzw. Albuminterpret wird auf den Zielnamen gesetzt (in die Dateien geschrieben oder nur in der Bibliothek, je nach Einstellung).
+- **Angaben neben dem Cover anklickbar:** In der Titelliste öffnet ein Klick auf Albumtitel, Interpret, Genre oder Jahr die passende Ansicht. Neu ist dabei die Jahresansicht mit allen Alben aus diesem Jahr, wie im WMP12.
 
 **Verbessert**
 - Wie im WMP12 lässt sich das Fenster jetzt auch an der Steuerleiste unten verschieben – an allen freien Stellen und über Titel und Interpret. Doppelklick dort maximiert, wie oben.
 - Zurück und Vor merken sich ihren Verlauf jetzt auch über einen Neustart hinweg (die letzten 50 Ansichten, mit Scrollposition).
+- Beim Start schreibt NeoNote die Dauer jedes Startschritts in `startup.log` im Datenordner – hilft, langsame Starts aufzuspüren.
 - Im Menü ☰ steht „Befehlsleiste anzeigen“ jetzt bei „Darstellung…“ statt ganz unten.
 - Windows 11: Die Titelleisten der Dialoge (Einstellungen, Equalizer, Albuminfos …) haben jetzt dieselbe Farbe wie das Fenster – eine durchgehende Fläche statt eines abgesetzten Balkens. Gilt auch fürs Hauptfenster mit Systemrahmen und passt sich beim Farbwechsel sofort an.
 

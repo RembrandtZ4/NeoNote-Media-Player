@@ -5435,17 +5435,9 @@ class TrackDelegate(QStyledItemDelegate):
             p.setBrush(T.ov(0.07)); p.drawRect(cr)
         p.setPen(QPen(T.ov(0.12), 1)); p.setBrush(Qt.NoBrush)
         p.drawRect(QRectF(cr).adjusted(.5, .5, -.5, -.5))
-        if beside:
-            tx, ty, tw, lh = cr.right() + 14, 4, W - cr.right() - 20, 20
-        else:                                         # schmale Spalte: Infos unter das Cover
-            tx, ty, tw, lh = cr.left(), cr.bottom() + 6, W - cr.left() - 6, 18
+        tx, ty, tw, lh = block_text_geom(W, S, beside)
         if tw > 30:
-            f = QFont(font)
-            fb = QFont(f); fb.setWeight(QFont.DemiBold)
-            lines = [(disp(a["title"]), fb, T.fg), (disp(a["artist"]), f, T.fg),
-                     (disp(a["genre"]) or tr_("Unbekanntes Genre"), f, T.dim),
-                     ((a["year"] or tr_("Unbekanntes Jahr")) + (f" · {a['edition']}" if a.get("edition") else ""), f, T.dim)]
-            for i, (txt, fnt, col) in enumerate(lines):
+            for i, (txt, fnt, col) in enumerate(block_lines(a, font)):
                 p.setFont(fnt); p.setPen(col)
                 lr = QRect(tx, ty + i * lh, tw, lh)
                 p.drawText(lr, Qt.AlignLeft | Qt.AlignVCenter, QFontMetrics(fnt).elidedText(txt, Qt.ElideRight, tw))
@@ -5463,6 +5455,23 @@ class TrackDelegate(QStyledItemDelegate):
 
 def cover_size_for(col_width):
     return int(max(40, min(T.cover, col_width - 20)))
+
+
+def block_text_geom(W, S, beside):
+    """Lage der Infozeilen im Album-Block: x, y der ersten Zeile, Breite, Zeilenhöhe."""
+    cr = QRect(10, 6, S, S)
+    if beside:
+        return cr.right() + 14, 4, W - cr.right() - 20, 20
+    return cr.left(), cr.bottom() + 6, W - cr.left() - 6, 18     # schmale Spalte: Infos unter dem Cover
+
+
+def block_lines(a, font):
+    """Die vier Infozeilen neben dem Cover: (Text, Schrift, Farbe). Album, Interpret, Genre, Jahr."""
+    f = QFont(font)
+    fb = QFont(f); fb.setWeight(QFont.DemiBold)
+    return [(disp(a["title"]), fb, T.fg), (disp(a["artist"]), f, T.fg),
+            (disp(a["genre"]) or tr_("Unbekanntes Genre"), f, T.dim),
+            ((a["year"] or tr_("Unbekanntes Jahr")) + (f" · {a['edition']}" if a.get("edition") else ""), f, T.dim)]
 
 
 def album_block(col_width):
@@ -5620,7 +5629,54 @@ class TrackView(QTreeView):
                 return row
         return None
 
+    def _info_link_at(self, pos):
+        """Welche Infozeile neben dem Cover liegt unter der Maus? → Ansicht, die ein Klick öffnet, sonst None."""
+        idx = self.indexAt(pos)
+        row = self._group_at(idx)
+        if not row:
+            return None
+        a, k = row[1], row[3]
+        rect = self.visualRect(idx)
+        W, H = self.columnWidth(idx.column()), rect.height()
+        S, beside, _bh = album_block(W)
+        tx, ty, tw, lh = block_text_geom(W, S, beside)
+        x, y = pos.x() - rect.left(), k * H + pos.y() - rect.top()
+        i = int((y - ty) // lh) if y >= ty else -1
+        if not 0 <= i < 4 or x < tx:
+            return None
+        txt, fnt, _col = block_lines(a, self.font())[i]
+        if x > tx + min(tw, QFontMetrics(fnt).horizontalAdvance(txt)):
+            return None
+        pre = "jf:" if self.win._src == "jf" else ""
+        if i == 0:
+            return pre + "album:" + a["key"]
+        if i == 1:
+            return pre + "artist:" + a["artist"]
+        if i == 2:
+            return (pre + "genre:" + a["genre"]) if a["genre"] else None
+        return (pre + "year:" + a["year"]) if a["year"] else None
+
+    def mouseMoveEvent(self, e):
+        link = self._info_link_at(e.position().toPoint())
+        if link and link != self.win.state:
+            if not getattr(self, "_link_cursor", False):
+                self.viewport().setCursor(Qt.PointingHandCursor); self._link_cursor = True
+        elif getattr(self, "_link_cursor", False):
+            self.viewport().unsetCursor(); self._link_cursor = False
+        super().mouseMoveEvent(e)
+
+    def leaveEvent(self, e):
+        if getattr(self, "_link_cursor", False):
+            self.viewport().unsetCursor(); self._link_cursor = False
+        super().leaveEvent(e)
+
     def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton and not e.modifiers():
+            link = self._info_link_at(e.position().toPoint())
+            if link and link != self.win.state:
+                self.viewport().unsetCursor(); self._link_cursor = False
+                QTimer.singleShot(0, lambda: self.win.navigate(link))
+                return
         row = self._group_at(self.indexAt(e.position().toPoint()))
         if row and e.button() in (Qt.LeftButton, Qt.RightButton):
             first, last = self.model().groups[row[4]]
@@ -8638,6 +8694,8 @@ class MainWindow(QMainWindow):
                 parts += [(tr_("Interpret"), "jf:artists"), (sub[7:], None)]
             elif sub.startswith("genre:"):
                 parts += [(tr_("Genre"), "jf:genres"), (sub[6:], None)]
+            elif sub.startswith("year:"):
+                parts += [(tr_("Jahr"), None), (sub[5:], None)]
             elif sub.startswith("album:"):
                 a = self.jf_lib.albums.get(sub[6:])
                 parts += [(tr_("Album"), "jf:albums"), (a["title"] if a else "?", None)]
@@ -8655,6 +8713,8 @@ class MainWindow(QMainWindow):
             parts += [(tr_("Interpret"), "artists"), (st[7:], None)]
         elif st.startswith("genre:"):
             parts += [(tr_("Genre"), "genres"), (st[6:], None)]
+        elif st.startswith("year:"):
+            parts += [(tr_("Jahr"), None), (st[5:], None)]
         elif st.startswith("playlist:"):
             parts = [(tr_("Medienbibliothek"), "artists"), (tr_("Wiedergabelisten"), None), (st[9:], None)]
         elif st == "auto:recent":
@@ -8691,7 +8751,7 @@ class MainWindow(QMainWindow):
         if pre:
             st = st[3:]
         base = st.split(":")[0]
-        nk = {"artist": "artists", "genre": "genres", "album": "albums"}.get(base, base)
+        nk = {"artist": "artists", "genre": "genres", "album": "albums", "year": "albums"}.get(base, base)
         if st.startswith(("playlist:", "auto:")):
             nk = st
         nk = pre + nk
@@ -8848,6 +8908,8 @@ class MainWindow(QMainWindow):
         else:
             if st.startswith("genre:"):
                 albums = [a for a in self.lib.albums.values() if a["genre"] == st[6:]]
+            elif st.startswith("year:"):
+                albums = [a for a in self.lib.albums.values() if a["year"] == st[5:]]
             else:
                 albums = list(self.lib.albums.values())
             for a in albums:
@@ -9112,7 +9174,8 @@ class MainWindow(QMainWindow):
         st = self.state
         gone = (st.startswith("artist:") and not any(a["artist"] == st[7:] for a in self.lib.albums.values())) or \
                (st.startswith("album:") and st[6:] not in self.lib.albums) or \
-               (st.startswith("genre:") and not any(a["genre"] == st[6:] for a in self.lib.albums.values()))
+               (st.startswith("genre:") and not any(a["genre"] == st[6:] for a in self.lib.albums.values())) or \
+               (st.startswith("year:") and not any(a["year"] == st[5:] for a in self.lib.albums.values()))
         if gone:
             self.navigate("artists")
         elif self._quiet_scan:
