@@ -1,4 +1,4 @@
-# Veröffentlicht eine Release-Seite aus fertigen Dateien – es wird hier nichts gebaut.
+# Veröffentlicht eine Release-Seite aus fertigen Dateien und baut danach Flatpak und AUR-Paket.
 # Inhalt dieses Zweigs: version.txt, commit.txt (Quellstand auf main), notes.md, files/*
 name: Release veröffentlichen
 on:
@@ -9,10 +9,17 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      commit: ${{ steps.meta.outputs.commit }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: release
+      - id: meta
+        run: |
+          echo "version=$(tr -d '[:space:]' < version.txt)" >> "$GITHUB_OUTPUT"
+          echo "commit=$(tr -d '[:space:]' < commit.txt)" >> "$GITHUB_OUTPUT"
       - name: Release anlegen oder aktualisieren
         env:
           GH_TOKEN: ${{ github.token }}
@@ -24,11 +31,62 @@ jobs:
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TITLE" --notes-file notes.md --latest
             gh release upload "$TAG" files/* --repo "$GITHUB_REPOSITORY" --clobber
-            # Anhänge, die nicht mehr zu dieser Release gehören, entfernen
+            # Anhänge, die nicht mehr zu dieser Release gehören, entfernen (das Flatpak hängt der nächste Schritt an)
             for a in $(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'); do
+              case "$a" in *.flatpak) continue ;; esac
               [ -e "files/$a" ] || gh release delete-asset "$TAG" "$a" --repo "$GITHUB_REPOSITORY" --yes
             done
           else
             gh release create "$TAG" files/* --repo "$GITHUB_REPOSITORY" \
               --target "$(tr -d '[:space:]' < commit.txt)" --title "$TITLE" --notes-file notes.md --latest
           fi
+
+  flatpak:
+    needs: publish
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.9
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.publish.outputs.commit }}
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: NeoNote-${{ needs.publish.outputs.version }}-x86_64.flatpak
+          manifest-path: flatpak/io.github.RembrandtZ4.NeoNote.yml
+          cache-key: flatpak-builder-${{ hashFiles('flatpak/io.github.RembrandtZ4.NeoNote.yml') }}
+      - name: An die Release hängen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          command -v gh >/dev/null || (dnf install -y gh || apt-get install -y gh)
+          gh release upload "v${{ needs.publish.outputs.version }}" \
+            "NeoNote-${{ needs.publish.outputs.version }}-x86_64.flatpak" --repo "$GITHUB_REPOSITORY" --clobber
+
+  aur:
+    needs: publish
+    runs-on: ubuntu-latest
+    env:
+      AUR_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.publish.outputs.commit }}
+      - name: Version eintragen
+        run: |
+          sed -i "s/^pkgver=.*/pkgver=${{ needs.publish.outputs.version }}/; s/^pkgrel=.*/pkgrel=1/" aur/PKGBUILD
+      - name: Ins AUR hochladen
+        if: env.AUR_KEY != ''
+        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
+        with:
+          pkgname: neonote
+          pkgbuild: aur/PKGBUILD
+          updpkgsums: true
+          commit_username: RembrandtZ4
+          commit_email: RembrandtZ4@users.noreply.github.com
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ needs.publish.outputs.version }}"
+      - name: Hinweis ohne AUR-Schlüssel
+        if: env.AUR_KEY == ''
+        run: echo "::notice::Kein Secret AUR_SSH_PRIVATE_KEY hinterlegt – AUR-Paket wurde nicht hochgeladen."
