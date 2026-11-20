@@ -25,3 +25,13 @@ jobs:
           bundle: NeoNote-x86_64.flatpak
           manifest-path: flatpak/io.github.RembrandtZ4.NeoNote.yml
           cache-key: flatpak-builder-${{ hashFiles('flatpak/io.github.RembrandtZ4.NeoNote.yml') }}
+      - name: Kurztest (Module laden, NeoNote ohne Bildschirm starten)
+        continue-on-error: true
+        run: |
+          set -x
+          flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
+          flatpak install -y --user --noninteractive NeoNote-x86_64.flatpak
+          flatpak run --command=python3 io.github.RembrandtZ4.NeoNote -c "import mpv, mutagen, jeepney; from PySide6 import QtCore, QtMultimedia; print('Module OK', QtCore.qVersion(), mpv.MPV)"
+          QT_QPA_PLATFORM=offscreen NEONOTE_NOSPLASH=1 timeout 25 flatpak run --env=QT_QPA_PLATFORM=offscreen --env=NEONOTE_NOSPLASH=1 io.github.RembrandtZ4.NeoNote || true
+          cat ~/.var/app/io.github.RembrandtZ4.NeoNote/data/neonote/startup.log || true
+          cat ~/.var/app/io.github.RembrandtZ4.NeoNote/data/neonote/crash.log || true
