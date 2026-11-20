@@ -6,7 +6,7 @@ Target amd64-unicode
 !define APP "NeoNote"
 !define TITLE "NeoNote Media Player"
 !ifndef VERSION
-  !define VERSION "1.1.8"
+  !define VERSION "1.1.9"
 !endif
 Name "${TITLE}"
 Caption "${TITLE} ${VERSION} – Setup"

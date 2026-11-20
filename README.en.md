@@ -241,6 +241,8 @@ Like in WMP12: select a track, then **click the field again** or press `F2`, typ
 
 If several tracks are selected, a change to artist, album, year, genre etc. applies to all of them. The quickest way to select a whole album is to click its cover. Title and number only change for the track you edit. Renaming an album keeps its cover.
 
+**Merging duplicate artists:** like in WMP12, drag a tile (or several selected ones) onto the right artist in the artist view. After a confirmation, all tracks move there.
+
 ## Album information from the internet
 
 NeoNote fetches missing information (year, genre, track numbers, titles) from **MusicBrainz** and covers from the **Cover Art Archive**. Both are free and need no account.
@@ -291,6 +293,8 @@ If text looks blurry with fractional scaling (e.g. 125 %), turn blur off. The pl
 |---|---|
 | Show all albums of an artist | Double-click the cover stack |
 | Select a whole album | Single-click the cover in the track list |
+| Jump to the album, artist, genre or year | Click the details next to the cover |
+| Merge artists | Drag a tile onto another artist |
 | Play an album | Double-click the cover in the track list |
 | Show and hide columns | Right-click the column headers |
 | Move or resize columns | Drag the column header |
@@ -301,6 +305,7 @@ If text looks blurry with fractional scaling (e.g. 125 %), turn blur off. The pl
 | Show file in the file manager | Right-click a track ▸ Open file location |
 | Copy file path | Right-click a track ▸ Copy file path |
 | Reorder the playlist | Drag & drop |
+| Move the window | Drag the title bar at the top or empty spots of the control bar at the bottom |
 | Remove from the playlist | Select and press `Del` |
 | Play / pause | `Ctrl+P` or media key |
 | Next / previous track | `Ctrl+→` / `Ctrl+←` |

@@ -239,6 +239,8 @@ Wie in WMP12: Titel markieren, dann **noch einmal auf das Feld klicken** oder `F
 
 Sind mehrere Titel markiert, gilt eine Änderung an Interpret, Album, Jahr, Genre usw. für alle markierten Titel. Am schnellsten markierst du ein ganzes Album mit einem Klick aufs Cover. Titel und Nummer ändern sich nur beim bearbeiteten Titel. Benennst du ein Album um, behält es sein Cover.
 
+**Doppelte Interpreten zusammenführen:** Wie im WMP12 in der Interpretenansicht eine Kachel (oder mehrere markierte) auf den richtigen Interpreten ziehen. Nach einer Rückfrage wandern alle Titel dorthin.
+
 ## Albuminformationen aus dem Internet
 
 NeoNote holt fehlende Angaben (Jahr, Genre, Titelnummern, Titel) bei **MusicBrainz** und Cover beim **Cover Art Archive**. Beides ist kostenlos, eine Anmeldung ist nicht nötig.
@@ -290,6 +292,8 @@ Wenn die Schrift bei fraktionaler Skalierung (z. B. 125 %) unscharf wirkt, schal
 | Alle Alben eines Interpreten anzeigen | Doppelklick auf den Cover-Stapel |
 | Ganzes Album markieren | Einfacher Klick auf das Cover in der Titelliste |
 | Album abspielen | Doppelklick auf das Cover in der Titelliste |
+| Zum Album, Interpreten, Genre oder Jahr springen | Auf die Angaben neben dem Cover klicken |
+| Interpreten zusammenführen | Kachel auf einen anderen Interpreten ziehen |
 | Spalten ein- und ausblenden | Rechtsklick auf die Spaltenköpfe |
 | Spalten verschieben oder breiter machen | Spaltenkopf ziehen |
 | Sortieren | Klick auf einen Spaltenkopf (nochmal = umgekehrt), Klick auf „Album“ = wieder nach Alben gruppiert |
@@ -299,6 +303,7 @@ Wenn die Schrift bei fraktionaler Skalierung (z. B. 125 %) unscharf wirkt, schal
 | Datei im Dateimanager zeigen | Rechtsklick auf einen Titel ▸ Dateispeicherort öffnen (Dolphin markiert die Datei) |
 | Dateipfad kopieren | Rechtsklick auf einen Titel ▸ Dateipfad kopieren |
 | Wiedergabeliste umsortieren | Drag & Drop |
+| Fenster verschieben | Titelleiste oben oder freie Stellen der Steuerleiste unten ziehen |
 | Aus der Wiedergabeliste entfernen | Markieren und `Entf` |
 | Wiedergabe / Pause | `Strg+P` oder Medientaste |
 | Nächster / vorheriger Titel | `Strg+→` / `Strg+←` |
