@@ -41,13 +41,13 @@ from PySide6.QtCore import (QDate, QMimeData, QPropertyAnimation, QEasingCurve, 
                             QItemSelectionModel, QModelIndex, QPoint, QPointF, QRect,
                             QRectF, QSettings, QSize, Qt, QThread, QTimer,
                             QUrl, Signal, qVersion)
-from PySide6.QtGui import (QOpenGLContext, QRegion, QAction, QDrag, QHoverEvent, QActionGroup, QColor, QFont, QFontMetrics, QGuiApplication, QLinearGradient, QRadialGradient, QTransform,
+from PySide6.QtGui import (QOpenGLContext, QOffscreenSurface, QSurfaceFormat, QRegion, QAction, QDrag, QHoverEvent, QActionGroup, QColor, QFont, QFontMetrics, QGuiApplication, QLinearGradient, QRadialGradient, QTransform,
                            QIcon, QImage, QImageReader, QKeySequence, QPainter,
                            QPainterPath, QPalette, QPen, QPixmap, QPolygonF,
                            QShortcut, QStandardItem, QStandardItemModel, QDesktopServices)
 from PySide6.QtMultimedia import QAudioOutput, QMediaMetaData, QMediaPlayer, QVideoSink
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from PySide6.QtOpenGLWidgets import QOpenGLWidget
+from PySide6.QtOpenGL import QOpenGLFramebufferObject
 from PySide6.QtWidgets import (QScrollArea, QTextBrowser, QAbstractButton, QAbstractItemView, QGraphicsOpacityEffect,
                                QApplication, QButtonGroup, QCheckBox,
                                QColorDialog, QComboBox, QDialog,
@@ -1881,7 +1881,7 @@ class MpvBackend(QObject):
                     prefetch_playlist="yes", audio_client_name=APP_NAME, input_default_bindings=False,
                     input_vo_keyboard=False, osc=False, replaygain="no", volume=100)
         if video:
-            # Videos: mpv zeichnet über seine Render-Schnittstelle in ein OpenGL-Element von NeoNote (MpvVideoWidget).
+            # Videos: mpv zeichnet über seine Render-Schnittstelle in eine unsichtbare OpenGL-Fläche (MpvVideoRenderer).
             # Untertitel (auch Bild-Untertitel von Blu-rays) und HDR-Umrechnung erledigt mpv selbst.
             opts.update(vid="auto", vo="libmpv", hwdec=hwdec, gapless_audio="no", prefetch_playlist="no",
                         sub_auto="no", hr_seek="yes", keep_open="no", audio_client_name=APP_NAME + " Video")
@@ -1890,6 +1890,9 @@ class MpvBackend(QObject):
             if os.environ.get("NEONOTE_PCM"):
                 opts["ao_pcm_file"] = os.environ["NEONOTE_PCM"]
                 opts["audio_format"] = "s16"
+        if video and os.environ.get("NEONOTE_MPV_LOG"):          # Fehlersuche: mpv-Meldungen auf die Konsole
+            opts.update(log_handler=lambda lvl, comp, msg: print(f"[mpv {lvl} {comp}] {msg.rstrip()}"),
+                        loglevel=os.environ["NEONOTE_MPV_LOG"])
         for extra in _MPV_NO_SCRIPTS:
             try:
                 self.m = mpv.MPV(**opts, **extra)
@@ -1913,7 +1916,7 @@ class MpvBackend(QObject):
         self._tracks = []
         self._has_vid = False
         self._chapters = []
-        self.render = None            # mpv-Render-Kontext (nur Video), gesetzt von MpvVideoWidget
+        self.render = None            # mpv-Render-Kontext (nur Video), gesetzt von MpvVideoRenderer
         self._pending_load = None     # Video wartet, bis der Render-Kontext steht
         self._ev.connect(self._on_ev)
         props = [("time-pos", "pos"), ("duration", "dur"), ("pause", "pause"),
@@ -2026,7 +2029,7 @@ class MpvBackend(QObject):
         self.positionChanged.emit(0)
 
     def render_ready(self, ctx):
-        """MpvVideoWidget hat den Render-Kontext angelegt – wartendes Video jetzt laden."""
+        """MpvVideoRenderer hat den Render-Kontext angelegt – wartendes Video jetzt laden."""
         self.render = ctx
         src, self._pending_load = self._pending_load, None
         if src:
@@ -2237,7 +2240,7 @@ class EngineAudio:
 
 class Engine(QObject):
     """Weiche: Musik und Radio über mpv; Videos über eine zweite mpv-Instanz, die auf der Grafikkarte zeichnet
-    (MpvVideoWidget) – oder über Qt Multimedia, wenn mpv fehlt oder abgeschaltet ist."""
+    (MpvVideoRenderer) – oder über Qt Multimedia, wenn mpv fehlt oder abgeschaltet ist."""
     video_needed = Signal()           # gleich kommt ein Video über mpv: Videofläche zeigen, damit OpenGL startet
     positionChanged = Signal(int)
     durationChanged = Signal(int)
@@ -2258,7 +2261,7 @@ class Engine(QObject):
         self.qt.setAudioOutput(self.qt_audio)
         self.mp, self.mpv_error = None, ""
         self.mv = None                  # mpv für Videos (wird beim ersten Video angelegt)
-        self.video_widget = None        # MpvVideoWidget, setzt MainWindow
+        self.video_widget = None        # MpvVideoRenderer, setzt MainWindow
         self.video_mpv = False          # Videos über mpv abspielen?
         self.video_hwdec = "auto-safe"
         self._mv_failed = False
@@ -4655,87 +4658,180 @@ class DragBar(QFrame):
         super().mouseDoubleClickEvent(e)
 
 
-class MpvVideoWidget(QOpenGLWidget):
-    """Videofläche für mpv: mpv zeichnet über seine Render-Schnittstelle direkt mit OpenGL hinein.
-    Das Bild bleibt auf der Grafikkarte (flüssiges 4K, HDR-Umrechnung, Bild-Untertitel), und Qt legt die
-    Bedienelemente wie gewohnt darüber."""
-    _frame = Signal()
+def _mpv_render_params(mpv, kwargs):
+    """Parameterliste für die Render-Schnittstelle von libmpv. Ersatz für kwargs_to_render_param_array aus
+    python-mpv: Dort werden die Hilfsobjekte, auf die die Liste zeigt, schon vor dem Aufruf wieder freigegeben –
+    mpv liest dann Puffer, Größe und flip_y aus freigegebenem Speicher (zufällig schwarzes oder kein Bild).
+    Hier bleiben sie in `keep`, solange der Aufrufer die Liste hält."""
+    keep = [mpv.MpvRenderParam(k, v) for k, v in kwargs.items()] + [mpv.MpvRenderParam("invalid")]
+    arr = (mpv.MpvRenderParam * len(keep))(*keep)
+    return arr, keep
+
+
+def mpv_render_context_create(m, api_type, **kwargs):
+    import mpv
+    kwargs["api_type"] = api_type
+    arr, keep = _mpv_render_params(mpv, kwargs)
+    buf = ctypes.cast(ctypes.create_string_buffer(ctypes.sizeof(mpv.MpvRenderCtxHandle)),
+                      ctypes.POINTER(mpv.MpvRenderCtxHandle))
+    rc = mpv._mpv_render_context_create(buf, m.handle, arr)
+    del keep
+    ctx = object.__new__(mpv.MpvRenderContext)
+    object.__setattr__(ctx, "_mpv", m)
+    object.__setattr__(ctx, "_handle", buf.contents)
+    object.__setattr__(ctx, "_buf", buf)            # Speicher des Handles am Leben halten
+    if rc is not None and isinstance(rc, int) and rc < 0:
+        raise RuntimeError(f"mpv_render_context_create: {rc}")
+    return ctx
+
+
+def mpv_render(ctx, **kwargs):
+    import mpv
+    arr, keep = _mpv_render_params(mpv, kwargs)
+    mpv._mpv_render_context_render(ctx._handle, arr)
+    del keep
+
+
+class MpvVideoRenderer(QObject):
+    """mpv zeichnet über seine Render-Schnittstelle in eine unsichtbare OpenGL-Fläche (Decodieren, Skalieren,
+    HDR-Umrechnung und Untertitel laufen auf der Grafikkarte). NeoNote holt nur das fertige Bild in Fenstergröße
+    ab und zeichnet es wie jedes andere Element. So funktioniert es auch in transparenten Fenstern mit
+    Weichzeichner, wo ein OpenGL-Element unter Windows nur ein gespiegeltes Abbild zeigt."""
+    frame = Signal()
+    _req = Signal()
+
+    GL_BGRA, GL_UNSIGNED_BYTE = 0x80E1, 0x1401
 
     def __init__(self, parent, on_fail=None):
         super().__init__(parent)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents)     # Klicks gehen an VideoView (Doppelklick = Vollbild)
         self.backend = None
-        self.ctx = None
-        self._gpa = None
+        self.ctx = None              # mpv-Render-Kontext
+        self.gl = None               # QOpenGLContext
+        self.surf = None
+        self.fbo = None
+        self.size = QSize(0, 0)      # Zielgröße in Gerätepixeln
+        self.dpr = 1.0
+        self.img = None
         self.on_fail = on_fail
-        self._frame.connect(self.update, Qt.QueuedConnection)
+        self._queued = False
+        self._gpa = None
+        self._read = None
+        self._req.connect(self._render, Qt.QueuedConnection)
 
     def attach(self, backend):
         self.backend = backend
-        if self.ctx is None and self.context() is not None and self.context().isValid():
-            self.makeCurrent()
-            self._create()
-            self.doneCurrent()
+        self._create()
 
     def _create(self):
         if self.backend is None or self.ctx is not None:
             return
         try:
             import mpv
-            ctx = QOpenGLContext.currentContext()
-
-            def gpa(_unused, name):
-                c = QOpenGLContext.currentContext() or ctx
-                addr = c.getProcAddress(name) if c is not None else 0
-                return int(addr or 0)
-            self._gpa = mpv.MpvGlGetProcAddressFn(gpa)
-            self.ctx = mpv.MpvRenderContext(self.backend.m, "opengl",
-                                            opengl_init_params={"get_proc_address": self._gpa})
-            self.ctx.update_cb = self._frame.emit
-            crash_note("mpv-Video: OpenGL bereit")
+            gl = QOpenGLContext(self)
+            if os.environ.get("NEONOTE_GL_CORE"):
+                fmt = QSurfaceFormat(); fmt.setVersion(3, 3); fmt.setProfile(QSurfaceFormat.CoreProfile)
+                gl.setFormat(fmt)
+            if not gl.create():
+                raise RuntimeError("kein OpenGL-Kontext")
+            surf = QOffscreenSurface()
+            surf.setFormat(gl.format())
+            surf.create()
+            if not surf.isValid() or not gl.makeCurrent(surf):
+                raise RuntimeError("keine OpenGL-Fläche")
+            self.gl, self.surf = gl, surf
+            self._gpa = mpv.MpvGlGetProcAddressFn(lambda _u, name: int(gl.getProcAddress(name) or 0))
+            self.ctx = mpv_render_context_create(self.backend.m, "opengl",
+                                                 opengl_init_params={"get_proc_address": self._gpa})
+            addr = int(gl.getProcAddress(b"glReadPixels") or 0)
+            if not addr:
+                raise RuntimeError("glReadPixels fehlt")
+            self._read = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                          ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p)(addr)
+            self.ctx.update_cb = self._on_update
+            gl.doneCurrent()
+            crash_note(f"mpv-Video: OpenGL bereit ({gl.format().majorVersion()}.{gl.format().minorVersion()})")
         except Exception as e:
-            self.ctx = None
             crash_note(f"mpv-Video: OpenGL fehlgeschlagen: {e}")
+            self.ctx = None
             if self.on_fail:
                 QTimer.singleShot(0, self.on_fail)
             return
         self.backend.render_ready(self.ctx)
 
-    def initializeGL(self):
-        self._create()
+    def _on_update(self):
+        # kommt aus einem mpv-Thread: nur einen Zeichenauftrag gleichzeitig einreihen
+        if not self._queued:
+            self._queued = True
+            self._req.emit()
 
-    def paintGL(self):
-        if self.ctx is None:
-            f = QOpenGLContext.currentContext().functions()
-            f.glClearColor(0, 0, 0, 1); f.glClear(0x00004000)      # GL_COLOR_BUFFER_BIT
+    def set_size(self, w, h, dpr):
+        size = QSize(max(1, int(w * dpr)), max(1, int(h * dpr)))
+        self.dpr = dpr
+        if size != self.size:
+            self.size = size
+            self._force = True      # auch pausiert neu zeichnen
+            self._on_update()
+
+    def _render(self):
+        self._queued = False
+        if self.ctx is None or self.size.isEmpty():
             return
-        r = self.devicePixelRatioF()
-        f = QOpenGLContext.currentContext().functions()
+        w, h = self.size.width(), self.size.height()
         try:
-            self.ctx.render(flip_y=True, opengl_fbo={"w": max(1, round(self.width() * r)),
-                                                     "h": max(1, round(self.height() * r)),
-                                                     "fbo": self.defaultFramebufferObject()})
+            self.gl.makeCurrent(self.surf)
+            # Laut mpv-Schnittstelle nach jeder Benachrichtigung abfragen, ob ein neues Bild ansteht
+            new_frame = self.ctx.update()
+            if not new_frame and not getattr(self, "_force", False) and self.img is not None:
+                self.gl.doneCurrent()
+                return
+            self._force = False
+            if self.fbo is None or self.fbo.size() != self.size:
+                self.fbo = QOpenGLFramebufferObject(self.size)
+            # Puffer vor dem Zeichnen binden und leeren: Ohne diesen Schritt lieferte mpv mal ein Bild, mal nur
+            # Schwarz (je nachdem, was beim Anlegen gerade gebunden war)
+            self.fbo.bind()
+            f0 = self.gl.functions()
+            f0.glViewport(0, 0, w, h)
+            f0.glClearColor(0, 0, 0, 1)
+            f0.glClear(0x00004000)                 # GL_COLOR_BUFFER_BIT
+            # nicht auf den Anzeigezeitpunkt warten – das würde die Oberfläche blockieren
+            mpv_render(self.ctx, flip_y=True, opengl_fbo={"w": w, "h": h, "fbo": self.fbo.handle(),
+                                                          "internal_format": 0x8058},     # GL_RGBA8
+                       block_for_target_time=False)
+            img = QImage(w, h, QImage.Format_RGB32)
+            self.fbo.bind()
+            # mpv kann einen eigenen Pixelpuffer gebunden lassen – dann landete das Bild dort statt bei uns
+            f = self.gl.functions()
+            f.glBindBuffer(0x88EB, 0)              # GL_PIXEL_PACK_BUFFER
+            f.glPixelStorei(0x0D05, 4)             # GL_PACK_ALIGNMENT
+            if self.gl.format().majorVersion() >= 2 and not self.gl.isOpenGLES():
+                f.glPixelStorei(0x0D02, 0)         # GL_PACK_ROW_LENGTH
+            buf = (ctypes.c_char * img.sizeInBytes()).from_buffer(img.bits())
+            self._read(0, 0, w, h, self.GL_BGRA, self.GL_UNSIGNED_BYTE, ctypes.addressof(buf))
+            del buf
+            self.fbo.release()
+            self.ctx.report_swap()                 # mpv braucht das für seine Bildtaktung
+            self.gl.doneCurrent()
         except Exception as e:
             if not getattr(self, "_render_err", False):
                 self._render_err = True
                 crash_note(f"mpv-Video: Zeichnen fehlgeschlagen: {e}")
-        # Alpha deckend setzen: Im transparenten Hauptfenster (Windows, KDE) würde Qt sonst die Videofläche
-        # durchsichtig zusammensetzen – man sähe den Desktop statt des Films.
-        f.glColorMask(False, False, False, True)
-        f.glClearColor(0, 0, 0, 1)
-        f.glClear(0x00004000)                      # GL_COLOR_BUFFER_BIT, wegen der Maske nur der Alphakanal
-        f.glColorMask(True, True, True, True)
+            return
+        img.setDevicePixelRatio(self.dpr)
+        self.img = img
         if not getattr(self, "_render_ok", False):
             self._render_ok = True
             crash_note("mpv-Video: erstes Bild gezeichnet")
+        self.frame.emit()
 
     def release(self):
         """Render-Kontext freigeben – muss vor dem Beenden von mpv passieren."""
         if self.ctx is not None:
             try:
-                self.makeCurrent()
+                self.gl.makeCurrent(self.surf)
                 self.ctx.free()
-                self.doneCurrent()
+                self.fbo = None
+                self.gl.doneCurrent()
             except Exception:
                 pass
             self.ctx = None
@@ -4754,9 +4850,10 @@ class VideoView(QWidget):
         self.sink = QVideoSink(self)
         self.sink.videoFrameChanged.connect(self._frame)
         self.sink.subtitleTextChanged.connect(self._embedded_sub)
-        # Videos über mpv: eigene OpenGL-Fläche, liegt unter den Knöpfen von VideoView
-        self.gl = MpvVideoWidget(self, on_fail=lambda: self.win.player.video_failed())
-        self.gl.hide()
+        # Videos über mpv: unsichtbarer OpenGL-Zeichner, liefert fertige Bilder in Fenstergröße
+        self.gl = MpvVideoRenderer(self, on_fail=lambda: self.win.player.video_failed())
+        self.gl.frame.connect(self.update)
+        self._mpv_on = False
         self.img = None
         self.has_video = False
         self.ended = False
@@ -4813,12 +4910,12 @@ class VideoView(QWidget):
         self.update()
 
     def show_gl(self, on):
+        self._mpv_on = bool(on)
         if on:
-            self.gl.setGeometry(self.rect())
-            self.gl.show()
-            self.gl.lower()                 # Ende-Auswahl und Knöpfe bleiben darüber
+            self.gl.set_size(self.width(), self.height(), self.devicePixelRatioF())
         else:
-            self.gl.hide()
+            self.gl.img = None
+        self.update()
 
     def show_end(self, on):
         self.ended = on
@@ -4836,7 +4933,8 @@ class VideoView(QWidget):
         super().resizeEvent(e)
 
     def _place(self):
-        self.gl.setGeometry(self.rect())
+        if self._mpv_on:
+            self.gl.set_size(self.width(), self.height(), self.devicePixelRatioF())
         self.lib_btn.adjustSize()
         self.lib_btn.move(self.width() - self.lib_btn.width() - 12, 12)
         self.end_box.adjustSize()
@@ -4859,6 +4957,15 @@ class VideoView(QWidget):
         p.setRenderHint(QPainter.SmoothPixmapTransform)
         p.setRenderHint(QPainter.Antialiasing)
         r = self.rect()
+        if self._mpv_on and not self.ended:
+            img = self.gl.img
+            if img is not None and img.size() == self.gl.size:
+                p.drawImage(r.topLeft(), img)     # mpv hat schon passend skaliert und mit Rändern versehen
+            else:
+                p.fillRect(r, QColor(0, 0, 0))
+                if img is not None:
+                    p.drawImage(r, img)
+            return
         if self.has_video and not self.ended:
             fr = getattr(self, "_pending", None)
             if fr is not None:
@@ -10038,7 +10145,12 @@ class MainWindow(QMainWindow):
             self._clear_video_guard()                # Video läuft stabil
             try:
                 m = self.player.mv.m
-                crash_note(f"mpv-Video läuft: {m.video_codec}, {m.width}×{m.height}, Decoder {m.hwdec_current}")
+                img = self.video.gl.img
+                hell = ""
+                if img is not None:
+                    sm = img.scaled(32, 18)
+                    hell = f", Bildhelligkeit {sum(sm.pixelColor(x, y).lightness() for x in range(32) for y in range(18)) / 576:.0f}/255"
+                crash_note(f"mpv-Video läuft: {m.video_codec}, {m.width}×{m.height}, Decoder {m.hwdec_current}{hell}")
             except Exception:
                 pass
         self._update_srt(pos)
