@@ -7340,6 +7340,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("video/guard", "sw" if self.player.video_hwdec == "no" else "hw")
         self.settings.sync()
         self._guard_set = True
+        crash_note(f"mpv-Video: hwdec={self.player.video_hwdec}")
         self.enter_np_mode()
         self.video.show_gl(True)
         self.apply_audio_settings()
@@ -9998,6 +9999,11 @@ class MainWindow(QMainWindow):
     def _pos_changed(self, pos):
         if pos > 3000 and getattr(self, "_guard_set", False) and self.player.on_mpv_video():
             self._clear_video_guard()                # Video läuft stabil
+            try:
+                m = self.player.mv.m
+                crash_note(f"mpv-Video läuft: {m.video_codec}, {m.width}×{m.height}, Decoder {m.hwdec_current}")
+            except Exception:
+                pass
         self._update_srt(pos)
         if self.mini.isVisible():
             self.mini.set_pos(pos)
