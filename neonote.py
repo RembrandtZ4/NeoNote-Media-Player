@@ -7685,6 +7685,12 @@ class MainWindow(QMainWindow):
             files = json.loads(data[:1_000_000].decode("utf-8") or "[]")
         except (ValueError, UnicodeDecodeError):
             files = []
+        if isinstance(files, dict) and files.get("cmd") == "quit":
+            # Der Installer ersetzt gleich die Programmdateien: sauber beenden (Sitzung und Verlauf speichern),
+            # aber kein bereits geladenes Update starten – das läuft ja gerade.
+            self._update_file = None
+            QTimer.singleShot(0, self.quit_app)
+            return
         if not isinstance(files, list):
             files = []
         files = [f for f in files if isinstance(f, str)][:5000]
@@ -10753,6 +10759,12 @@ def main():
     # Läuft NeoNote schon? Dann Dateien dorthin schicken und beenden.
     sock = QLocalSocket()
     sock.connectToServer(SERVER_NAME)
+    if "--quit" in sys.argv:          # vom Installer: laufende Instanz sauber beenden – selbst nie starten
+        if sock.waitForConnected(1500):
+            sock.write(json.dumps({"cmd": "quit"}).encode("utf-8"))
+            sock.flush(); sock.waitForBytesWritten(1500)
+            sock.disconnectFromServer()
+        return
     if sock.waitForConnected(400):
         if IS_WIN:
             try:   # die laufende Instanz darf ihr Fenster nach vorn holen (Klick kam ja vom Benutzer)

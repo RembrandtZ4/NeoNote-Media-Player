@@ -36,6 +36,40 @@ Section
   StrCpy $9 "1"
   StrCmp $9 "1" +2
   Banner::show /set 76 "${TITLE} ${VERSION}" "Setup wird vorbereitet …"
+  ; Läuft NeoNote noch? Ab 1.1.9 bitten wir es, sich selbst zu beenden (speichert Sitzung und Verlauf);
+  ; ältere Versionen kennen --quit nicht. Was nach 6 Sekunden noch läuft, wird hart beendet.
+  nsExec::Exec 'cmd /c tasklist /NH /FI "IMAGENAME eq NeoNote.exe" | find /I "NeoNote.exe"'
+  Pop $0
+  ${If} $0 == 0
+    ReadRegStr $7 HKLM "Software\NeoNote" "InstallDir"
+    StrCpy $6 "0"
+    ${If} ${FileExists} "$7\NeoNote.exe"
+      ClearErrors
+      GetDLLVersion "$7\NeoNote.exe" $R2 $R3
+      ${IfNot} ${Errors}
+        ${If} $R2 > 65537
+          StrCpy $6 "1"
+        ${ElseIf} $R2 == 65537
+        ${AndIf} $R3 >= 589824
+          StrCpy $6 "1"
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
+    ${If} $6 == "1"
+      nsExec::Exec '"$7\NeoNote.exe" --quit'
+      Pop $0
+      StrCpy $5 0
+      ${Do}
+        Sleep 250
+        nsExec::Exec 'cmd /c tasklist /NH /FI "IMAGENAME eq NeoNote.exe" | find /I "NeoNote.exe"'
+        Pop $0
+        ${If} $0 != 0
+          ${ExitDo}
+        ${EndIf}
+        IntOp $5 $5 + 1
+      ${LoopUntil} $5 >= 24
+    ${EndIf}
+  ${EndIf}
   nsExec::Exec 'taskkill /IM NeoNote.exe /F'
   Pop $0
   ; Entpacken in einen Ordner, den nur Administratoren ändern dürfen (nicht nach %TEMP%):
