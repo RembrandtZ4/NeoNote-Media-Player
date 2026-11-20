@@ -1,0 +1,27 @@
+# Baut NeoNote als Flatpak-Bündel (zum Testen als Artefakt herunterladbar).
+# Für Releases baut der Workflow im Zweig „release“ dasselbe und hängt es an die Release an.
+name: Flatpak
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - neonote.py
+      - i18n/**
+      - neonote.desktop
+      - neonote.png
+      - flatpak/**
+      - .github/workflows/flatpak.yml
+jobs:
+  flatpak:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.9
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: NeoNote-x86_64.flatpak
+          manifest-path: flatpak/io.github.RembrandtZ4.NeoNote.yml
+          cache-key: flatpak-builder-${{ hashFiles('flatpak/io.github.RembrandtZ4.NeoNote.yml') }}

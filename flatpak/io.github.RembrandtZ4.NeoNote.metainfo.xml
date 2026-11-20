@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.RembrandtZ4.NeoNote</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>NeoNote Media Player</name>
+  <summary>Music and video player inspired by Windows Media Player 12</summary>
+  <summary xml:lang="de">Musik- und Videoplayer im Stil von Windows Media Player 12</summary>
+  <developer id="io.github.rembrandtz4">
+    <name>RembrandtZ4</name>
+  </developer>
+  <description>
+    <p>NeoNote brings back the look and feel of Windows Media Player 12: a library organised by artist, album and genre, big album covers, a playlist on the right and a translucent “Now playing” view.</p>
+    <ul>
+      <li>Music library with artists, albums, genres, years, ratings and smart playlists</li>
+      <li>Videos with hardware decoding via mpv, subtitles, chapters and resume</li>
+      <li>Synced lyrics from .lrc files, embedded tags or LRCLIB</li>
+      <li>Gapless playback, equalizer, sleep timer and internet radio</li>
+      <li>Jellyfin server support, MPRIS media controls and a translucent window with blur on KDE Plasma</li>
+    </ul>
+    <p xml:lang="de">NeoNote bringt das Aussehen und Gefühl von Windows Media Player 12 zurück: eine Bibliothek nach Interpret, Album und Genre, große Cover, die Wiedergabeliste rechts und eine durchscheinende „Wird gespielt“-Ansicht.</p>
+  </description>
+  <launchable type="desktop-id">io.github.RembrandtZ4.NeoNote.desktop</launchable>
+  <url type="homepage">https://github.com/RembrandtZ4/NeoNote-Media-Player</url>
+  <url type="bugtracker">https://github.com/RembrandtZ4/NeoNote-Media-Player/issues</url>
+  <url type="vcs-browser">https://github.com/RembrandtZ4/NeoNote-Media-Player</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/RembrandtZ4/NeoNote-Media-Player/main/docs/screenshots/albums.png</image>
+      <caption>Album view</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/RembrandtZ4/NeoNote-Media-Player/main/docs/screenshots/songs.png</image>
+      <caption>Song list with album covers</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/RembrandtZ4/NeoNote-Media-Player/main/docs/screenshots/nowplaying.png</image>
+      <caption>Now playing</caption>
+    </screenshot>
+  </screenshots>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Video</category>
+    <category>Player</category>
+  </categories>
+  <keywords>
+    <keyword>music</keyword>
+    <keyword>video</keyword>
+    <keyword>player</keyword>
+    <keyword>wmp</keyword>
+    <keyword>lyrics</keyword>
+    <keyword>jellyfin</keyword>
+  </keywords>
+  <provides>
+    <binary>neonote</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <releases>
+    <release version="1.2" date="2026-11-21">
+      <description>
+        <p>Videos via mpv, lyrics, smart playlists, sleep timer and translucent dialogs.</p>
+      </description>
+    </release>
+    <release version="1.1.9" date="2026-11-20"/>
+  </releases>
+</component>

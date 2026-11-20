@@ -364,6 +364,7 @@ def cover_path(key):
 
 
 VARIOUS = "Verschiedene Interpreten"
+FLATPAK_ID = os.environ.get("FLATPAK_ID", "")          # gesetzt, wenn NeoNote als Flatpak läuft
 
 
 def read_track(path):
@@ -2142,6 +2143,11 @@ EQ_PRESETS = OrderedDict([
 
 def mpv_available():
     first = "mpv" not in sys.modules
+    if first and FLATPAK_ID and Path("/app/lib/libmpv.so.2").exists():
+        # Flatpak: libmpv liegt unter /app/lib – direkt angeben, falls find_library sie nicht findet
+        import ctypes.util as _cu
+        _orig = _cu.find_library
+        _cu.find_library = lambda name: "/app/lib/libmpv.so.2" if name == "mpv" else _orig(name)
     try:
         import mpv  # noqa: F401  (lädt libmpv)
         ok = True
@@ -3480,8 +3486,8 @@ def is_newer(v):
 
 
 def installed_by_package():
-    """Linux: über pacman/AUR installiert (dann kümmert sich die Paketverwaltung um Updates)."""
-    return not IS_WIN and str(Path(__file__).resolve()).startswith("/usr/")
+    """Linux: über pacman/AUR oder als Flatpak installiert (dann kümmert sich die Paketverwaltung um Updates)."""
+    return not IS_WIN and (bool(FLATPAK_ID) or str(Path(__file__).resolve()).startswith("/usr/"))
 
 
 def release_notes_for_lang(body):
@@ -11854,7 +11860,8 @@ class MainWindow(QMainWindow):
         else:
             msg = tr_("NeoNote {0} ist verfügbar.").format(info["version"])
             if not IS_WIN and installed_by_package():
-                msg += " " + tr_("Aktualisieren über die Paketverwaltung (z. B. „yay -Syu“).")
+                msg += " " + (tr_("Aktualisieren über Discover oder „flatpak update“.") if FLATPAK_ID else
+                              tr_("Aktualisieren über die Paketverwaltung (z. B. „yay -Syu“)."))
             self.update_lbl.setText(msg)
             if can_install and not manual and self.settings.value("update/mode", "notify") == "auto":
                 self._download_update(install_now=False)
@@ -12839,7 +12846,7 @@ def main():
         except Exception:
             pass
     QApplication.setApplicationName(APP_NAME)
-    QApplication.setDesktopFileName("neonote")
+    QApplication.setDesktopFileName(FLATPAK_ID or "neonote")     # Flatpak: Desktop-Datei heißt wie die App-ID
     _start_mark("Module geladen")
     app = QApplication(sys.argv)
     _start_mark("QApplication erstellt")

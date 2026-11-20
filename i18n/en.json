@@ -39,6 +39,7 @@
  "Aktiv. Wirkt, wenn die Deckkraft unter 100 % liegt und der KWin-Effekt „Unschärfe“ eingeschaltet ist.": "Active. Works when the opacity is below 100 % and the KWin “Blur” effect is turned on.",
  "Aktiv. Wirkt, wenn die Deckkraft unter 100 % liegt und in Windows „Transparenzeffekte“ eingeschaltet sind.": "Active. Works when the opacity is below 100 % and “Transparency effects” are turned on in Windows.",
  "Aktualisieren": "Update",
+ "Aktualisieren über Discover oder „flatpak update“.": "Update via Discover or “flatpak update”.",
  "Aktualisieren über die Paketverwaltung (z. B. „yay -Syu“).": "Update via your package manager (e.g. “yay -Syu”).",
  "Aktuelle Wiedergabeliste": "Current playlist",
  "Aktuelle Wiedergabeliste exportieren…": "Export current playlist…",

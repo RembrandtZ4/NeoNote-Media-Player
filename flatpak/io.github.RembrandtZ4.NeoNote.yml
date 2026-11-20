@@ -1,0 +1,141 @@
+# NeoNote Media Player als Flatpak (KDE-Laufzeit + PySide6-BaseApp von Flathub, libmpv wird mitgebaut).
+# Lokal bauen und installieren:
+#   flatpak-builder --user --install --install-deps-from=flathub --force-clean build-dir flatpak/io.github.RembrandtZ4.NeoNote.yml
+app-id: io.github.RembrandtZ4.NeoNote
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.11'
+command: neonote
+build-options:
+  env:
+    BASEAPP_REMOVE_WEBENGINE: '1'
+    BASEAPP_DISABLE_NUMPY: '1'
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+finish-args:
+  - --share=ipc
+  - --share=network
+  # X11 zusätzlich zu Wayland: KWin zeichnet Fenster nur über eine X11-Eigenschaft weich (Transparenz-Effekt)
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  # Musik und Videos liegen überall im Home-Ordner und auf externen Laufwerken; Tags werden auf Wunsch geschrieben
+  - --filesystem=home
+  - --filesystem=/run/media
+  - --filesystem=/media
+  - --filesystem=/mnt
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.mpris.MediaPlayer2.neonote
+cleanup:
+  - '*.a'
+  - '*.la'
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/man
+  - /share/doc
+
+modules:
+  - name: libmpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Ddebug=false
+      - -Dbuild-date=false
+      - -Dalsa=disabled
+      - -Dmanpage-build=disabled
+    cleanup:
+      - /share/bash-completion
+      - /share/fish
+      - /share/zsh
+      - /share/icons
+      - /share/applications
+      - /etc/mpv
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.42.0.tar.gz
+        sha256: bcfebbfa2b65a6d88dc97ea18117831072373e38b5785a2afb874ed4df5070dd
+    modules:
+      - name: libplacebo
+        buildsystem: meson
+        config-opts:
+          - -Ddemos=false
+        sources:
+          - type: git
+            url: https://github.com/haasn/libplacebo.git
+            tag: v7.387.0
+            commit: 275f7dea27924cdd34ab2e6c20e448b6bc4fab65
+      - name: libXpresent
+        buildsystem: autotools
+        sources:
+          - type: archive
+            url: https://xorg.freedesktop.org/archive/individual/lib/libXpresent-1.0.2.tar.xz
+            sha256: 4e5b21b4812206a4b223013606ae31170502c1043038777a1ef8f70c09d37602
+      - name: libass
+        config-opts:
+          - --disable-static
+        sources:
+          - type: archive
+            url: https://github.com/libass/libass/releases/download/0.17.5/libass-0.17.5.tar.gz
+            sha256: caab4b993dd7be6187c55623b789ed75dddefea6e65938af134637c732fe094a
+      - name: uchardet
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DCMAKE_BUILD_TYPE=Release
+          - -DBUILD_STATIC=0
+          - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        cleanup:
+          - /bin
+        sources:
+          - type: archive
+            url: https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
+            sha256: e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0
+
+  - name: python3-deps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --no-deps --prefix=${FLATPAK_DEST} *.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/47/d8/a29e4e3991765e7ce4ed1f7e4074fe1ba9da03e0048639734de60f9cadb9/mutagen-1.48.1-py3-none-any.whl
+        sha256: 4f077fe87d3fc7fba259aa63d8c026b18382ca6a42ef37c61e16f1b1b5b82fe7
+      - type: file
+        url: https://files.pythonhosted.org/packages/22/f3/4c632eaacebfc62ab9414586137aecf6c0ea2a1e99708cf5a4c0dec13ae0/python_mpv-1.0.8-py3-none-any.whl
+        sha256: b5296403e990fb7348df4ca2211937a030f524bf638657bda7e45a00bc2df0cd
+      - type: file
+        url: https://files.pythonhosted.org/packages/b2/a3/e137168c9c44d18eff0376253da9f1e9234d0239e0ee230d2fee6cea8e55/jeepney-0.9.0-py3-none-any.whl
+        sha256: 97e5714520c16fc0a45695e5365a2e11b81ea79bba796e26f9f1d178cb182683
+
+  - name: neonote
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 neonote.py ${FLATPAK_DEST}/share/neonote/neonote.py
+      - install -Dm644 i18n/en.json ${FLATPAK_DEST}/share/neonote/i18n/en.json
+      - install -Dm755 flatpak/neonote.sh ${FLATPAK_DEST}/bin/neonote
+      - install -Dm644 neonote.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} --remove-key=StartupWMClass ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 neonote.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm644 flatpak/${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/LICENSE
+      - install -Dm644 THIRD_PARTY_NOTICES.md ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/THIRD_PARTY_NOTICES.md
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - .git
+          - .github
+          - .flatpak-builder
+          - flatpak_app
+          - build-dir
+          - repo
+          - docs
+          - windows
+          - aur
