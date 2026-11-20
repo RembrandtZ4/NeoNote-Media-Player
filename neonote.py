@@ -41,7 +41,7 @@ from PySide6.QtCore import (QDate, QMimeData, QPropertyAnimation, QEasingCurve, 
                             QItemSelectionModel, QModelIndex, QPoint, QPointF, QRect,
                             QRectF, QSettings, QSize, Qt, QThread, QTimer,
                             QUrl, Signal, qVersion)
-from PySide6.QtGui import (QRegion, QAction, QDrag, QActionGroup, QColor, QFont, QFontMetrics, QGuiApplication, QLinearGradient, QRadialGradient, QTransform,
+from PySide6.QtGui import (QRegion, QAction, QDrag, QHoverEvent, QActionGroup, QColor, QFont, QFontMetrics, QGuiApplication, QLinearGradient, QRadialGradient, QTransform,
                            QIcon, QImage, QImageReader, QKeySequence, QPainter,
                            QPainterPath, QPalette, QPen, QPixmap, QPolygonF,
                            QShortcut, QStandardItem, QStandardItemModel, QDesktopServices)
@@ -5370,8 +5370,8 @@ class TrackDelegate(QStyledItemDelegate):
             p.fillRect(r, T.acc(0.34 if cur else 0.28))
         elif cur:
             p.fillRect(r, T.acc(0.12))
-        elif opt.state & QStyle.State_MouseOver:
-            p.fillRect(r, T.ov(0.06))
+        elif opt.state & QStyle.State_MouseOver and not getattr(self.win.tracks, "_hover_cover", False):
+            p.fillRect(r, T.ov(0.06))      # nicht, solange die Maus über dem Album-Block (Cover + Infos) steht
         if cur:
             view = self.win.tracks
             hh = view.header()
@@ -5659,8 +5659,21 @@ class TrackView(QTreeView):
             return (pre + "genre:" + a["genre"]) if a["genre"] else None
         return (pre + "year:" + a["year"]) if a["year"] else None
 
+    def viewportEvent(self, e):
+        # Über dem Album-Block keine Zeile als „unter der Maus“ melden – sonst leuchten rechts die Titel mit auf
+        if e.type() in (QEvent.HoverMove, QEvent.HoverEnter) and not self.model().flat and \
+                self.columnAt(int(e.position().x())) == COL.get("cover", 0):
+            fake = QHoverEvent(e.type(), QPointF(-10, -10), e.globalPosition(), e.oldPosF(), e.modifiers())
+            return super().viewportEvent(fake)
+        return super().viewportEvent(e)
+
     def mouseMoveEvent(self, e):
-        link = self._info_link_at(e.position().toPoint())
+        pos = e.position().toPoint()
+        in_cover = not self.model().flat and self.columnAt(pos.x()) == COL.get("cover", 0)
+        if in_cover != getattr(self, "_hover_cover", False):
+            self._hover_cover = in_cover
+            self.viewport().update()
+        link = self._info_link_at(pos)
         if link and link != self.win.state:
             if not getattr(self, "_link_cursor", False):
                 self.viewport().setCursor(Qt.PointingHandCursor); self._link_cursor = True
@@ -5671,6 +5684,7 @@ class TrackView(QTreeView):
     def leaveEvent(self, e):
         if getattr(self, "_link_cursor", False):
             self.viewport().unsetCursor(); self._link_cursor = False
+        self._hover_cover = False
         super().leaveEvent(e)
 
     def mousePressEvent(self, e):
