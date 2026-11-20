@@ -2335,15 +2335,15 @@ class Engine(QObject):
         src = url.toLocalFile() if url.isLocalFile() else url.toString()
         target = self._target_for(src)
         if target is not self.b:
-            self.b.stop()
-            if self.b is self.qt:
+            old = self.b
+            old.stop()
+            if old is self.qt:
                 self.qt.setSource(QUrl())
-                self.hasVideoChanged.emit(False)
-            elif self.b is self.mv:
-                self.hasVideoChanged.emit(False)
-            elif self.mp:
+            elif old is self.mp:
                 self.mp.set_next(None)
-            self.b = target
+            self.b = target          # erst umschalten, dann melden – sonst fragt NeoNote noch die Spuren des Films ab
+            if old is self.qt or (old is not None and old is self.mv):
+                self.hasVideoChanged.emit(False)
         if target is self.mv and target is not None:
             self.video_needed.emit()
         target.setSource(url)
@@ -4748,8 +4748,20 @@ class MpvVideoRenderer(QObject):
             self._read = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                           ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p)(addr)
             self.ctx.update_cb = self._on_update
+            # Ausrichtung: Mesa (Linux, Wine) hat GL_MESA_framebuffer_flip_y – damit dreht mpv den Puffer selbst um,
+            # und das gilt auch fürs Auslesen. Andere Treiber (NVIDIA, AMD, Intel unter Windows) haben das nicht;
+            # dort kommt mit flip_y=True das Bild auf dem Kopf an.
+            self._flip = gl.hasExtension(b"GL_MESA_framebuffer_flip_y")
+            if os.environ.get("NEONOTE_VIDEO_FLIP") in ("0", "1"):
+                self._flip = os.environ["NEONOTE_VIDEO_FLIP"] == "1"
+            try:
+                f = gl.functions()
+                renderer = f.glGetString(0x1F01) or ""          # GL_RENDERER
+            except Exception:
+                renderer = ""
             gl.doneCurrent()
-            crash_note(f"mpv-Video: OpenGL bereit ({gl.format().majorVersion()}.{gl.format().minorVersion()})")
+            crash_note(f"mpv-Video: OpenGL bereit ({gl.format().majorVersion()}.{gl.format().minorVersion()}, "
+                       f"{renderer}, flip_y={self._flip})")
         except Exception as e:
             crash_note(f"mpv-Video: OpenGL fehlgeschlagen: {e}")
             self.ctx = None
@@ -4795,7 +4807,7 @@ class MpvVideoRenderer(QObject):
             f0.glClearColor(0, 0, 0, 1)
             f0.glClear(0x00004000)                 # GL_COLOR_BUFFER_BIT
             # nicht auf den Anzeigezeitpunkt warten – das würde die Oberfläche blockieren
-            mpv_render(self.ctx, flip_y=True, opengl_fbo={"w": w, "h": h, "fbo": self.fbo.handle(),
+            mpv_render(self.ctx, flip_y=self._flip, opengl_fbo={"w": w, "h": h, "fbo": self.fbo.handle(),
                                                           "internal_format": 0x8058},     # GL_RGBA8
                        block_for_target_time=False)
             img = QImage(w, h, QImage.Format_RGB32)
