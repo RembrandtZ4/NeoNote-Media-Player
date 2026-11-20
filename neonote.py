@@ -1674,11 +1674,15 @@ EQ_PRESETS = OrderedDict([
 
 
 def mpv_available():
+    first = "mpv" not in sys.modules
     try:
         import mpv  # noqa: F401  (lädt libmpv)
-        return True
+        ok = True
     except Exception:
-        return False
+        ok = False
+    if first and "_start_mark" in globals():
+        _start_mark("libmpv geladen" if ok else "libmpv nicht gefunden")
+    return ok
 
 
 def eq_filter(enabled, gains, preamp, limiter_level=True):
@@ -4178,7 +4182,52 @@ class Splash(QWidget):
 _SPLASH = None
 
 
+_START_T0 = time.perf_counter()          # für startup.log: wie lange dauert welcher Startschritt?
+_START_LOG = []
+
+
+def _start_mark(text):
+    _START_LOG.append((time.perf_counter() - _START_T0, text))
+
+
+def _process_age():
+    """Sekunden seit dem Start des Prozesses (vor PyInstaller, Python und dem Laden der DLLs)."""
+    try:
+        if IS_WIN:
+            k = ctypes.windll.kernel32
+            c, e, kt, ut, now = (ctypes.c_ulonglong() for _ in range(5))
+            k.GetProcessTimes(k.GetCurrentProcess(), ctypes.byref(c), ctypes.byref(e), ctypes.byref(kt), ctypes.byref(ut))
+            k.GetSystemTimeAsFileTime(ctypes.byref(now))
+            return (now.value - c.value) / 1e7
+        with open("/proc/self/stat") as f:
+            start = int(f.read().rsplit(")", 1)[1].split()[19]) / os.sysconf("SC_CLK_TCK")
+        with open("/proc/uptime") as f:
+            return float(f.read().split()[0]) - start
+    except Exception:
+        return None
+
+
+_START_AGE = _process_age()               # wie lange lief der Prozess schon, als dieses Modul geladen wurde
+
+
+def write_startup_log():
+    """Dauer der Startschritte nach DATA_DIR/startup.log – hilft, langsame Starts zu finden."""
+    try:
+        _start_mark("Fenster bereit")
+        lines, prev = [f"{APP_NAME} {APP_VERSION} – Start am {time.strftime('%Y-%m-%d %H:%M:%S')}"], 0.0
+        if _START_AGE is not None:
+            lines.append(f"{-_START_AGE * 1000:7.0f} ms  Programmstart (Python, Qt und mpv laden)")
+        for t, text in _START_LOG:
+            lines.append(f"{t * 1000:7.0f} ms  (+{(t - prev) * 1000:5.0f})  {text}")
+            prev = t
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        (DATA_DIR / "startup.log").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except Exception:
+        pass
+
+
 def splash_step(text, pct):
+    _start_mark(text)
     if _SPLASH is not None:
         _SPLASH.step(text, pct)
 
@@ -10611,7 +10660,9 @@ def main():
             pass
     QApplication.setApplicationName(APP_NAME)
     QApplication.setDesktopFileName("neonote")
+    _start_mark("Module geladen")
     app = QApplication(sys.argv)
+    _start_mark("QApplication erstellt")
     if "--restart" in sys.argv:       # warten, bis die alte Instanz ihren Server freigegeben hat
         for _ in range(50):
             probe = QLocalSocket(); probe.connectToServer(SERVER_NAME)
@@ -10655,6 +10706,7 @@ def main():
         w._splash = _SPLASH          # Referenz halten, bis das Ausblenden fertig ist
         _SPLASH.finish(w)
         _SPLASH = None
+    QTimer.singleShot(0, write_startup_log)
     if files:
         QTimer.singleShot(300, lambda: w.open_files(files))
     if IS_WIN and not mpv_available() and not s.value("win/mpv_asked", False, type=bool):
