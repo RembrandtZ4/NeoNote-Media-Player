@@ -11,6 +11,7 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [ ] **Intelligente Wiedergabelisten** mit eigenen Regeln (z. B. „Rock aus den 80ern, mindestens 4 Sterne, seit 3 Monaten nicht gespielt“) – wie in Windows Media Player 12
 - [ ] **Songtexte**, zeitgesteuert im „Wird gespielt“-Modus (z. B. über LRCLIB) und aus den Dateien selbst
 - [ ] **Transparente Dialoge** (Einstellungen, Equalizer …) mit eigener Titelleiste und demselben Weichzeichner wie das Hauptfenster – eine durchgehende Fläche unter Windows und KDE
+- [ ] **Flatpak / Flathub** – für Ubuntu, Fedora, Mint und andere Distributionen
 
 ## Als Nächstes
 - [ ] **AUR-Paket** – Installation mit `yay -S neonote`
@@ -18,7 +19,6 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 
 ## Später
 - [ ] **Scrobbeln** zu Last.fm und ListenBrainz
-- [ ] **Flatpak / Flathub** – für Ubuntu, Fedora, Mint und andere Distributionen
 - [x] **Updater für Windows** – neue Versionen direkt aus NeoNote installieren *(seit 1.1.8)*
 - [ ] **Überblenden** zwischen Titeln
 - [ ] **Ordneransicht** – durch die Musikordner stöbern
@@ -42,6 +42,7 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [ ] **Smart playlists** with custom rules (e.g. “80s rock, at least 4 stars, not played for 3 months”) – like in Windows Media Player 12
 - [ ] **Lyrics**, synced in “Now playing” mode (e.g. via LRCLIB) and from the files themselves
 - [ ] **Transparent dialogs** (settings, equalizer …) with their own title bar and the same blur as the main window – one continuous surface on Windows and KDE
+- [ ] **Flatpak / Flathub** – for Ubuntu, Fedora, Mint and other distributions
 
 ## Next
 - [ ] **AUR package** – install with `yay -S neonote`
@@ -49,7 +50,6 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 
 ## Later
 - [ ] **Scrobbling** to Last.fm and ListenBrainz
-- [ ] **Flatpak / Flathub** – for Ubuntu, Fedora, Mint and other distributions
 - [x] **Updater for Windows** – install new versions right from NeoNote *(since 1.1.8)*
 - [ ] **Crossfade** between tracks
 - [ ] **Folder view** – browse your music folders
