@@ -11,3 +11,9 @@ pkg/
 src/
 *.pkg.tar.*
 *.zip
+windows/splash/*.bin
+windows/splash/*.o
+windows/splash/*.exe
+windows/splash/splash.rc
+windows/splash/preview_*.png
+windows/splash/neonote.ico

@@ -3,6 +3,7 @@ Target amd64-unicode
 ; (NeoNote.exe --setup). Danach schreibt es den Deinstaller in den gewählten Ordner.
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
+!include "WinMessages.nsh"
 !define APP "NeoNote"
 !define TITLE "NeoNote Media Player"
 !ifndef VERSION
@@ -37,8 +38,12 @@ Section
   ${GetOptions} $R0 "/S" $R1
   IfErrors +2
   StrCpy $9 "1"
-  StrCmp $9 "1" +2
-  Banner::show /set 76 "${TITLE} ${VERSION}" "Setup wird vorbereitet …"
+  ; Startfenster im NeoNote-Look, solange entpackt wird (schließt sich, sobald das Setup-Fenster erscheint)
+  ${If} $9 != "1"
+    InitPluginsDir
+    File "/oname=$PLUGINSDIR\neonote-splash.exe" "splash\neonote-splash.exe"
+    Exec '"$PLUGINSDIR\neonote-splash.exe"'
+  ${EndIf}
   ; Läuft NeoNote noch? Ab 1.1.9 bitten wir es, sich selbst zu beenden (speichert Sitzung und Verlauf);
   ; ältere Versionen kennen --quit nicht. Was nach 6 Sekunden noch läuft, wird hart beendet.
   nsExec::Exec 'cmd /c tasklist /NH /FI "IMAGENAME eq NeoNote.exe" | find /I "NeoNote.exe"'
@@ -81,12 +86,14 @@ Section
   RMDir /r "$8"
   SetOutPath "$8"
   File /r "dist\NeoNote\*.*"
-  StrCmp $9 "1" +2
-  Banner::destroy
   StrCpy $1 ""
   StrCmp $9 "1" 0 +2
   StrCpy $1 "--silent"
   ExecWait '"$8\NeoNote.exe" --setup --version ${VERSION} $1' $0
+  FindWindow $2 "NeoNoteSplash"
+  ${If} $2 != 0
+    SendMessage $2 ${WM_CLOSE} 0 0
+  ${EndIf}
   ${If} $0 == 0
     ReadRegStr $INSTDIR HKLM "Software\NeoNote" "InstallDir"
     ${If} $INSTDIR != ""

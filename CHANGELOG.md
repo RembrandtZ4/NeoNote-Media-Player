@@ -7,6 +7,9 @@
 **New**
 - **Star ratings are now written into the music files**, just like Windows Media Player does: MP3 and WMA in WMP's own format (so WMP12 shows them too), FLAC, Ogg and Opus as `FMPS_RATING` (read by Strawberry, Clementine, Amarok). Your stars survive crashes, reinstalls and switching between Windows and Linux. Ratings you already gave in NeoNote are added to the files once. The file's modification date stays the same, so backup and sync tools don't treat the files as new. The track that is currently playing is written after it ends. Can be turned off under Settings ▸ Online information.
 
+**Improved**
+- Installer: instead of the gray “Preparing setup …” box, a start window in NeoNote's look appears while the files are unpacked – with the neon note, version and a running progress bar; it fades out as soon as the setup window opens.
+
 **Fixes**
 - Clearing a track's stars in NeoNote now stays cleared – a full rescan no longer brings back an old rating from the file.
 
