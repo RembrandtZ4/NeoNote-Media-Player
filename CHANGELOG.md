@@ -15,6 +15,10 @@
 - Im Menü ☰ steht „Befehlsleiste anzeigen“ jetzt bei „Darstellung…“ statt ganz unten.
 - Windows 11: Die Titelleisten der Dialoge (Einstellungen, Equalizer, Albuminfos …) haben jetzt dieselbe Farbe wie das Fenster – eine durchgehende Fläche statt eines abgesetzten Balkens. Gilt auch fürs Hauptfenster mit Systemrahmen und passt sich beim Farbwechsel sofort an.
 
+**Fehlerbehebungen**
+- Absturz beim Einschalten von Bild-Untertiteln (PGS von Blu-rays, VobSub von DVDs, DVB) in MKV-Videos: Qt Multimedia kommt damit nicht zurecht. NeoNote erkennt diese Spuren jetzt selbst und zeigt sie im Menü ausgegraut („noch nicht unterstützt“); Text-Untertitel funktionieren wie gewohnt.
+- Große Videos (4K, HDR) stauen keine Bilder mehr auf: Kommen sie schneller, als NeoNote sie zeichnen kann, werden Zwischenbilder ausgelassen. Ganz flüssig wird 4K-HDR erst mit der Wiedergabe über mpv (geplant für 1.2).
+
 ## 1.1.8 – 19.11.2026
 
 **Neu**

@@ -488,6 +488,82 @@ def stream_track(url, name=""):
             "cover": album_key("Internetradio", name)}
 
 
+# ── Untertitel-Arten in MKV-Dateien (ohne FFmpeg) ─────────────────────────
+# Qt Multimedia stürzt bei Bild-Untertiteln (Blu-ray-PGS, DVD-VobSub, DVB) ab. NeoNote liest deshalb die
+# Spurtabelle der Matroska-Datei selbst und sperrt diese Spuren.
+BITMAP_SUB_CODECS = ("S_HDMV/PGS", "S_VOBSUB", "S_DVBSUB")
+_SUB_CODEC_CACHE = {}
+
+
+def _ebml_vint(f, keep_marker):
+    b = f.read(1)
+    if not b:
+        raise EOFError
+    first = b[0]
+    n = 1
+    while n <= 8 and not first & (0x80 >> (n - 1)):
+        n += 1
+    if n > 8:
+        raise ValueError("EBML")
+    val = first if keep_marker else first & (0xFF >> n)
+    rest = f.read(n - 1)
+    if len(rest) != n - 1:
+        raise EOFError
+    for c in rest:
+        val = (val << 8) | c
+    unknown = not keep_marker and val == (1 << (7 * n)) - 1
+    return val, unknown
+
+
+def mkv_subtitle_codecs(path):
+    """CodecIDs der Untertitelspuren einer MKV/WebM-Datei in Dateireihenfolge, z. B. ["S_HDMV/PGS", "S_TEXT/UTF8"].
+    Leere Liste bei anderen Formaten oder Fehlern."""
+    path = str(path)
+    if path in _SUB_CODEC_CACHE:
+        return _SUB_CODEC_CACHE[path]
+    res = []
+    try:
+        with open(path, "rb") as f:
+            eid, _u = _ebml_vint(f, True)
+            if eid != 0x1A45DFA3:                      # kein EBML/Matroska
+                raise ValueError
+            size, _u = _ebml_vint(f, False); f.seek(size, 1)
+            eid, _u = _ebml_vint(f, True)
+            if eid != 0x18538067:                      # Segment
+                raise ValueError
+            _ebml_vint(f, False)
+            while f.tell() < 64 * 1024 * 1024:         # Spurtabelle steht am Anfang, vor den Clustern
+                eid, _u = _ebml_vint(f, True)
+                size, unknown = _ebml_vint(f, False)
+                if eid == 0x1F43B675 or unknown:       # Cluster erreicht: keine Spurtabelle davor
+                    break
+                if eid != 0x1654AE6B:                  # nicht „Tracks“: überspringen
+                    f.seek(size, 1)
+                    continue
+                end = f.tell() + size
+                while f.tell() < end:
+                    tid, _u = _ebml_vint(f, True); tsz, _u = _ebml_vint(f, False)
+                    tend = f.tell() + tsz
+                    if tid != 0xAE:                    # TrackEntry
+                        f.seek(tend)
+                        continue
+                    ttype, codec = 0, ""
+                    while f.tell() < tend:
+                        cid, _u = _ebml_vint(f, True); csz, _u = _ebml_vint(f, False)
+                        data = f.read(csz)
+                        if cid == 0x83:
+                            ttype = int.from_bytes(data, "big")
+                        elif cid == 0x86:
+                            codec = data.decode("ascii", "replace").rstrip("\0")
+                    if ttype == 17:                    # Untertitel
+                        res.append(codec)
+                break
+    except (OSError, ValueError, EOFError):
+        pass
+    _SUB_CODEC_CACHE[path] = res
+    return res
+
+
 def parse_srt(path):
     raw = Path(path).read_bytes()
     try:
@@ -4389,8 +4465,10 @@ class VideoView(QWidget):
         self.btn_tolib.setIcon(make_icon("library", 18, "#ffffff"))
 
     def _frame(self, frame):
+        # Nur das neueste Bild merken und erst beim Zeichnen umwandeln: Kommen Bilder schneller, als sie
+        # gezeichnet werden (4K, HDR), fallen die Zwischenbilder weg, statt sich aufzustauen.
         if self.has_video and frame.isValid():
-            self.img = frame.toImage()
+            self._pending = frame
             self.update()
 
     def _embedded_sub(self, text):
@@ -4407,6 +4485,7 @@ class VideoView(QWidget):
         self.has_video = v
         if not v:
             self.img = None
+            self._pending = None
         self.update()
 
     def show_end(self, on):
@@ -4448,6 +4527,10 @@ class VideoView(QWidget):
         p.setRenderHint(QPainter.Antialiasing)
         r = self.rect()
         if self.has_video and not self.ended:
+            fr = getattr(self, "_pending", None)
+            if fr is not None:
+                self._pending = None
+                self.img = fr.toImage()
             p.fillRect(r, QColor(0, 0, 0))
             if self.img is not None and not self.img.isNull():
                 sz = self.img.size().scaled(r.size(), Qt.KeepAspectRatio)
@@ -9670,8 +9753,13 @@ class MainWindow(QMainWindow):
         off = sm.addAction(tr_("Aus")); off.setCheckable(True); off.setChecked(self.sub_mode == "off"); g2.addAction(off)
         off.triggered.connect(self._subs_off)
         for i, md in enumerate(subs):
-            a = sm.addAction(self._track_label(md, i)); a.setCheckable(True); g2.addAction(a)
+            bitmap = self._sub_is_bitmap(i, len(subs))
+            label = self._track_label(md, i)
+            if bitmap:
+                label += "  " + tr_("(Bilduntertitel – noch nicht unterstützt)")
+            a = sm.addAction(label); a.setCheckable(True); g2.addAction(a)
             a.setChecked(self.sub_mode == "embedded" and i == self.player.activeSubtitleTrack())
+            a.setEnabled(not bitmap)
             a.triggered.connect(lambda _=False, i=i: self._subs_embedded(i))
         for f in ext:
             a = sm.addAction(tr_("Datei: {0}").format(f.name)); a.setCheckable(True); g2.addAction(a)
@@ -9681,6 +9769,15 @@ class MainWindow(QMainWindow):
         sm.addAction(tr_("Untertiteldatei laden…"), self._pick_srt)
         self.btn_tracks.setMenu(m)
         self.btn_tracks.setVisible(self.video.has_video or len(audio) > 1)
+
+    def _sub_is_bitmap(self, i, count):
+        """Ist Untertitelspur i ein Bild-Untertitel (PGS, VobSub, DVB)? Daran stürzt Qt Multimedia ab.
+        Nur sicher, wenn NeoNote in der Datei genauso viele Untertitelspuren findet wie Qt."""
+        t = self.cur["t"] if self.cur else None
+        if not t or t.get("remote") or t.get("stream"):
+            return False
+        codecs = mkv_subtitle_codecs(t["path"])
+        return len(codecs) == count and 0 <= i < count and codecs[i].startswith(BITMAP_SUB_CODECS)
 
     @staticmethod
     def _md_lang(md):
@@ -9715,7 +9812,7 @@ class MainWindow(QMainWindow):
             if cur_a is None or cur_a == ls:
                 return False
         for i, md in enumerate(subs):
-            if self._md_lang(md) == ls:
+            if self._md_lang(md) == ls and not self._sub_is_bitmap(i, len(subs)):
                 self._subs_embedded(i)
                 return True
         return False
@@ -9727,6 +9824,9 @@ class MainWindow(QMainWindow):
         self._tracks_changed()
 
     def _subs_embedded(self, i):
+        if self._sub_is_bitmap(i, len(self.player.subtitleTracks())):
+            self.flash(tr_("Bilduntertitel (z. B. von Blu-rays) kann NeoNote noch nicht anzeigen."))
+            return
         try:
             crash_note(f"Untertitel {i}: {self._track_label(self.player.subtitleTracks()[i], i)}")
         except Exception:
@@ -10736,7 +10836,9 @@ def setup_crash_log():
         if cur.exists():
             try:
                 old = cur.read_text(encoding="utf-8", errors="replace")
-                if "Fatal Python error" in old or "Traceback" in old or "Windows fatal exception" in old:
+                # Windows meldet auch intern abgefangene C++-Ausnahmen („code 0x…“) – die sind kein Absturz
+                if "Fatal Python error" in old or "Traceback" in old or \
+                        re.search(r"Windows fatal exception: (?!code 0x)", old):
                     cur.replace(last)
             except OSError:
                 pass
