@@ -1183,6 +1183,235 @@ def write_album(album, changes, cover_bytes, opts, replace_cover):
     return failed
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# Songtexte: .lrc neben der Datei → in der Datei gespeicherter Text → LRCLIB (online, abschaltbar)
+LYRICS_DIR = DATA_DIR / "lyrics"
+LRCLIB_URL = "https://lrclib.net/api/"
+_LRC_TS = re.compile(r"\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]")
+_LRC_TAG = re.compile(r"^\[([a-zA-Z#]+):(.*)\]\s*$")
+_LRC_WORD = re.compile(r"<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>")
+
+
+def parse_lyrics(text):
+    """Zerlegt einen Songtext. Mit Zeitstempeln (LRC) → {"synced": [(ms, zeile), …]}, sonst {"plain": [zeilen]}."""
+    if not text:
+        return None
+    text = str(text).replace("\r\n", "\n").replace("\r", "\n").strip("﻿ \n")
+    if not text.strip():
+        return None
+    offset, synced, plain = 0, [], []
+    for raw in text.split("\n"):
+        line = raw.strip()
+        stamps = list(_LRC_TS.finditer(line))
+        if stamps and stamps[0].start() == 0:
+            end, times = 0, []
+            for m in stamps:                          # mehrere Zeitstempel vor einer Zeile: „[00:12.00][01:30.00]Refrain“
+                if m.start() != end:
+                    break
+                frac = m.group(3) or "0"
+                ms = int(frac.ljust(3, "0")[:3]) if len(frac) != 2 else int(frac) * 10
+                times.append((int(m.group(1)) * 60 + int(m.group(2))) * 1000 + ms)
+                end = m.end()
+            words = _LRC_WORD.sub("", line[end:]).strip()   # erweitertes LRC: Zeitstempel pro Wort weglassen
+            synced += [(t, words) for t in times]
+            continue
+        tag = _LRC_TAG.match(line)
+        if tag:
+            if tag.group(1).lower() == "offset":
+                try:
+                    offset = int(tag.group(2).strip())
+                except ValueError:
+                    pass
+            continue                                  # [ar:…], [ti:…], [length:…] … nicht anzeigen
+        plain.append(line)
+    if len(synced) >= 3:
+        synced.sort(key=lambda x: x[0])
+        # positiver Versatz = Text kommt früher (so beschreibt es das LRC-Format)
+        synced = [(max(0, t - offset), s) for t, s in synced]
+        while synced and not synced[-1][1]:
+            synced.pop()
+        return {"synced": synced} if synced else None
+    while plain and not plain[0]:
+        plain.pop(0)
+    while plain and not plain[-1]:
+        plain.pop()
+    out = []
+    for s in plain:                                   # höchstens eine Leerzeile am Stück
+        if s or (out and out[-1]):
+            out.append(s)
+    return {"plain": out} if out else None
+
+
+def _read_text_file(p):
+    data = Path(p).read_bytes()[:2_000_000]
+    for enc in ("utf-8-sig", "utf-16") if data[:2] in (b"\xff\xfe", b"\xfe\xff") else ("utf-8-sig", "cp1252"):
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("latin-1", "replace")
+
+
+def lrc_file_for(path):
+    """Passende .lrc-Datei neben dem Titel: „Lied.lrc“ oder „Lied.flac.lrc“, Groß/klein egal."""
+    p = Path(path)
+    for cand in (p.with_suffix(".lrc"), p.with_suffix(".LRC"), Path(str(p) + ".lrc")):
+        if cand.is_file():
+            return cand
+    try:
+        want = p.stem.lower() + ".lrc"
+        for f in p.parent.iterdir():
+            if f.name.lower() == want and f.is_file():
+                return f
+    except OSError:
+        pass
+    return None
+
+
+def embedded_lyrics(path):
+    """Songtext aus den Tags: ID3 SYLT/USLT, Vorbis/FLAC LYRICS, MP4 ©lyr, WMA WM/Lyrics, APE Lyrics."""
+    try:
+        f = mutagen.File(path)
+    except Exception:
+        return None
+    tags = getattr(f, "tags", None) if f is not None else None
+    if not tags:
+        return None
+    try:
+        if hasattr(tags, "getall"):                   # ID3
+            for fr in tags.getall("SYLT"):
+                if getattr(fr, "format", 2) == 2 and fr.text:      # Zeitangaben in Millisekunden
+                    res = parse_lyrics("\n".join(f"[{ms // 60000:02d}:{ms // 1000 % 60:02d}.{ms % 1000 // 10:02d}]{s.strip()}"
+                                                 for s, ms in fr.text))
+                    if res:
+                        return res
+            fr = tags.getall("USLT")
+            fr.sort(key=lambda x: len(str(x.text or "")), reverse=True)
+            for x in fr:
+                res = parse_lyrics(x.text)
+                if res:
+                    return res
+            return None
+        keys = {str(k).lower(): k for k in tags.keys()}
+        for name in ("syncedlyrics", "lyrics", "unsyncedlyrics", "unsynced lyrics", "\xa9lyr", "wm/lyrics",
+                     "lyrics-eng", "lyric"):
+            k = keys.get(name)
+            if k is None:
+                continue
+            v = tags[k]
+            if isinstance(v, (list, tuple)):
+                v = "\n".join(str(getattr(x, "value", x)) for x in v)
+            res = parse_lyrics(str(getattr(v, "value", v)))
+            if res:
+                return res
+    except Exception:
+        return None
+    return None
+
+
+def _lyrics_key(t):
+    base = f"{_norm(t.get('artist', ''))}|{_norm(t.get('title', ''))}|{int(round(t.get('length') or 0))}"
+    return hashlib.sha1(base.encode("utf-8")).hexdigest()[:20]
+
+
+def lyrics_cache_clear():
+    try:
+        for f in LYRICS_DIR.glob("*.json"):
+            f.unlink()
+    except OSError:
+        pass
+
+
+def lrclib_lookup(t):
+    """Fragt LRCLIB. Liefert {"synced"/"plain": …}, {"instrumental": True} oder None (nichts gefunden).
+    Netzwerkfehler werfen OnlineError, damit „nicht gefunden“ nicht fälschlich gemerkt wird."""
+    artist = "" if t.get("artist") in UNKNOWN else str(t.get("artist") or "")
+    title, album = str(t.get("title") or ""), "" if t.get("album") in UNKNOWN else str(t.get("album") or "")
+    dur = float(t.get("length") or 0)
+    if not title or not artist:
+        return None
+
+    def get(path, **params):
+        url = LRCLIB_URL + path + "?" + urllib.parse.urlencode({k: v for k, v in params.items() if v not in ("", None)})
+        try:
+            return json.loads(http_get(url, timeout=12))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None
+            raise OnlineError(f"LRCLIB: HTTP {e.code}")
+        except Exception as e:
+            raise OnlineError(f"LRCLIB: {e}")
+
+    def usable(hit):
+        if not isinstance(hit, dict):
+            return None
+        if hit.get("instrumental"):
+            return {"instrumental": True}
+        return parse_lyrics(hit.get("syncedLyrics")) or parse_lyrics(hit.get("plainLyrics"))
+
+    hit = get("get", artist_name=artist, track_name=title, album_name=album, duration=int(round(dur)) or None)
+    res = usable(hit)
+    if res:
+        return res
+    hits = get("search", artist_name=artist, track_name=title) or []
+    if not isinstance(hits, list):
+        return None
+    best = []
+    for h in hits[:20]:
+        hd = float(h.get("duration") or 0)
+        if dur and hd and abs(hd - dur) > 4:          # andere Fassung (Live, Remix …)
+            continue
+        if _norm(h.get("artistName", "")) != _norm(artist) and _norm(artist) not in _norm(h.get("artistName", "")):
+            continue
+        best.append((0 if h.get("syncedLyrics") else 1, abs(hd - dur) if dur and hd else 9, h))
+    best.sort(key=lambda x: x[:2])
+    for *_r, h in best:
+        res = usable(h)
+        if res:
+            return res
+    return None
+
+
+def find_lyrics(t, online=True):
+    """Songtext zu einem Titel suchen – läuft im Hintergrund. Ergebnis mit "src": lrc / tag / lrclib."""
+    path = t.get("path") or ""
+    local = bool(path) and not t.get("stream") and not t.get("remote") and "://" not in path
+    if local:
+        try:
+            f = lrc_file_for(path)
+            if f:
+                res = parse_lyrics(_read_text_file(f))
+                if res:
+                    return {**res, "src": "lrc", "file": str(f)}
+        except OSError:
+            pass
+        res = embedded_lyrics(path)
+        if res:
+            return {**res, "src": "tag"}
+    if t.get("stream"):
+        return None
+    cf = LYRICS_DIR / f"{_lyrics_key(t)}.json"
+    cached = read_json_file(cf) if cf.exists() else None
+    if isinstance(cached, dict):
+        if cached.get("none"):
+            if time.time() - cached.get("ts", 0) < 14 * 86400 or not online:
+                return None                           # vor Kurzem nichts gefunden: nicht ständig nachfragen
+        elif cached.get("synced") or cached.get("plain") or cached.get("instrumental"):
+            if cached.get("synced"):
+                cached["synced"] = [tuple(x) for x in cached["synced"]]
+            return cached
+    if not online:
+        return None
+    res = lrclib_lookup(t)
+    try:
+        LYRICS_DIR.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(cf, json.dumps({**res, "src": "lrclib"} if res else {"none": True, "ts": int(time.time())},
+                                         ensure_ascii=False), backup=False)
+    except Exception:
+        pass
+    return {**res, "src": "lrclib"} if res else None
+
+
 class Job(QThread):
     """Führt eine Funktion im Hintergrund aus."""
     done = Signal(object)
@@ -4198,6 +4427,12 @@ def make_icon(name, size=20, color=None):
     elif name == "smart":                              # Blitz: intelligente Wiedergabeliste
         p.setPen(Qt.NoPen); p.setBrush(c)
         p.drawPolygon(QPolygonF([P(.58, .1), P(.24, .56), P(.47, .56), P(.4, .9), P(.76, .42), P(.53, .42)]))
+    elif name == "lyrics":                             # Textzeilen mit Note: Songtext
+        lp = QPen(c, 1.5); lp.setCapStyle(Qt.RoundCap); p.setPen(lp)
+        for y, x2 in ((.26, .66), (.44, .56), (.62, .44), (.8, .4)):
+            p.drawLine(P(.12, y), P(x2, y))
+        p.drawLine(P(.8, .3), P(.8, .74)); p.drawLine(P(.8, .3), P(.92, .38))
+        p.setPen(Qt.NoPen); p.setBrush(c); p.drawEllipse(P(.72, .76), .1 * s, .08 * s)
     elif name == "moon":
         a = QPainterPath(); a.addEllipse(P(.47, .53), .33 * s, .33 * s)
         b = QPainterPath(); b.addEllipse(P(.66, .36), .27 * s, .27 * s)
@@ -4878,6 +5113,18 @@ class VideoView(QWidget):
         self.has_video = False
         self.ended = False
         self.subtitle = ""
+        # Songtext: weiches Mitscrollen, Mausrad, Klick auf eine Zeile springt dorthin
+        self._ly_scroll = self._ly_target = 0.0
+        self._ly_user = 0.0                    # Zeitpunkt des letzten Scrollens von Hand
+        self._ly_idx = -1
+        self._ly_snap = True
+        self._ly_hits = []                     # (Rechteck, ms) der zuletzt gezeichneten Zeilen
+        self._ly_cache = None
+        self._ly_area = None
+        self._ly_anim = QTimer(self, interval=16)
+        self._ly_anim.timeout.connect(self._ly_step)
+        self._ly_resume = QTimer(self, singleShot=True, interval=4000)
+        self._ly_resume.timeout.connect(self.update)
         self.setMouseTracking(True)
         self.setMinimumSize(200, 150)
         # Button oben rechts: zurück zur Bibliothek
@@ -5001,7 +5248,19 @@ class VideoView(QWidget):
             return
         self._background(p, r)
         t = self.win.cur["t"] if self.win.cur else None
-        S = int(max(110, min(r.height() * 0.42, r.width() * 0.4, 380)))
+        self._ly_hits = []
+        self._ly_area = None
+        if self.win.lyrics_visible() and not self.ended:
+            if r.width() >= 620:
+                left = QRect(r.left(), r.top(), int(r.width() * 0.44), r.height())
+                self._ly_area = QRect(left.right() + 10, r.top() + 40, r.right() - left.right() - 50, r.height() - 70)
+                self._paint_lyrics(p, self._ly_area, False)
+                r = left
+            else:                                       # schmales Fenster: nur der Text
+                self._ly_area = QRect(r.left() + 24, r.top() + 40, r.width() - 48, r.height() - 70)
+                self._paint_lyrics(p, self._ly_area, True)
+                return
+        S = int(max(110, min(r.height() * 0.42, r.width() * 0.4 if r.width() == self.width() else r.width() * 0.62, 380)))
         cr = QRect(r.center().x() - S // 2, int(r.height() * 0.46) - S // 2, S, S)
         pm = self.win.covers.get(t["cover"] if t else "", S)
         if self.ended:
@@ -5032,6 +5291,172 @@ class VideoView(QWidget):
             tr2 = QRect(tr.left(), tr.bottom() + 4, tr.width(), QFontMetrics(f2).height() + 4)
             p.drawText(tr2, Qt.AlignCenter, QFontMetrics(f2).elidedText(sub, Qt.ElideRight, tr2.width()))
 
+    def lyrics_reset(self):
+        self._ly_idx = -1
+        self._ly_snap = True
+        self._ly_user = 0.0
+        self._ly_cache = None
+        self._ly_anim.stop()
+        self.update()
+
+    def lyrics_pos(self, pos):
+        """Abspielposition für zeitgesteuerte Texte – neu gezeichnet wird nur, wenn die Zeile wechselt."""
+        ly = self.win.lyrics
+        if not ly or not ly.get("synced"):
+            return
+        idx = bisect.bisect_right(ly["_times"], pos + 200) - 1
+        if idx != self._ly_idx:
+            self._ly_idx = idx
+            self.update()
+
+    def _ly_step(self):
+        d = self._ly_target - self._ly_scroll
+        if abs(d) < 0.6:
+            self._ly_scroll = self._ly_target
+            self._ly_anim.stop()
+        else:
+            self._ly_scroll += d * 0.16
+        self.update()
+
+    def _ly_layout(self, a, ly, centered):
+        """Zeilenhöhen (mit Umbruch) – zwischengespeichert, solange Breite und Text gleich bleiben."""
+        f = QFont(self.font()); f.setPointSizeF(max(13.0, min(22.0, a.height() / 26)))
+        if ly.get("plain"):                           # ohne Zeitstempel: ruhiger, etwas kleiner
+            f.setPointSizeF(f.pointSizeF() * 0.86); f.setWeight(QFont.DemiBold)
+        else:
+            f.setWeight(QFont.Bold)
+        key = (id(ly), a.width(), f.pointSizeF(), centered)
+        if self._ly_cache and self._ly_cache[0] == key:
+            return self._ly_cache[1]
+        fm = QFontMetrics(f)
+        flags = int(Qt.TextWordWrap | (Qt.AlignHCenter if centered else Qt.AlignLeft))
+        gap = int(fm.height() * 0.62)
+        lines = [(ms, txt) for ms, txt in ly["synced"]] if ly.get("synced") else [(None, x) for x in ly["plain"]]
+        y, rows = 0, []
+        for ms, txt in lines:
+            shown = txt if txt else ("♪" if ms is not None else "")
+            h = fm.height() // 2 if not shown else fm.boundingRect(QRect(0, 0, a.width(), 100000), flags, shown).height()
+            rows.append((y, h, ms, shown))
+            y += h + (gap if shown else 0)
+        res = {"font": f, "flags": flags, "rows": rows, "total": max(0, y - gap)}
+        self._ly_cache = (key, res)
+        return res
+
+    def _paint_lyrics(self, p, a, centered):
+        ly, state = self.win.lyrics, self.win.lyrics_state
+        if not ly or ly.get("instrumental"):
+            f = QFont(self.font()); f.setPointSizeF(f.pointSizeF() + 4); f.setWeight(QFont.DemiBold)
+            p.setFont(f); p.setPen(QColor(255, 255, 255, 190))
+            msg = {"loading": tr_("Songtext wird gesucht …"), "error": tr_("Songtext konnte nicht geladen werden")}.get(
+                state, tr_("Instrumental") if ly else tr_("Kein Songtext gefunden"))
+            fm = QFontMetrics(f)
+            box = QRect(a.left(), a.center().y() - fm.height(), a.width(), fm.height() + 4)
+            al = Qt.AlignHCenter if centered else Qt.AlignLeft
+            p.drawText(box, al | Qt.AlignVCenter, msg)
+            if state in ("none", "error") and not ly:
+                f2 = QFont(self.font()); p.setFont(f2); p.setPen(QColor(255, 255, 255, 120))
+                hint = (tr_("Keine Verbindung zu LRCLIB.") if state == "error" else
+                        tr_("Tipp: Lege eine .lrc-Datei mit gleichem Namen neben den Titel."))
+                p.drawText(QRect(a.left(), box.bottom() + 8, a.width(), 200), int(al | Qt.TextWordWrap), hint)
+            return
+        L = self._ly_layout(a, ly, centered)
+        rows, total = L["rows"], L["total"]
+        synced = bool(ly.get("synced"))
+        anchor = a.height() * 0.38
+        lo, hi = -anchor, max(-anchor, total - anchor)
+        follow = synced and time.monotonic() - self._ly_user > 4.0
+        if synced and follow:
+            i = max(0, self._ly_idx)
+            y, h = rows[min(i, len(rows) - 1)][:2]
+            want = -anchor if self._ly_idx < 0 else y + h / 2 - anchor
+            want = min(max(want, lo), hi)
+            if abs(want - self._ly_target) > 0.5 or self._ly_snap:
+                self._ly_target = want
+                if self._ly_snap:
+                    self._ly_scroll = want
+                elif not self._ly_anim.isActive():
+                    self._ly_anim.start()
+        elif not synced:
+            lo, hi = (-(a.height() - total) / 2, -(a.height() - total) / 2) if total < a.height() * 0.9 else \
+                     (-a.height() * 0.06, total - a.height() * 0.85)
+            if self._ly_snap:
+                self._ly_scroll = self._ly_target = lo
+        self._ly_snap = False
+        self._ly_lo, self._ly_hi = lo, hi
+        # in ein eigenes Bild zeichnen, damit oben und unten weich ausgeblendet werden kann
+        dpr = self.devicePixelRatioF()
+        img = QImage(int(a.width() * dpr), int(a.height() * dpr), QImage.Format_ARGB32_Premultiplied)
+        img.setDevicePixelRatio(dpr); img.fill(Qt.transparent)
+        ip = QPainter(img); ip.setRenderHint(QPainter.Antialiasing); ip.setRenderHint(QPainter.TextAntialiasing)
+        ip.setFont(L["font"])
+        cur = self._ly_idx
+        for i, (y, h, ms, txt) in enumerate(rows):
+            top = y - self._ly_scroll
+            if top + h < 0 or top > a.height() or not txt:
+                continue
+            if synced:
+                alpha = 255 if i == cur else 105 if i > cur else 80
+            else:
+                alpha = 225
+            ip.setPen(QColor(255, 255, 255, alpha))
+            rr = QRect(0, int(top), a.width(), h)
+            ip.drawText(rr, L["flags"], txt)
+            if synced and ms is not None:
+                self._ly_hits.append((QRect(rr).translated(a.topLeft()), ms))
+        ip.setCompositionMode(QPainter.CompositionMode_DestinationIn)
+        g = QLinearGradient(0, 0, 0, a.height())
+        fade = min(0.14, 60 / max(1, a.height()))
+        g.setColorAt(0, QColor(0, 0, 0, 0)); g.setColorAt(fade, QColor(0, 0, 0, 255))
+        g.setColorAt(1 - fade, QColor(0, 0, 0, 255)); g.setColorAt(1, QColor(0, 0, 0, 0))
+        ip.fillRect(QRect(0, 0, a.width(), a.height()), g)
+        ip.end()
+        p.drawImage(a.topLeft(), img)
+        src = {"lrc": tr_("Songtext aus .lrc-Datei"), "tag": tr_("Songtext aus der Musikdatei"),
+               "lrclib": tr_("Songtext von LRCLIB")}.get(ly.get("src"), "")
+        if src:
+            f3 = QFont(self.font()); f3.setPointSizeF(max(7.5, f3.pointSizeF() - 1.5)); p.setFont(f3)
+            p.setPen(QColor(255, 255, 255, 90))
+            p.drawText(QRect(a.left(), a.bottom() + 6, a.width(), QFontMetrics(f3).height() + 2),
+                       Qt.AlignHCenter if centered else Qt.AlignLeft, src)
+
+    def _ly_line_at(self, pt):
+        for rr, ms in self._ly_hits:
+            if rr.contains(pt):
+                return ms
+        return None
+
+    def wheelEvent(self, e):
+        if self._ly_area is not None and self.win.lyrics and not self.win.lyrics.get("instrumental"):
+            L = self._ly_cache[1] if self._ly_cache else None
+            step = QFontMetrics(L["font"]).height() * 2.2 if L else 60
+            self._ly_user = time.monotonic()
+            self._ly_resume.start()
+            self._ly_anim.stop()
+            self._ly_scroll = min(max(self._ly_scroll - e.angleDelta().y() / 120 * step,
+                                      getattr(self, "_ly_lo", 0)), getattr(self, "_ly_hi", 0))
+            self._ly_target = self._ly_scroll
+            self.update()
+            e.accept()
+            return
+        super().wheelEvent(e)
+
+    def contextMenuEvent(self, e):
+        if self.has_video or not self.win.cur:
+            return super().contextMenuEvent(e)
+        m = QMenu(self)
+        a = m.addAction(tr_("Songtext anzeigen")); a.setCheckable(True); a.setChecked(self.win.lyrics_on)
+        a.triggered.connect(self.win.toggle_lyrics)
+        if self.win.lyrics_on:
+            m.addAction(tr_("Songtext neu suchen"), lambda: self.win.load_lyrics(self.win.cur["t"], force=True))
+            ly = self.win.lyrics
+            if ly and (ly.get("synced") or ly.get("plain")):
+                m.addAction(tr_("Songtext kopieren"), lambda: QApplication.clipboard().setText(
+                    "\n".join(x for _ms, x in ly["synced"]) if ly.get("synced") else "\n".join(ly["plain"])))
+                if ly.get("src") == "lrclib" and ly.get("synced") and self.win.cur["t"].get("path") \
+                        and os.path.isfile(self.win.cur["t"]["path"]):
+                    m.addAction(tr_("Als .lrc-Datei neben dem Titel speichern"), self.win.save_lyrics_lrc)
+        m.exec(e.globalPos())
+
     def _paint_subtitle(self, p, r):
         if not self.subtitle:
             return
@@ -5053,6 +5478,14 @@ class VideoView(QWidget):
 
     def mousePressEvent(self, e):
         self.activity.emit()
+        if e.button() == Qt.LeftButton and not self.has_video:
+            ms = self._ly_line_at(e.position().toPoint())
+            if ms is not None:
+                self._press = None
+                self._ly_user = 0.0
+                self.win.player.setPosition(int(ms))
+                self.win.player.play() if self.win.player.playbackState() == QMediaPlayer.PausedState else None
+                return
         self._press = e.position() if e.button() == Qt.LeftButton else None
         super().mousePressEvent(e)
 
@@ -5067,6 +5500,10 @@ class VideoView(QWidget):
 
     def mouseMoveEvent(self, e):
         self.activity.emit()
+        if not self.has_video:
+            on_line = self._ly_line_at(e.position().toPoint()) is not None
+            if on_line != (self.cursor().shape() == Qt.PointingHandCursor):
+                self.setCursor(Qt.PointingHandCursor) if on_line else self.unsetCursor()
         # ohne Titelleiste (Video): Fenster durch Ziehen im Bild verschieben
         press = getattr(self, "_press", None)
         if (press is not None and e.buttons() & Qt.LeftButton and getattr(self.win, "_winbox_on", False)
@@ -6952,6 +7389,25 @@ class SettingsDialog(QDialog):
         bh.setObjectName("hint"); bh.setWordWrap(True)
         brow.addWidget(bbatch); brow.addWidget(bh, 1)
         ov.addLayout(brow)
+        ov.addSpacing(10)
+        ov.addWidget(QLabel(tr_("<b>Songtexte</b>")))
+        self.o_lyrics = QCheckBox(tr_("Songtexte bei LRCLIB suchen, wenn keine eigenen vorhanden sind"))
+        self.o_lyrics.setChecked(win.settings.value("online/lyrics", True, type=bool))
+        ov.addWidget(self.o_lyrics)
+        lyh = QLabel(tr_("NeoNote nimmt zuerst eine .lrc-Datei mit gleichem Namen neben dem Titel, danach einen in der "
+                         "Musikdatei gespeicherten Songtext. Nur wenn beides fehlt, fragt es <b>LRCLIB</b> (lrclib.net) "
+                         "mit Interpret, Titel, Album und Länge. Gefundene Texte werden zwischengespeichert."))
+        lyh.setObjectName("hint"); lyh.setWordWrap(True)
+        ov.addWidget(lyh)
+        lyb = QPushButton(tr_("Zwischengespeicherte Songtexte löschen"))
+
+        def _clear_ly():
+            lyrics_cache_clear()
+            lyb.setEnabled(False)
+            if win.cur:
+                win.load_lyrics(win.cur["t"], force=True)
+        lyb.clicked.connect(_clear_ly)
+        ov.addWidget(lyb, 0, Qt.AlignLeft)
         ov.addStretch()
         self.tabs.addTab(on, tr_("Online-Informationen"))
 
@@ -7133,6 +7589,10 @@ class SettingsDialog(QDialog):
         w.settings.setValue("online/write_tags", self.o_tags.isChecked())
         w.settings.setValue("online/embed_cover", self.o_embed.isChecked())
         w.settings.setValue("online/folder_cover", self.o_folder.isChecked())
+        if self.o_lyrics.isChecked() != w.settings.value("online/lyrics", True, type=bool):
+            w.settings.setValue("online/lyrics", self.o_lyrics.isChecked())
+            if w.cur and w.lyrics_on and not w.lyrics:
+                w.load_lyrics(w.cur["t"], force=True)
         w.settings.setValue("edit/write_files", self.o_edit.isChecked())
         w.settings.setValue("system/tray", self.s_tray.isChecked())
         w.settings.setValue("system/close_to_tray", self.s_close.isChecked())
@@ -7602,6 +8062,8 @@ class MainWindow(QMainWindow):
         self._blur_timer = QTimer(self, singleShot=True, interval=120)
         self._blur_timer.timeout.connect(lambda: self._apply_blur())
         self.np_mode = False
+        self.lyrics_on = self.settings.value("ui/lyrics", False, type=bool)
+        self.lyrics, self.lyrics_state, self._lyrics_path, self._lyrics_tok = None, "", None, 0
         self.sort_col, self.sort_desc = None, False
         self._pending_pos = None
         self._resume_note = 0
@@ -7808,6 +8270,7 @@ class MainWindow(QMainWindow):
 
     def _has_video_changed(self, v):
         self.video.set_has_video(v)
+        self.btn_lyrics.setVisible(not v)
         if v:
             self._sub_margin = None
             self._update_sub_margin(self.controls.isVisible())
@@ -9373,7 +9836,7 @@ class MainWindow(QMainWindow):
         self.btn_queue.setChecked(self.queue_visible); self.top_queue.setChecked(self.queue_visible)
         self.qpanel.setVisible(self.queue_visible)
         for seq, slot in (("Ctrl+L", lambda: self.set_queue_visible(not self.queue_visible)),
-                          ("F11", self.toggle_fullscreen), ("Ctrl+O", self.open_dialog), ("Ctrl+M", self.show_mini), ("Ctrl+E", self.open_equalizer),
+                          ("F11", self.toggle_fullscreen), ("Ctrl+O", self.open_dialog), ("Ctrl+M", self.show_mini), ("Ctrl+E", self.open_equalizer), ("Ctrl+T", self.toggle_lyrics),
                           ("Ctrl+P", self.toggle_play), ("Ctrl+Right", self.next_track),
                           ("Ctrl+Left", self.prev_track), ("Ctrl+F", self.search.setFocus),
                           ("Alt+Left", self.go_back), ("Alt+Right", self.go_forward),
@@ -9483,6 +9946,8 @@ class MainWindow(QMainWindow):
         self.btn_mode.clicked.connect(self.toggle_np_mode)
         self.btn_mini = self._icon_btn("mini", 18, tr_("Mini-Player (Strg+M)"), self.show_mini, obj="ctl")
         self.btn_eq = self._icon_btn("eq", 18, tr_("Equalizer (Strg+E)"), self.open_equalizer, obj="ctl")
+        self.btn_lyrics = self._icon_btn("lyrics", 18, tr_("Songtext (Strg+T)"), self.toggle_lyrics, True, "ctl")
+        self.btn_lyrics.setChecked(self.lyrics_on)
         self.btn_sleep = QToolButton(); self.btn_sleep.setObjectName("ctl")
         self.btn_sleep.setIcon(make_icon("moon", 16)); self.btn_sleep.setIconSize(QSize(16, 16))
         self.btn_sleep.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
@@ -9490,7 +9955,7 @@ class MainWindow(QMainWindow):
         self.btn_sleep.setMenu(self.build_sleep_menu(self.btn_sleep))
         self.btn_sleep.hide()
         rl.addWidget(self.btn_sleep)
-        rl.addWidget(self.btn_tracks); rl.addWidget(self.btn_eq); rl.addWidget(self.btn_mini); rl.addWidget(self.btn_mode)
+        rl.addWidget(self.btn_tracks); rl.addWidget(self.btn_lyrics); rl.addWidget(self.btn_eq); rl.addWidget(self.btn_mini); rl.addWidget(self.btn_mode)
         row.addWidget(rightw)
         v.addLayout(row)
         bar.installEventFilter(self)
@@ -10481,6 +10946,75 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(APP_TITLE)
         self.ovl_title.setText(disp(t["title"]) if t else "")
         self._update_vis()
+        self.load_lyrics(t)
+
+    # ── Songtexte ─────────────────────────────────────────────────────────
+    def lyrics_visible(self):
+        t = self.cur["t"] if self.cur else None
+        return bool(self.lyrics_on and t and not t.get("stream") and not self.video.has_video)
+
+    def toggle_lyrics(self):
+        if self.video.has_video:
+            return
+        self.lyrics_on = not self.lyrics_on
+        self.settings.setValue("ui/lyrics", self.lyrics_on)
+        self.btn_lyrics.setChecked(self.lyrics_on)
+        if self.lyrics_on:
+            self.load_lyrics(self.cur["t"] if self.cur else None)
+            if self.cur and not self.np_mode:
+                self.enter_np_mode()
+        self.video.lyrics_reset()
+
+    def load_lyrics(self, t, force=False):
+        self._lyrics_tok += 1
+        tok = self._lyrics_tok
+        if (not t or not self.lyrics_on or t.get("stream")
+                or Path(str(t.get("path", ""))).suffix.lower() in VIDEO_EXT):
+            self.lyrics, self.lyrics_state, self._lyrics_path = None, "", None
+            self.video.update()
+            return
+        key = (t.get("path"), t.get("title"), t.get("artist"))
+        if not force and key == self._lyrics_path and self.lyrics_state in ("ok", "none", "loading"):
+            return
+        if force:
+            try:
+                (LYRICS_DIR / f"{_lyrics_key(t)}.json").unlink()
+            except OSError:
+                pass
+        self._lyrics_path = key
+        self.lyrics, self.lyrics_state = None, "loading"
+        self.video.lyrics_reset()
+        online = self.settings.value("online/lyrics", True, type=bool)
+        info = dict(t)
+        self.run_job(lambda: find_lyrics(info, online),
+                     lambda res, tok=tok: self._lyrics_done(tok, res, ""),
+                     lambda msg, tok=tok: self._lyrics_done(tok, None, msg))
+
+    def _lyrics_done(self, tok, res, err):
+        if tok != self._lyrics_tok:
+            return                       # inzwischen läuft ein anderer Titel
+        if res and res.get("synced"):
+            res["_times"] = [ms for ms, _x in res["synced"]]
+        self.lyrics = res
+        self.lyrics_state = "ok" if res else "error" if err else "none"
+        if err:
+            self._lyrics_path = None     # beim nächsten Mal erneut versuchen
+        self.video.lyrics_reset()
+        if res and res.get("synced"):
+            self.video.lyrics_pos(self.player.position())
+
+    def save_lyrics_lrc(self):
+        ly, t = self.lyrics, self.cur["t"] if self.cur else None
+        if not (ly and ly.get("synced") and t):
+            return
+        target = Path(t["path"]).with_suffix(".lrc")
+        lines = [f"[ar:{t.get('artist', '')}]", f"[ti:{t.get('title', '')}]", f"[al:{t.get('album', '')}]", ""]
+        lines += [f"[{ms // 60000:02d}:{ms // 1000 % 60:02d}.{ms % 1000 // 10:02d}]{x}" for ms, x in ly["synced"]]
+        try:
+            target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            self.flash(tr_("Gespeichert: {0}").format(target.name))
+        except OSError as e:
+            self.flash(tr_("Fehler: {0}").format(e))
 
     def toggle_play(self):
         s = self.player.playbackState()
@@ -10577,6 +11111,8 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         self._update_srt(pos)
+        if self.lyrics and self.np_mode:
+            self.video.lyrics_pos(pos)
         if self.mini.isVisible():
             self.mini.set_pos(pos)
         if getattr(self, "mpris", None) and abs(pos - self.mpris.pos_us / 1000 - (time.monotonic() - self.mpris.pos_time) * 1000 * self.mpris.playing) > 1500:
@@ -11373,6 +11909,9 @@ QDialog, QMessageBox {{ background: {css(T.solid)}; color: {css(T.fg)}; }}
 QDialog QLabel, QMessageBox QLabel {{ color: {css(T.fg)}; background: transparent; }}
 QLineEdit {{ background: {css(T.ov(0.06))}; border: 1px solid {css(T.ov(0.12))}; border-radius: 4px; padding: 5px; color: {css(T.fg)}; }}
 QLineEdit:focus {{ border-color: {css(T.accent)}; }}
+QLineEdit {{ selection-background-color: {css(T.accent)}; selection-color: #ffffff; }}
+QAbstractItemView QLineEdit {{ background: {css(T.solid)}; color: {css(T.fg)}; border: 1px solid {css(T.accent)};
+             border-radius: 3px; padding: 0px 4px; margin: 0px; }}
 QTabWidget::pane {{ border: 1px solid {css(T.ov(0.10))}; border-radius: 4px; top: -1px; }}
 QTabBar::tab {{ background: transparent; color: {css(T.dim)}; padding: 7px 16px; border: none;
                border-bottom: 2px solid transparent; }}
