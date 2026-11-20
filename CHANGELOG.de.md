@@ -2,6 +2,14 @@
 
 🇬🇧 [English](CHANGELOG.md) | 🇩🇪 **Deutsch**
 
+## Nächste Version (in Arbeit)
+
+**Neu**
+- **Sternbewertungen stehen jetzt in den Musikdateien**, so wie es Windows Media Player macht: bei MP3 und WMA im Format von WMP (WMP12 zeigt sie also auch an), bei FLAC, Ogg und Opus als `FMPS_RATING` (lesen Strawberry, Clementine, Amarok). Damit überstehen die Sterne Abstürze, Neuinstallationen und den Wechsel zwischen Windows und Linux. Schon vergebene Sterne trägt NeoNote einmalig nach. Das Änderungsdatum der Datei bleibt gleich, Sicherungs- und Sync-Programme halten die Dateien also nicht für neu. Der gerade laufende Titel wird erst nach dem Ende beschrieben. Abschaltbar unter Einstellungen ▸ Online-Informationen.
+
+**Fehlerbehebungen**
+- In NeoNote gelöschte Sterne bleiben gelöscht – „Komplett neu einlesen“ holt keine alte Bewertung aus der Datei mehr zurück.
+
 ## 1.2 – 20.11.2026
 
 **Neu**

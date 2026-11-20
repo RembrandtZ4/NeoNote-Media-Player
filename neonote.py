@@ -408,8 +408,8 @@ def read_rating(path):
     ext = Path(path).suffix.lower()
     try:
         if ext in (".mp3", ".mp2", ".aiff", ".aif", ".wav"):
-            from mutagen.id3 import ID3
-            frames = ID3(path).getall("POPM")
+            _f = mutagen.File(path)                   # MP3, WAV, AIFF
+            frames = _f.tags.getall("POPM") if _f is not None and _f.tags is not None and hasattr(_f.tags, "getall") else []
             if not frames:
                 return 0
             frames.sort(key=lambda fr: "windows media player" not in (fr.email or "").lower())
@@ -422,9 +422,73 @@ def read_rating(path):
                 return 0
             r = int(str(v[0]))
             return 0 if r <= 0 else 1 if r < 25 else 2 if r < 50 else 3 if r < 75 else 4 if r < 99 else 5
+        if ext in RATING_VORBIS_EXT:
+            tags = mutagen.File(path).tags or {}
+            keys = {str(k).lower(): k for k in tags.keys()}
+            if "fmps_rating" in keys:                 # freier Standard (Strawberry, Clementine, Amarok): 0.0–1.0
+                v = float(str(tags[keys["fmps_rating"]][0]).replace(",", "."))
+                return max(0, min(5, round(v * 5)))
+            if "rating" in keys:                      # foobar2000 u. a.: 1–5, manche Programme 0–100
+                v = float(str(tags[keys["rating"]][0]).replace(",", "."))
+                return max(0, min(5, round(v / 20) if v > 5 else round(v)))
     except Exception:
         return 0
     return 0
+
+
+RATING_ID3_EXT = (".mp3", ".mp2", ".aiff", ".aif", ".wav")
+RATING_ASF_EXT = (".wma", ".asf")
+RATING_VORBIS_EXT = (".flac", ".ogg", ".oga", ".opus")
+WMP_POPM = "Windows Media Player 9 Series"
+
+
+def rating_writable(path):
+    return Path(str(path)).suffix.lower() in RATING_ID3_EXT + RATING_ASF_EXT + RATING_VORBIS_EXT
+
+
+def write_rating(path, stars):
+    """Sterne (0–5) so in die Datei schreiben, wie es Windows Media Player tut (MP3: POPM, WMA: WM/SharedUserRating),
+    bei FLAC/Ogg/Opus als FMPS_RATING. 0 entfernt die Bewertung. Änderungszeit der Datei bleibt erhalten,
+    damit Sicherungs- und Sync-Programme die Datei nicht für neu halten."""
+    ext = Path(path).suffix.lower()
+    stars = max(0, min(5, int(stars)))
+    st = os.stat(path)
+    if ext in RATING_ID3_EXT:
+        from mutagen.id3 import POPM
+        f = mutagen.File(path)                        # MP3, aber auch WAV/AIFF (ID3 steckt dort in einem eigenen Block)
+        if f is None:
+            raise ValueError("Unbekanntes Dateiformat")
+        if f.tags is None:
+            f.add_tags()
+        old = [fr for fr in f.tags.getall("POPM") if fr.email == WMP_POPM]
+        count = getattr(old[0], "count", 0) if old else 0
+        f.tags.delall(f"POPM:{WMP_POPM}")
+        if stars:
+            f.tags.add(POPM(email=WMP_POPM, rating=(0, 1, 64, 128, 196, 255)[stars], count=count))
+        f.save()
+    elif ext in RATING_ASF_EXT:
+        from mutagen.asf import ASF
+        f = ASF(path)
+        if stars:
+            f.tags["WM/SharedUserRating"] = [(0, 1, 25, 50, 75, 99)[stars]]
+        elif "WM/SharedUserRating" in f.tags:
+            del f.tags["WM/SharedUserRating"]
+        f.save()
+    elif ext in RATING_VORBIS_EXT:
+        f = mutagen.File(path)
+        if f.tags is None:
+            f.add_tags()
+        for k in [k for k in f.tags.keys() if str(k).lower() == "fmps_rating"]:
+            del f.tags[k]
+        if stars:
+            f.tags["FMPS_RATING"] = [f"{stars / 5:.1f}"]
+        f.save()
+    else:
+        raise ValueError("Format ohne Sternbewertung")
+    try:
+        os.utime(path, (st.st_atime, st.st_mtime))
+    except OSError:
+        pass
 
 
 def basic_track(path):
@@ -4186,6 +4250,10 @@ class Stats:
     def rating(self, path):
         return self.data.get(path, {}).get("r", 0)
 
+    def has_rating(self, path):
+        """Auch „bewusst ohne Sterne“ (0) zählt – dann keine Sterne aus den Dateien übernehmen."""
+        return "r" in self.data.get(path, {})
+
     def plays(self, path):
         return self.data.get(path, {}).get("p", 0)
 
@@ -7592,7 +7660,12 @@ class SettingsDialog(QDialog):
         ov.addSpacing(4)
         self.o_edit = QCheckBox(tr_("Von Hand bearbeitete Angaben (Titel, Interpret, Album …) in die Dateien schreiben"))
         self.o_edit.setChecked(win.settings.value("edit/write_files", True, type=bool))
+        self.o_rate = QCheckBox(tr_("Sternbewertungen in die Musikdateien schreiben (wie Windows Media Player)"))
+        self.o_rate.setToolTip(tr_("MP3 und WMA im Format von Windows Media Player, FLAC/Ogg/Opus als FMPS_RATING. "
+                                   "So bleiben die Sterne auch nach einer Neuinstallation oder in anderen Playern erhalten."))
+        self.o_rate.setChecked(win.settings.value("edit/write_ratings", True, type=bool))
         ov.addWidget(self.o_edit)
+        ov.addWidget(self.o_rate)
         oh = QLabel(tr_("Ist nichts davon ausgewählt, speichert NeoNote die Angaben nur in seiner eigenen Bibliothek. "
                     "Deine Dateien bleiben dann unverändert. Andere Programme sehen die Ergänzungen nur, wenn sie in "
                     "die Dateien geschrieben werden."))
@@ -7811,6 +7884,11 @@ class SettingsDialog(QDialog):
             if w.cur and w.lyrics_on and not w.lyrics:
                 w.load_lyrics(w.cur["t"], force=True)
         w.settings.setValue("edit/write_files", self.o_edit.isChecked())
+        if self.o_rate.isChecked() != w.ratings_to_files():
+            w.settings.setValue("edit/write_ratings", self.o_rate.isChecked())
+            if self.o_rate.isChecked():
+                w.settings.setValue("edit/ratings_synced", False)
+                w.sync_ratings_to_files()
         w.settings.setValue("system/tray", self.s_tray.isChecked())
         w.settings.setValue("system/close_to_tray", self.s_close.isChecked())
         w.settings.setValue("system/mpris", self.s_mpris.isChecked())
@@ -8331,6 +8409,17 @@ class MainWindow(QMainWindow):
         self.jf_lib.load()
         self._jf_setup()
         splash_step(tr_("Bibliothek geladen: {0} Titel").format(fmt_int(len(self.local_lib.tracks))), 66)
+        self._rating_timer = QTimer(self, singleShot=True, interval=2500)
+        self._rating_timer.timeout.connect(self._flush_ratings)
+        self._rating_busy, self._rating_fail = False, {}
+        try:
+            self._rating_queue = {str(k): int(v) for k, v in
+                                  json.loads(self.settings.value("edit/rating_pending", "{}") or "{}").items()}
+        except (ValueError, TypeError, AttributeError):
+            self._rating_queue = {}
+        self.sync_ratings_to_files()
+        if self._rating_queue:
+            QTimer.singleShot(8000, self._flush_ratings)
         if not self.folders():
             for cand in (Path.home() / tr_("Musik"), Path.home() / "Music"):
                 if cand.is_dir():
@@ -10828,10 +10917,86 @@ class MainWindow(QMainWindow):
     def set_rating(self, tracks, n):
         for t in tracks:
             self.stats.set_rating(t["path"], n)
+            self.queue_rating_write(t, n)
         self.track_model.refresh()
         remote = [t for t in tracks if t.get("remote")]
         if remote:                               # 4–5 Sterne = Favorit auf dem Jellyfin-Server
             self.jf_set_favorite(remote, n >= 4)
+
+    # ── Sterne in die Dateien schreiben (wie Windows Media Player) ───────────
+    def ratings_to_files(self):
+        return self.settings.value("edit/write_ratings", True, type=bool)
+
+    def queue_rating_write(self, t, n):
+        if (not self.ratings_to_files() or t.get("remote") or t.get("stream") or t.get("missing")
+                or not rating_writable(t.get("path", ""))):
+            return
+        self._rating_queue[t["path"]] = int(n)
+        self._save_rating_queue()
+        self._rating_timer.start()
+
+    def _save_rating_queue(self):
+        self.settings.setValue("edit/rating_pending", json.dumps(self._rating_queue))
+
+    def _flush_ratings(self):
+        """Gesammelte Bewertungen im Hintergrund schreiben. Den gerade laufenden Titel erst nach dem Wechsel."""
+        if self._rating_busy or not self._rating_queue:
+            return
+        playing = self.cur["t"]["path"] if self.cur else None
+        batch = {p: n for p, n in self._rating_queue.items() if p != playing}
+        if not batch:
+            return
+        self._rating_busy = True
+
+        def work():
+            done, failed = {}, []
+            for path, n in batch.items():
+                if not os.path.exists(path):
+                    done[path] = None                 # Datei weg: nicht weiter versuchen
+                    continue
+                try:
+                    write_rating(path, n)
+                    done[path] = n
+                except Exception:
+                    failed.append(path)
+            return done, failed
+
+        def finished(res):
+            done, failed = res
+            self._rating_busy = False
+            bypath = {t["path"]: t for t in self.local_lib.tracks}
+            for path, n in done.items():
+                if self._rating_queue.get(path) == batch[path]:
+                    self._rating_queue.pop(path, None)
+                t = bypath.get(path)
+                if t is not None and n is not None:
+                    if n:
+                        t["wr"] = n
+                    else:
+                        t.pop("wr", None)
+            for path in failed:                       # z. B. schreibgeschützt oder gesperrt: später erneut
+                self._rating_fail[path] = self._rating_fail.get(path, 0) + 1
+                if self._rating_fail[path] >= 5:
+                    self._rating_queue.pop(path, None)
+            self._save_rating_queue()
+            if done:
+                self.local_lib.save()
+            if self._rating_queue and any(p not in failed for p in self._rating_queue):
+                self._rating_timer.start()
+
+        def fail(_msg):
+            self._rating_busy = False
+        self.run_job(work, finished, fail)
+
+    def sync_ratings_to_files(self):
+        """Einmalig (ab 1.2.1): vorhandene NeoNote-Bewertungen, die noch nicht in den Dateien stehen, nachtragen."""
+        if self.settings.value("edit/ratings_synced", False, type=bool) or not self.ratings_to_files():
+            return
+        self.settings.setValue("edit/ratings_synced", True)
+        for t in self.local_lib.tracks:
+            r = self.stats.rating(t["path"])
+            if r and r != t.get("wr", 0):
+                self.queue_rating_write(t, r)
 
     def play_all_visible(self):
         if self.stack.currentWidget() is self.tracks:
@@ -10913,7 +11078,7 @@ class MainWindow(QMainWindow):
         # Bewertungen aus dem Windows Media Player übernehmen (nur wo NeoNote noch keine hat)
         took = 0
         for t in tracks:
-            if t.get("wr") and not self.stats.rating(t["path"]):
+            if t.get("wr") and not self.stats.has_rating(t["path"]):
                 self.stats.set_rating(t["path"], t["wr"]); took += 1
         if took:
             self.flash(tr_("{0} Bewertungen aus den Dateien übernommen").format(took))
@@ -11170,6 +11335,8 @@ class MainWindow(QMainWindow):
         self._prepare_next()
 
     def _show_now_playing(self, t):
+        if getattr(self, "_rating_queue", None):
+            self._rating_timer.start()
         self.video.update()
         self._tray_update()
         if getattr(self, "mini", None) and self.mini.isVisible():
