@@ -5094,7 +5094,244 @@ class MpvVideoRenderer(QObject):
                 self.backend.render = None
 
 
-class VideoView(QWidget):
+class LyricsPainter:
+    """Gemeinsame Songtext-Darstellung für „Wird gespielt“ und die Spalte unter der Wiedergabeliste:
+    weiches Mitscrollen, Mausrad, Klick auf eine Zeile springt dorthin."""
+
+    def _ly_init(self, fg, pt=None):
+        self._ly_fg, self._ly_pt = QColor(fg), pt
+        self._ly_dim = (80, 105) if pt is None else (120, 155)    # vergangene / kommende Zeilen
+        self._ly_scroll = self._ly_target = 0.0
+        self._ly_user = 0.0                    # Zeitpunkt des letzten Scrollens von Hand
+        self._ly_idx = -1
+        self._ly_snap = True
+        self._ly_hits = []                     # (Rechteck, ms) der zuletzt gezeichneten Zeilen
+        self._ly_cache = None
+        self._ly_area = None
+        self._ly_anim = QTimer(self, interval=16)
+        self._ly_anim.timeout.connect(self._ly_step)
+        self._ly_resume = QTimer(self, singleShot=True, interval=4000)
+        self._ly_resume.timeout.connect(self.update)
+
+    def _ly_col(self, alpha):
+        c = QColor(self._ly_fg); c.setAlpha(alpha)
+        return c
+
+    def _ly_click(self, e):
+        """Linksklick auf eine Zeile: dorthin springen. True, wenn behandelt."""
+        if e.button() != Qt.LeftButton:
+            return False
+        ms = self._ly_line_at(e.position().toPoint())
+        if ms is None:
+            return False
+        self._ly_user = 0.0
+        self.win.player.setPosition(int(ms))
+        if self.win.player.playbackState() == QMediaPlayer.PausedState:
+            self.win.player.play()
+        return True
+
+    def _ly_hover(self, e):
+        on_line = self._ly_line_at(e.position().toPoint()) is not None
+        if on_line != (self.cursor().shape() == Qt.PointingHandCursor):
+            self.setCursor(Qt.PointingHandCursor) if on_line else self.unsetCursor()
+
+    def lyrics_reset(self):
+        self._ly_idx = -1
+        self._ly_snap = True
+        self._ly_user = 0.0
+        self._ly_cache = None
+        self._ly_anim.stop()
+        self.update()
+
+    def lyrics_pos(self, pos):
+        """Abspielposition für zeitgesteuerte Texte – neu gezeichnet wird nur, wenn die Zeile wechselt."""
+        ly = self.win.lyrics
+        if not ly or not ly.get("synced"):
+            return
+        idx = bisect.bisect_right(ly["_times"], pos + 200) - 1
+        if idx != self._ly_idx:
+            self._ly_idx = idx
+            self.update()
+
+    def _ly_step(self):
+        d = self._ly_target - self._ly_scroll
+        if abs(d) < 0.6:
+            self._ly_scroll = self._ly_target
+            self._ly_anim.stop()
+        else:
+            self._ly_scroll += d * 0.16
+        self.update()
+
+    def _ly_layout(self, a, ly, centered):
+        """Zeilenhöhen (mit Umbruch) – zwischengespeichert, solange Breite und Text gleich bleiben."""
+        f = QFont(self.font())
+        f.setPointSizeF(self._ly_pt or max(13.0, min(22.0, a.height() / 26)))
+        if ly.get("plain"):                           # ohne Zeitstempel: ruhiger, etwas kleiner
+            f.setPointSizeF(f.pointSizeF() * 0.86); f.setWeight(QFont.DemiBold)
+        else:
+            f.setWeight(QFont.Bold)
+        key = (id(ly), a.width(), f.pointSizeF(), centered)
+        if self._ly_cache and self._ly_cache[0] == key:
+            return self._ly_cache[1]
+        fm = QFontMetrics(f)
+        flags = int(Qt.TextWordWrap | (Qt.AlignHCenter if centered else Qt.AlignLeft))
+        gap = int(fm.height() * 0.62)
+        lines = [(ms, txt) for ms, txt in ly["synced"]] if ly.get("synced") else [(None, x) for x in ly["plain"]]
+        y, rows = 0, []
+        for ms, txt in lines:
+            shown = txt if txt else ("♪" if ms is not None else "")
+            h = fm.height() // 2 if not shown else fm.boundingRect(QRect(0, 0, a.width(), 100000), flags, shown).height()
+            rows.append((y, h, ms, shown))
+            y += h + (gap if shown else 0)
+        res = {"font": f, "flags": flags, "rows": rows, "total": max(0, y - gap)}
+        self._ly_cache = (key, res)
+        return res
+
+    def _paint_lyrics(self, p, a, centered):
+        ly, state = self.win.lyrics, self.win.lyrics_state
+        if not ly or ly.get("instrumental"):
+            f = QFont(self.font()); f.setPointSizeF(f.pointSizeF() + (1 if self._ly_pt else 4)); f.setWeight(QFont.DemiBold)
+            p.setFont(f); p.setPen(self._ly_col(190))
+            msg = {"loading": tr_("Songtext wird gesucht …"), "error": tr_("Songtext konnte nicht geladen werden")}.get(
+                state, tr_("Instrumental") if ly else tr_("Kein Songtext gefunden"))
+            fm = QFontMetrics(f)
+            box = QRect(a.left(), a.center().y() - fm.height(), a.width(), fm.height() + 4)
+            al = Qt.AlignHCenter if centered else Qt.AlignLeft
+            p.drawText(box, al | Qt.AlignVCenter, msg)
+            if state in ("none", "error") and not ly:
+                f2 = QFont(self.font()); p.setFont(f2); p.setPen(self._ly_col(120))
+                hint = (tr_("Keine Verbindung zu LRCLIB.") if state == "error" else
+                        tr_("Tipp: Lege eine .lrc-Datei mit gleichem Namen neben den Titel."))
+                p.drawText(QRect(a.left(), box.bottom() + 8, a.width(), 200), int(al | Qt.TextWordWrap), hint)
+            return
+        L = self._ly_layout(a, ly, centered)
+        rows, total = L["rows"], L["total"]
+        synced = bool(ly.get("synced"))
+        anchor = a.height() * 0.38
+        lo, hi = -anchor, max(-anchor, total - anchor)
+        follow = synced and time.monotonic() - self._ly_user > 4.0
+        if synced and follow:
+            i = max(0, self._ly_idx)
+            y, h = rows[min(i, len(rows) - 1)][:2]
+            want = -anchor if self._ly_idx < 0 else y + h / 2 - anchor
+            want = min(max(want, lo), hi)
+            if abs(want - self._ly_target) > 0.5 or self._ly_snap:
+                self._ly_target = want
+                if self._ly_snap:
+                    self._ly_scroll = want
+                elif not self._ly_anim.isActive():
+                    self._ly_anim.start()
+        elif not synced:
+            lo, hi = (-(a.height() - total) / 2, -(a.height() - total) / 2) if total < a.height() * 0.9 else \
+                     (-a.height() * 0.06, total - a.height() * 0.85)
+            if self._ly_snap:
+                self._ly_scroll = self._ly_target = lo
+        self._ly_snap = False
+        self._ly_lo, self._ly_hi = lo, hi
+        # in ein eigenes Bild zeichnen, damit oben und unten weich ausgeblendet werden kann
+        dpr = self.devicePixelRatioF()
+        img = QImage(int(a.width() * dpr), int(a.height() * dpr), QImage.Format_ARGB32_Premultiplied)
+        img.setDevicePixelRatio(dpr); img.fill(Qt.transparent)
+        ip = QPainter(img); ip.setRenderHint(QPainter.Antialiasing); ip.setRenderHint(QPainter.TextAntialiasing)
+        ip.setFont(L["font"])
+        cur = self._ly_idx
+        for i, (y, h, ms, txt) in enumerate(rows):
+            top = y - self._ly_scroll
+            if top + h < 0 or top > a.height() or not txt:
+                continue
+            if synced:
+                alpha = 255 if i == cur else self._ly_dim[1] if i > cur else self._ly_dim[0]
+            else:
+                alpha = 225
+            ip.setPen(self._ly_col(alpha))
+            rr = QRect(0, int(top), a.width(), h)
+            ip.drawText(rr, L["flags"], txt)
+            if synced and ms is not None:
+                self._ly_hits.append((QRect(rr).translated(a.topLeft()), ms))
+        ip.setCompositionMode(QPainter.CompositionMode_DestinationIn)
+        g = QLinearGradient(0, 0, 0, a.height())
+        fade = min(0.14, 60 / max(1, a.height()))
+        g.setColorAt(0, QColor(0, 0, 0, 0)); g.setColorAt(fade, QColor(0, 0, 0, 255))
+        g.setColorAt(1 - fade, QColor(0, 0, 0, 255)); g.setColorAt(1, QColor(0, 0, 0, 0))
+        ip.fillRect(QRect(0, 0, a.width(), a.height()), g)
+        ip.end()
+        p.drawImage(a.topLeft(), img)
+        src = {"lrc": tr_("Songtext aus .lrc-Datei"), "tag": tr_("Songtext aus der Musikdatei"),
+               "lrclib": tr_("Songtext von LRCLIB")}.get(ly.get("src"), "")
+        if src:
+            f3 = QFont(self.font()); f3.setPointSizeF(max(7.5, f3.pointSizeF() - 1.5)); p.setFont(f3)
+            p.setPen(self._ly_col(95))
+            p.drawText(QRect(a.left(), a.bottom() + 6, a.width(), QFontMetrics(f3).height() + 2),
+                       Qt.AlignHCenter if centered else Qt.AlignLeft, src)
+
+    def _ly_line_at(self, pt):
+        for rr, ms in self._ly_hits:
+            if rr.contains(pt):
+                return ms
+        return None
+
+    def _ly_wheel(self, e):
+        if self._ly_area is not None and self.win.lyrics and not self.win.lyrics.get("instrumental"):
+            L = self._ly_cache[1] if self._ly_cache else None
+            step = QFontMetrics(L["font"]).height() * 2.2 if L else 60
+            self._ly_user = time.monotonic()
+            self._ly_resume.start()
+            self._ly_anim.stop()
+            self._ly_scroll = min(max(self._ly_scroll - e.angleDelta().y() / 120 * step,
+                                      getattr(self, "_ly_lo", 0)), getattr(self, "_ly_hi", 0))
+            self._ly_target = self._ly_scroll
+            self.update()
+            e.accept()
+            return True
+        return False
+
+
+
+class LyricsPanel(QWidget, LyricsPainter):
+    """Songtext unter der Wiedergabeliste (Bibliotheksansicht)."""
+
+    def __init__(self, win):
+        super().__init__()
+        self.win = win
+        self._ly_init(T.fg, self.font().pointSizeF() + 2)
+        self.setMouseTracking(True)
+        self.setMinimumHeight(80)
+
+    def refresh_colors(self):
+        self._ly_fg = QColor(T.fg)
+        self._ly_cache = None
+        self.update()
+
+    def paintEvent(self, _e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        self._ly_hits = []
+        r = self.rect()
+        self._ly_area = QRect(r.left() + 14, r.top() + 8, r.width() - 28, r.height() - 30)
+        if self._ly_area.width() > 40 and self._ly_area.height() > 30:
+            self._paint_lyrics(p, self._ly_area, True)
+
+    def resizeEvent(self, e):
+        self._ly_snap = True
+        super().resizeEvent(e)
+
+    def wheelEvent(self, e):
+        if not self._ly_wheel(e):
+            super().wheelEvent(e)
+
+    def mousePressEvent(self, e):
+        if not self._ly_click(e):
+            super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e):
+        self._ly_hover(e)
+        super().mouseMoveEvent(e)
+
+    def contextMenuEvent(self, e):
+        self.win.video.contextMenuEvent(e)
+
+
+class VideoView(QWidget, LyricsPainter):
     """„Wird gespielt“: zeigt das Video oder – bei Musik – groß das Cover vor leuchtendem Hintergrund."""
     double_clicked = Signal()
     activity = Signal()
@@ -5113,18 +5350,7 @@ class VideoView(QWidget):
         self.has_video = False
         self.ended = False
         self.subtitle = ""
-        # Songtext: weiches Mitscrollen, Mausrad, Klick auf eine Zeile springt dorthin
-        self._ly_scroll = self._ly_target = 0.0
-        self._ly_user = 0.0                    # Zeitpunkt des letzten Scrollens von Hand
-        self._ly_idx = -1
-        self._ly_snap = True
-        self._ly_hits = []                     # (Rechteck, ms) der zuletzt gezeichneten Zeilen
-        self._ly_cache = None
-        self._ly_area = None
-        self._ly_anim = QTimer(self, interval=16)
-        self._ly_anim.timeout.connect(self._ly_step)
-        self._ly_resume = QTimer(self, singleShot=True, interval=4000)
-        self._ly_resume.timeout.connect(self.update)
+        self._ly_init(QColor("white"))
         self.setMouseTracking(True)
         self.setMinimumSize(200, 150)
         # Button oben rechts: zurück zur Bibliothek
@@ -5291,158 +5517,13 @@ class VideoView(QWidget):
             tr2 = QRect(tr.left(), tr.bottom() + 4, tr.width(), QFontMetrics(f2).height() + 4)
             p.drawText(tr2, Qt.AlignCenter, QFontMetrics(f2).elidedText(sub, Qt.ElideRight, tr2.width()))
 
-    def lyrics_reset(self):
-        self._ly_idx = -1
-        self._ly_snap = True
-        self._ly_user = 0.0
-        self._ly_cache = None
-        self._ly_anim.stop()
-        self.update()
-
-    def lyrics_pos(self, pos):
-        """Abspielposition für zeitgesteuerte Texte – neu gezeichnet wird nur, wenn die Zeile wechselt."""
-        ly = self.win.lyrics
-        if not ly or not ly.get("synced"):
-            return
-        idx = bisect.bisect_right(ly["_times"], pos + 200) - 1
-        if idx != self._ly_idx:
-            self._ly_idx = idx
-            self.update()
-
-    def _ly_step(self):
-        d = self._ly_target - self._ly_scroll
-        if abs(d) < 0.6:
-            self._ly_scroll = self._ly_target
-            self._ly_anim.stop()
-        else:
-            self._ly_scroll += d * 0.16
-        self.update()
-
-    def _ly_layout(self, a, ly, centered):
-        """Zeilenhöhen (mit Umbruch) – zwischengespeichert, solange Breite und Text gleich bleiben."""
-        f = QFont(self.font()); f.setPointSizeF(max(13.0, min(22.0, a.height() / 26)))
-        if ly.get("plain"):                           # ohne Zeitstempel: ruhiger, etwas kleiner
-            f.setPointSizeF(f.pointSizeF() * 0.86); f.setWeight(QFont.DemiBold)
-        else:
-            f.setWeight(QFont.Bold)
-        key = (id(ly), a.width(), f.pointSizeF(), centered)
-        if self._ly_cache and self._ly_cache[0] == key:
-            return self._ly_cache[1]
-        fm = QFontMetrics(f)
-        flags = int(Qt.TextWordWrap | (Qt.AlignHCenter if centered else Qt.AlignLeft))
-        gap = int(fm.height() * 0.62)
-        lines = [(ms, txt) for ms, txt in ly["synced"]] if ly.get("synced") else [(None, x) for x in ly["plain"]]
-        y, rows = 0, []
-        for ms, txt in lines:
-            shown = txt if txt else ("♪" if ms is not None else "")
-            h = fm.height() // 2 if not shown else fm.boundingRect(QRect(0, 0, a.width(), 100000), flags, shown).height()
-            rows.append((y, h, ms, shown))
-            y += h + (gap if shown else 0)
-        res = {"font": f, "flags": flags, "rows": rows, "total": max(0, y - gap)}
-        self._ly_cache = (key, res)
-        return res
-
-    def _paint_lyrics(self, p, a, centered):
-        ly, state = self.win.lyrics, self.win.lyrics_state
-        if not ly or ly.get("instrumental"):
-            f = QFont(self.font()); f.setPointSizeF(f.pointSizeF() + 4); f.setWeight(QFont.DemiBold)
-            p.setFont(f); p.setPen(QColor(255, 255, 255, 190))
-            msg = {"loading": tr_("Songtext wird gesucht …"), "error": tr_("Songtext konnte nicht geladen werden")}.get(
-                state, tr_("Instrumental") if ly else tr_("Kein Songtext gefunden"))
-            fm = QFontMetrics(f)
-            box = QRect(a.left(), a.center().y() - fm.height(), a.width(), fm.height() + 4)
-            al = Qt.AlignHCenter if centered else Qt.AlignLeft
-            p.drawText(box, al | Qt.AlignVCenter, msg)
-            if state in ("none", "error") and not ly:
-                f2 = QFont(self.font()); p.setFont(f2); p.setPen(QColor(255, 255, 255, 120))
-                hint = (tr_("Keine Verbindung zu LRCLIB.") if state == "error" else
-                        tr_("Tipp: Lege eine .lrc-Datei mit gleichem Namen neben den Titel."))
-                p.drawText(QRect(a.left(), box.bottom() + 8, a.width(), 200), int(al | Qt.TextWordWrap), hint)
-            return
-        L = self._ly_layout(a, ly, centered)
-        rows, total = L["rows"], L["total"]
-        synced = bool(ly.get("synced"))
-        anchor = a.height() * 0.38
-        lo, hi = -anchor, max(-anchor, total - anchor)
-        follow = synced and time.monotonic() - self._ly_user > 4.0
-        if synced and follow:
-            i = max(0, self._ly_idx)
-            y, h = rows[min(i, len(rows) - 1)][:2]
-            want = -anchor if self._ly_idx < 0 else y + h / 2 - anchor
-            want = min(max(want, lo), hi)
-            if abs(want - self._ly_target) > 0.5 or self._ly_snap:
-                self._ly_target = want
-                if self._ly_snap:
-                    self._ly_scroll = want
-                elif not self._ly_anim.isActive():
-                    self._ly_anim.start()
-        elif not synced:
-            lo, hi = (-(a.height() - total) / 2, -(a.height() - total) / 2) if total < a.height() * 0.9 else \
-                     (-a.height() * 0.06, total - a.height() * 0.85)
-            if self._ly_snap:
-                self._ly_scroll = self._ly_target = lo
-        self._ly_snap = False
-        self._ly_lo, self._ly_hi = lo, hi
-        # in ein eigenes Bild zeichnen, damit oben und unten weich ausgeblendet werden kann
-        dpr = self.devicePixelRatioF()
-        img = QImage(int(a.width() * dpr), int(a.height() * dpr), QImage.Format_ARGB32_Premultiplied)
-        img.setDevicePixelRatio(dpr); img.fill(Qt.transparent)
-        ip = QPainter(img); ip.setRenderHint(QPainter.Antialiasing); ip.setRenderHint(QPainter.TextAntialiasing)
-        ip.setFont(L["font"])
-        cur = self._ly_idx
-        for i, (y, h, ms, txt) in enumerate(rows):
-            top = y - self._ly_scroll
-            if top + h < 0 or top > a.height() or not txt:
-                continue
-            if synced:
-                alpha = 255 if i == cur else 105 if i > cur else 80
-            else:
-                alpha = 225
-            ip.setPen(QColor(255, 255, 255, alpha))
-            rr = QRect(0, int(top), a.width(), h)
-            ip.drawText(rr, L["flags"], txt)
-            if synced and ms is not None:
-                self._ly_hits.append((QRect(rr).translated(a.topLeft()), ms))
-        ip.setCompositionMode(QPainter.CompositionMode_DestinationIn)
-        g = QLinearGradient(0, 0, 0, a.height())
-        fade = min(0.14, 60 / max(1, a.height()))
-        g.setColorAt(0, QColor(0, 0, 0, 0)); g.setColorAt(fade, QColor(0, 0, 0, 255))
-        g.setColorAt(1 - fade, QColor(0, 0, 0, 255)); g.setColorAt(1, QColor(0, 0, 0, 0))
-        ip.fillRect(QRect(0, 0, a.width(), a.height()), g)
-        ip.end()
-        p.drawImage(a.topLeft(), img)
-        src = {"lrc": tr_("Songtext aus .lrc-Datei"), "tag": tr_("Songtext aus der Musikdatei"),
-               "lrclib": tr_("Songtext von LRCLIB")}.get(ly.get("src"), "")
-        if src:
-            f3 = QFont(self.font()); f3.setPointSizeF(max(7.5, f3.pointSizeF() - 1.5)); p.setFont(f3)
-            p.setPen(QColor(255, 255, 255, 90))
-            p.drawText(QRect(a.left(), a.bottom() + 6, a.width(), QFontMetrics(f3).height() + 2),
-                       Qt.AlignHCenter if centered else Qt.AlignLeft, src)
-
-    def _ly_line_at(self, pt):
-        for rr, ms in self._ly_hits:
-            if rr.contains(pt):
-                return ms
-        return None
-
     def wheelEvent(self, e):
-        if self._ly_area is not None and self.win.lyrics and not self.win.lyrics.get("instrumental"):
-            L = self._ly_cache[1] if self._ly_cache else None
-            step = QFontMetrics(L["font"]).height() * 2.2 if L else 60
-            self._ly_user = time.monotonic()
-            self._ly_resume.start()
-            self._ly_anim.stop()
-            self._ly_scroll = min(max(self._ly_scroll - e.angleDelta().y() / 120 * step,
-                                      getattr(self, "_ly_lo", 0)), getattr(self, "_ly_hi", 0))
-            self._ly_target = self._ly_scroll
-            self.update()
-            e.accept()
-            return
-        super().wheelEvent(e)
+        if not self._ly_wheel(e):
+            super().wheelEvent(e)
 
     def contextMenuEvent(self, e):
         if self.has_video or not self.win.cur:
-            return super().contextMenuEvent(e)
+            return
         m = QMenu(self)
         a = m.addAction(tr_("Songtext anzeigen")); a.setCheckable(True); a.setChecked(self.win.lyrics_on)
         a.triggered.connect(self.win.toggle_lyrics)
@@ -5478,14 +5559,9 @@ class VideoView(QWidget):
 
     def mousePressEvent(self, e):
         self.activity.emit()
-        if e.button() == Qt.LeftButton and not self.has_video:
-            ms = self._ly_line_at(e.position().toPoint())
-            if ms is not None:
-                self._press = None
-                self._ly_user = 0.0
-                self.win.player.setPosition(int(ms))
-                self.win.player.play() if self.win.player.playbackState() == QMediaPlayer.PausedState else None
-                return
+        if not self.has_video and self._ly_click(e):
+            self._press = None
+            return
         self._press = e.position() if e.button() == Qt.LeftButton else None
         super().mousePressEvent(e)
 
@@ -5501,9 +5577,7 @@ class VideoView(QWidget):
     def mouseMoveEvent(self, e):
         self.activity.emit()
         if not self.has_video:
-            on_line = self._ly_line_at(e.position().toPoint()) is not None
-            if on_line != (self.cursor().shape() == Qt.PointingHandCursor):
-                self.setCursor(Qt.PointingHandCursor) if on_line else self.unsetCursor()
+            self._ly_hover(e)
         # ohne Titelleiste (Video): Fenster durch Ziehen im Bild verschieben
         press = getattr(self, "_press", None)
         if (press is not None and e.buttons() & Qt.LeftButton and getattr(self.win, "_winbox_on", False)
@@ -8228,6 +8302,8 @@ class MainWindow(QMainWindow):
         self.search_act.setIcon(make_icon("search", 16, T.dim))
         if hasattr(self, "video"):
             self.video.refresh_icons(); self.video.update()
+        if getattr(self, "lyrics_panel", None):
+            self.lyrics_panel.refresh_colors()
         if hasattr(self, "mini"):
             self.mini.refresh_style()
         if hasattr(self, "nav"):
@@ -8271,6 +8347,7 @@ class MainWindow(QMainWindow):
     def _has_video_changed(self, v):
         self.video.set_has_video(v)
         self.btn_lyrics.setVisible(not v)
+        self._update_lyrics_panel()
         if v:
             self._sub_margin = None
             self._update_sub_margin(self.controls.isVisible())
@@ -9805,9 +9882,28 @@ class MainWindow(QMainWindow):
         self.qlist.setContextMenuPolicy(Qt.CustomContextMenu)
         self.qlist.customContextMenuRequested.connect(self._queue_menu)
         QShortcut(QKeySequence.Delete, self.qlist, self.remove_selected_from_queue, context=Qt.WidgetShortcut)
-        ql.addWidget(self.qlist, 1)
         self.qfoot = QLabel(); self.qfoot.setObjectName("qfoot")
-        ql.addWidget(self.qfoot)
+        qtop = QWidget(); qtl = QVBoxLayout(qtop); qtl.setContentsMargins(0, 0, 0, 0); qtl.setSpacing(0)
+        qtl.addWidget(self.qlist, 1); qtl.addWidget(self.qfoot)
+        # Songtext unter der Wiedergabeliste (Bibliotheksansicht), Höhe per Teiler
+        self.lyrics_box = QFrame(); self.lyrics_box.setObjectName("lyricsBox")
+        lbl_ = QVBoxLayout(self.lyrics_box); lbl_.setContentsMargins(0, 0, 0, 0); lbl_.setSpacing(0)
+        lyh = QFrame(); lyh.setObjectName("queueHead")
+        lyhl = QHBoxLayout(lyh); lyhl.setContentsMargins(12, 6, 6, 6)
+        lyt = QLabel(tr_("Songtext")); lyt.setObjectName("queueTitle"); lyt.setMinimumWidth(40)
+        lyx = self._icon_btn("close", 14, tr_("Songtext ausblenden (Strg+T)"), self.toggle_lyrics)
+        lyhl.addWidget(lyt, 1); lyhl.addWidget(lyx)
+        self.lyrics_panel = LyricsPanel(self)
+        lbl_.addWidget(lyh); lbl_.addWidget(self.lyrics_panel, 1)
+        self.qsplit = QSplitter(Qt.Vertical); self.qsplit.setChildrenCollapsible(False); self.qsplit.setHandleWidth(1)
+        self.qsplit.addWidget(qtop); self.qsplit.addWidget(self.lyrics_box)
+        self.qsplit.setStretchFactor(0, 1); self.qsplit.setStretchFactor(1, 1)
+        qs = self.settings.value("layout/qsplit")
+        if not (qs and self.qsplit.restoreState(qs)):
+            self.qsplit.setSizes([300, 300])
+        self.qsplit.splitterMoved.connect(lambda *_: self.settings.setValue("layout/qsplit", self.qsplit.saveState()))
+        self.lyrics_box.hide()
+        ql.addWidget(self.qsplit, 1)
         split.addWidget(qpanel)
         split.setStretchFactor(0, 0); split.setStretchFactor(1, 1); split.setStretchFactor(2, 0)
         self.nav.setMinimumWidth(150); self.qpanel.setMinimumWidth(200); self.stack.setMinimumWidth(320)
@@ -10961,9 +11057,24 @@ class MainWindow(QMainWindow):
         self.btn_lyrics.setChecked(self.lyrics_on)
         if self.lyrics_on:
             self.load_lyrics(self.cur["t"] if self.cur else None)
-            if self.cur and not self.np_mode:
+            # in der Bibliothek unter der Wiedergabeliste, sonst (Liste ausgeblendet) in „Wird gespielt“
+            if self.cur and not self.np_mode and not self.queue_visible:
                 self.enter_np_mode()
+        self.lyrics_reset()
+        self._update_lyrics_panel()
+
+    def lyrics_reset(self):
         self.video.lyrics_reset()
+        self.lyrics_panel.lyrics_reset()
+
+    def _update_lyrics_panel(self):
+        on = bool(self.lyrics_on and self.cur and not self.cur["t"].get("stream") and not self.video.has_video)
+        if on == self.lyrics_box.isHidden():
+            self.lyrics_box.setVisible(on)
+            if on:
+                self.lyrics_panel.lyrics_reset()
+                if self.lyrics:
+                    self.lyrics_panel.lyrics_pos(self.player.position())
 
     def load_lyrics(self, t, force=False):
         self._lyrics_tok += 1
@@ -10972,6 +11083,7 @@ class MainWindow(QMainWindow):
                 or Path(str(t.get("path", ""))).suffix.lower() in VIDEO_EXT):
             self.lyrics, self.lyrics_state, self._lyrics_path = None, "", None
             self.video.update()
+            self._update_lyrics_panel()
             return
         key = (t.get("path"), t.get("title"), t.get("artist"))
         if not force and key == self._lyrics_path and self.lyrics_state in ("ok", "none", "loading"):
@@ -10983,7 +11095,8 @@ class MainWindow(QMainWindow):
                 pass
         self._lyrics_path = key
         self.lyrics, self.lyrics_state = None, "loading"
-        self.video.lyrics_reset()
+        self.lyrics_reset()
+        self._update_lyrics_panel()
         online = self.settings.value("online/lyrics", True, type=bool)
         info = dict(t)
         self.run_job(lambda: find_lyrics(info, online),
@@ -10999,9 +11112,10 @@ class MainWindow(QMainWindow):
         self.lyrics_state = "ok" if res else "error" if err else "none"
         if err:
             self._lyrics_path = None     # beim nächsten Mal erneut versuchen
-        self.video.lyrics_reset()
+        self.lyrics_reset()
         if res and res.get("synced"):
             self.video.lyrics_pos(self.player.position())
+            self.lyrics_panel.lyrics_pos(self.player.position())
 
     def save_lyrics_lrc(self):
         ly, t = self.lyrics, self.cur["t"] if self.cur else None
@@ -11111,8 +11225,11 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         self._update_srt(pos)
-        if self.lyrics and self.np_mode:
-            self.video.lyrics_pos(pos)
+        if self.lyrics:
+            if self.np_mode:
+                self.video.lyrics_pos(pos)
+            elif self.lyrics_box.isVisible():
+                self.lyrics_panel.lyrics_pos(pos)
         if self.mini.isVisible():
             self.mini.set_pos(pos)
         if getattr(self, "mpris", None) and abs(pos - self.mpris.pos_us / 1000 - (time.monotonic() - self.mpris.pos_time) * 1000 * self.mpris.playing) > 1500:
@@ -11966,6 +12083,7 @@ QMainWindow#main {{ background: transparent; }}
         background: transparent; border: none; }}
 #root QFrame#queue {{ background: {pan(0.025)}; }}
 #root QFrame#queueHead {{ border-bottom: {sep}; }}
+#root QFrame#lyricsBox {{ border-top: {sep}; }}
 #root QFrame#controls {{ background: {pan(0.045)}; border-top: {sep}; }}
 #root QFrame#winbox {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {css(_ova(0.42))}, stop:0.55 {css(_ova(0.16))}, stop:1 {css(_ova(0.0))});
     border: none; }}
