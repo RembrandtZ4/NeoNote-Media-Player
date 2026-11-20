@@ -41,12 +41,13 @@ from PySide6.QtCore import (QDate, QMimeData, QPropertyAnimation, QEasingCurve, 
                             QItemSelectionModel, QModelIndex, QPoint, QPointF, QRect,
                             QRectF, QSettings, QSize, Qt, QThread, QTimer,
                             QUrl, Signal, qVersion)
-from PySide6.QtGui import (QRegion, QAction, QDrag, QHoverEvent, QActionGroup, QColor, QFont, QFontMetrics, QGuiApplication, QLinearGradient, QRadialGradient, QTransform,
+from PySide6.QtGui import (QOpenGLContext, QRegion, QAction, QDrag, QHoverEvent, QActionGroup, QColor, QFont, QFontMetrics, QGuiApplication, QLinearGradient, QRadialGradient, QTransform,
                            QIcon, QImage, QImageReader, QKeySequence, QPainter,
                            QPainterPath, QPalette, QPen, QPixmap, QPolygonF,
                            QShortcut, QStandardItem, QStandardItemModel, QDesktopServices)
 from PySide6.QtMultimedia import QAudioOutput, QMediaMetaData, QMediaPlayer, QVideoSink
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import (QScrollArea, QTextBrowser, QAbstractButton, QAbstractItemView, QGraphicsOpacityEffect,
                                QApplication, QButtonGroup, QCheckBox,
                                QColorDialog, QComboBox, QDialog,
@@ -1790,6 +1791,27 @@ class _MpvMeta:
         return self.stringValue(key) or None
 
 
+# mpv liefert Sprachen als ISO-639-Codes; einige Dateien nutzen die bibliografischen Varianten (ger statt deu)
+_ISO639_B = {"ger": "deu", "fre": "fra", "dut": "nld", "chi": "zho", "cze": "ces", "gre": "ell", "per": "fas",
+             "rum": "ron", "slo": "slk", "alb": "sqi", "arm": "hye", "baq": "eus", "bur": "mya", "geo": "kat",
+             "ice": "isl", "mac": "mkd", "mao": "mri", "may": "msa", "tib": "bod", "wel": "cym"}
+
+
+def mpv_lang_to_qlocale(code):
+    if not code:
+        return None
+    code = _ISO639_B.get(str(code).lower(), str(code).lower())
+    lang = QLocale(code).language()
+    return None if lang in (QLocale.Language.AnyLanguage, QLocale.Language.C) else lang
+
+
+def mpv_hwdec(setting):
+    """Einstellung „Videos decodieren mit“ → mpv-Option hwdec (mit Kopier-Variante als Rückfall)."""
+    return {"auto": "auto-safe", "off": "no", "d3d11va": "d3d11va,d3d11va-copy", "d3d12va": "d3d12va,d3d12va-copy",
+            "dxva2": "dxva2,dxva2-copy", "cuda": "nvdec,nvdec-copy", "qsv": "auto-copy",
+            "vaapi": "vaapi,vaapi-copy", "vdpau": "vdpau,vdpau-copy", "vulkan": "vulkan,vulkan-copy"}.get(setting, "auto-safe")
+
+
 class MpvBackend(QObject):
     """mpv (libmpv) mit derselben Schnittstelle wie QMediaPlayer, soweit NeoNote sie nutzt."""
     positionChanged = Signal(int)
@@ -1803,13 +1825,19 @@ class MpvBackend(QObject):
     advanced = Signal()
     _ev = Signal(str, object)
 
-    def __init__(self, parent):
+    def __init__(self, parent, video=False, hwdec="auto-safe"):
         super().__init__(parent)
         import mpv
         self._mpv = mpv
+        self.video = video
         opts = dict(vid="no", idle="yes", load_scripts="no", ytdl="no", gapless_audio="yes",
                     prefetch_playlist="yes", audio_client_name=APP_NAME, input_default_bindings=False,
                     input_vo_keyboard=False, osc=False, replaygain="no", volume=100)
+        if video:
+            # Videos: mpv zeichnet über seine Render-Schnittstelle in ein OpenGL-Element von NeoNote (MpvVideoWidget).
+            # Untertitel (auch Bild-Untertitel von Blu-rays) und HDR-Umrechnung erledigt mpv selbst.
+            opts.update(vid="auto", vo="libmpv", hwdec=hwdec, gapless_audio="no", prefetch_playlist="no",
+                        sub_auto="no", hr_seek="yes", keep_open="no", audio_client_name=APP_NAME + " Video")
         if os.environ.get("NEONOTE_AO"):
             opts["ao"] = os.environ["NEONOTE_AO"]
             if os.environ.get("NEONOTE_PCM"):
@@ -1829,9 +1857,17 @@ class MpvBackend(QObject):
         self._idle = True
         self._limiter_level = True
         self._vis_ok = True
+        self._tracks = []
+        self._has_vid = False
+        self._chapters = []
+        self.render = None            # mpv-Render-Kontext (nur Video), gesetzt von MpvVideoWidget
+        self._pending_load = None     # Video wartet, bis der Render-Kontext steht
         self._ev.connect(self._on_ev)
-        for prop, tag in (("time-pos", "pos"), ("duration", "dur"), ("pause", "pause"),
-                          ("idle-active", "idle"), ("metadata", "meta")):
+        props = [("time-pos", "pos"), ("duration", "dur"), ("pause", "pause"),
+                 ("idle-active", "idle"), ("metadata", "meta")]
+        if video:
+            props += [("track-list", "tracks"), ("video-params", "vparams"), ("chapter-list", "chapters")]
+        for prop, tag in props:
             self.m.observe_property(prop, lambda _n, v, tag=tag: self._ev.emit(tag, v))
         self.m.register_event_callback(self._mpv_event)
 
@@ -1864,6 +1900,17 @@ class MpvBackend(QObject):
         elif tag == "meta":
             self._meta = v or {}
             self.metaDataChanged.emit()
+        elif tag == "tracks":
+            self._tracks = list(v or [])
+            self.tracksChanged.emit()
+        elif tag == "vparams":
+            hv = bool(v) and bool(v.get("w")) if isinstance(v, dict) else bool(v)
+            if hv != self._has_vid:
+                self._has_vid = hv
+                self.hasVideoChanged.emit(hv)
+        elif tag == "chapters":
+            self._chapters = list(v or [])
+            self.tracksChanged.emit()
         elif tag == "loaded":
             if self._explicit:
                 self._explicit = False
@@ -1909,6 +1956,11 @@ class MpvBackend(QObject):
         if not src:
             self.stop(); return
         self._src = src
+        if self.video and self.render is None:      # erst laden, wenn mpv zeichnen kann (sonst nur Ton)
+            self._pending_load = src
+            self._set_status(QMediaPlayer.LoadingMedia)
+            self.positionChanged.emit(0)
+            return
         self._explicit = True
         self.m.pause = True
         try:
@@ -1920,7 +1972,20 @@ class MpvBackend(QObject):
         self._update_state()
         self.positionChanged.emit(0)
 
+    def render_ready(self, ctx):
+        """MpvVideoWidget hat den Render-Kontext angelegt – wartendes Video jetzt laden."""
+        self.render = ctx
+        src, self._pending_load = self._pending_load, None
+        if src:
+            started = self._started
+            self.setSource(QUrl.fromLocalFile(src) if "://" not in src else QUrl(src))
+            if started:
+                self.play()
+
     def play(self):
+        if self._pending_load:                        # Video wartet noch auf den Render-Kontext
+            self._started = True
+            return
         if self._idle and self._src:
             self._explicit = True
             self.m.loadfile(self._src, "replace")
@@ -1967,25 +2032,71 @@ class MpvBackend(QObject):
         return _MpvMeta(self._meta)
 
     def hasVideo(self):
-        return False
+        return self._has_vid
+
+    # Spuren im Stil von QMediaPlayer: Listen von QMediaMetaData mit Sprache und Titel
+    def _of(self, kind):
+        return [t for t in self._tracks if t.get("type") == kind]
+
+    @staticmethod
+    def _md(t):
+        md = QMediaMetaData()
+        lang = mpv_lang_to_qlocale(t.get("lang"))
+        if lang is not None:
+            md.insert(QMediaMetaData.Key.Language, lang)
+        title = t.get("title") or ""
+        if not title and t.get("external"):
+            title = Path(str(t.get("external-filename") or "")).name
+        if title:
+            md.insert(QMediaMetaData.Key.Title, title)
+        return md
 
     def audioTracks(self):
-        return []
+        return [self._md(t) for t in self._of("audio")]
 
     def subtitleTracks(self):
-        return []
+        return [self._md(t) for t in self._of("sub")]
 
-    def activeAudioTrack(self):
-        return 0
-
-    def activeSubtitleTrack(self):
+    def _active(self, kind):
+        for i, t in enumerate(self._of(kind)):
+            if t.get("selected"):
+                return i
         return -1
 
-    def setActiveAudioTrack(self, _i):
-        pass
+    def activeAudioTrack(self):
+        return max(0, self._active("audio"))
 
-    def setActiveSubtitleTrack(self, _i):
-        pass
+    def activeSubtitleTrack(self):
+        return self._active("sub")
+
+    def setActiveAudioTrack(self, i):
+        tl = self._of("audio")
+        if 0 <= i < len(tl):
+            try:
+                self.m.aid = tl[i]["id"]
+            except Exception:
+                pass
+
+    def setActiveSubtitleTrack(self, i):
+        tl = self._of("sub")
+        try:
+            self.m.sid = tl[i]["id"] if 0 <= i < len(tl) else "no"
+        except Exception:
+            pass
+
+    def add_subtitle_file(self, path):
+        """Externe Untertiteldatei laden und einschalten (mpv zeichnet sie selbst)."""
+        self.m.command("sub-add", str(path), "select")
+
+    def chapters(self):
+        """[(Startzeit in ms, Titel), …]"""
+        return [(int(float(c.get("time", 0)) * 1000), c.get("title") or "") for c in self._chapters]
+
+    def current_chapter(self):
+        try:
+            return int(self.m.chapter if self.m.chapter is not None else -1)
+        except Exception:
+            return -1
 
     # ── mpv-spezifisch ────────────────────────────────────────────────────
     def set_next(self, src):
@@ -2053,24 +2164,28 @@ class EngineAudio:
     def __init__(self, engine):
         self.e, self.gain, self.muted = engine, 1.0, False
 
+    def apply(self, be):
+        if be is not None:
+            be.set_volume(self.gain, self.muted)
+
     def setVolume(self, g):
         self.gain = g
         self.e.qt_audio.setVolume(g)
-        if self.e.mp:
-            self.e.mp.set_volume(g, self.muted)
+        self.apply(self.e.mp); self.apply(self.e.mv)
 
     def setMuted(self, m):
         self.muted = m
         self.e.qt_audio.setMuted(m)
-        if self.e.mp:
-            self.e.mp.set_volume(self.gain, m)
+        self.apply(self.e.mp); self.apply(self.e.mv)
 
     def isMuted(self):
         return self.muted
 
 
 class Engine(QObject):
-    """Weiche: Musik und Radio über mpv (falls vorhanden), Videos über Qt Multimedia."""
+    """Weiche: Musik und Radio über mpv; Videos über eine zweite mpv-Instanz, die auf der Grafikkarte zeichnet
+    (MpvVideoWidget) – oder über Qt Multimedia, wenn mpv fehlt oder abgeschaltet ist."""
+    video_needed = Signal()           # gleich kommt ein Video über mpv: Videofläche zeigen, damit OpenGL startet
     positionChanged = Signal(int)
     durationChanged = Signal(int)
     playbackStateChanged = Signal(object)
@@ -2089,6 +2204,11 @@ class Engine(QObject):
         self.qt_audio = QAudioOutput(self)
         self.qt.setAudioOutput(self.qt_audio)
         self.mp, self.mpv_error = None, ""
+        self.mv = None                  # mpv für Videos (wird beim ersten Video angelegt)
+        self.video_widget = None        # MpvVideoWidget, setzt MainWindow
+        self.video_mpv = False          # Videos über mpv abspielen?
+        self.video_hwdec = "auto-safe"
+        self._mv_failed = False
         if use_mpv:
             try:
                 self.mp = MpvBackend(self)
@@ -2096,13 +2216,44 @@ class Engine(QObject):
                 self.mp, self.mpv_error = None, str(e)
         self.b = self.qt
         for be in (self.qt, self.mp):
-            if be is None:
-                continue
-            for name in self.SIGNALS:
-                getattr(be, name).connect(lambda *a, be=be, name=name: be is self.b and getattr(self, name).emit(*a))
+            if be is not None:
+                self._connect(be)
         if self.mp:
             self.mp.advanced.connect(self.advanced)
         self.audio = EngineAudio(self)
+
+    def _connect(self, be):
+        for name in self.SIGNALS:
+            getattr(be, name).connect(lambda *a, be=be, name=name: be is self.b and getattr(self, name).emit(*a))
+
+    def _video_backend(self):
+        if self.mv is None and not self._mv_failed:
+            try:
+                self.mv = MpvBackend(self, video=True, hwdec=self.video_hwdec)
+                self._connect(self.mv)
+                self.audio.apply(self.mv)
+                if self.video_widget is not None:
+                    self.video_widget.attach(self.mv)
+            except Exception as e:
+                self.mv, self._mv_failed, self.mpv_error = None, True, str(e)
+        return self.mv
+
+    def video_failed(self):
+        """OpenGL ließ sich nicht einrichten → Videos ab jetzt über Qt Multimedia."""
+        self._mv_failed = True
+        mv, src, started = self.mv, self.mv._src if self.mv else "", self.mv and self.mv._started
+        self.mv = None
+        if mv is not None:
+            if self.b is mv:
+                self.b = self.qt
+                if src:
+                    self.qt.setSource(QUrl.fromLocalFile(src))
+                    if started:
+                        self.qt.play()
+            mv.shutdown()
+
+    def on_mpv_video(self):
+        return self.mv is not None and self.b is self.mv
 
     def uses_mpv_for(self, src):
         if not self.mp:
@@ -2111,20 +2262,34 @@ class Engine(QObject):
             return True
         return Path(src).suffix.lower() not in VIDEO_EXT
 
+    def _target_for(self, src):
+        if self.uses_mpv_for(src):
+            return self.mp
+        is_video = not src.startswith(("http://", "https://")) and Path(src).suffix.lower() in VIDEO_EXT
+        if is_video and self.video_mpv and self.mp is not None and self.video_widget is not None:
+            mv = self._video_backend()
+            if mv is not None:
+                return mv
+        return self.qt
+
     def on_mpv(self):
         return self.mp is not None and self.b is self.mp
 
     def setSource(self, url):
         src = url.toLocalFile() if url.isLocalFile() else url.toString()
-        target = self.mp if self.uses_mpv_for(src) else self.qt
+        target = self._target_for(src)
         if target is not self.b:
             self.b.stop()
             if self.b is self.qt:
                 self.qt.setSource(QUrl())
                 self.hasVideoChanged.emit(False)
+            elif self.b is self.mv:
+                self.hasVideoChanged.emit(False)
             elif self.mp:
                 self.mp.set_next(None)
             self.b = target
+        if target is self.mv and target is not None:
+            self.video_needed.emit()
         target.setSource(url)
 
     def set_next(self, src):
@@ -2133,6 +2298,8 @@ class Engine(QObject):
 
     def level(self):
         """Pegel für die Waveform – nur über mpv messbar, sonst None."""
+        if self.on_mpv_video():
+            return self.mv.level()
         return self.mp.level() if self.on_mpv() else None
 
     def setVideoSink(self, sink):
@@ -2144,11 +2311,15 @@ class Engine(QObject):
     def __getattr__(self, name):
         # play, pause, stop, position, duration, setPosition, playbackState, mediaStatus, metaData,
         # audioTracks, subtitleTracks, activeAudioTrack, setActiveAudioTrack, … → aktiver Wiedergabeweg
-        if name in ("qt", "mp", "b"):
+        if name in ("qt", "mp", "b", "mv"):
             raise AttributeError(name)
         return getattr(self.b, name)
 
     def shutdown(self):
+        if self.mv:
+            if self.video_widget is not None:
+                self.video_widget.release()
+            self.mv.shutdown()
         if self.mp:
             self.mp.shutdown()
 
@@ -3618,6 +3789,20 @@ class Stats:
     def last(self, path):
         return self.data.get(path, {}).get("l", 0)
 
+    def resume(self, path):
+        """Gemerkte Stelle (ms) eines langen Videos oder Hörbuchs, sonst 0."""
+        return self.data.get(path, {}).get("res", 0)
+
+    def set_resume(self, path, ms):
+        d = self.data.get(path)
+        if ms:
+            self.data.setdefault(path, {})["res"] = int(ms)
+        elif d and "res" in d:
+            del d["res"]
+        else:
+            return
+        self._timer.start()
+
     def save(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         STATS_FILE.write_text(json.dumps(self.data), encoding="utf-8")
@@ -4424,6 +4609,82 @@ class DragBar(QFrame):
         super().mouseDoubleClickEvent(e)
 
 
+class MpvVideoWidget(QOpenGLWidget):
+    """Videofläche für mpv: mpv zeichnet über seine Render-Schnittstelle direkt mit OpenGL hinein.
+    Das Bild bleibt auf der Grafikkarte (flüssiges 4K, HDR-Umrechnung, Bild-Untertitel), und Qt legt die
+    Bedienelemente wie gewohnt darüber."""
+    _frame = Signal()
+
+    def __init__(self, parent, on_fail=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)     # Klicks gehen an VideoView (Doppelklick = Vollbild)
+        self.backend = None
+        self.ctx = None
+        self._gpa = None
+        self.on_fail = on_fail
+        self._frame.connect(self.update, Qt.QueuedConnection)
+
+    def attach(self, backend):
+        self.backend = backend
+        if self.ctx is None and self.context() is not None and self.context().isValid():
+            self.makeCurrent()
+            self._create()
+            self.doneCurrent()
+
+    def _create(self):
+        if self.backend is None or self.ctx is not None:
+            return
+        try:
+            import mpv
+            ctx = QOpenGLContext.currentContext()
+
+            def gpa(_unused, name):
+                c = QOpenGLContext.currentContext() or ctx
+                addr = c.getProcAddress(name) if c is not None else 0
+                return int(addr or 0)
+            self._gpa = mpv.MpvGlGetProcAddressFn(gpa)
+            self.ctx = mpv.MpvRenderContext(self.backend.m, "opengl",
+                                            opengl_init_params={"get_proc_address": self._gpa})
+            self.ctx.update_cb = self._frame.emit
+            crash_note("mpv-Video: OpenGL bereit")
+        except Exception as e:
+            self.ctx = None
+            crash_note(f"mpv-Video: OpenGL fehlgeschlagen: {e}")
+            if self.on_fail:
+                QTimer.singleShot(0, self.on_fail)
+            return
+        self.backend.render_ready(self.ctx)
+
+    def initializeGL(self):
+        self._create()
+
+    def paintGL(self):
+        if self.ctx is None:
+            f = QOpenGLContext.currentContext().functions()
+            f.glClearColor(0, 0, 0, 1); f.glClear(0x00004000)      # GL_COLOR_BUFFER_BIT
+            return
+        r = self.devicePixelRatioF()
+        try:
+            self.ctx.render(flip_y=True, opengl_fbo={"w": max(1, round(self.width() * r)),
+                                                     "h": max(1, round(self.height() * r)),
+                                                     "fbo": self.defaultFramebufferObject()})
+        except Exception:
+            pass
+
+    def release(self):
+        """Render-Kontext freigeben – muss vor dem Beenden von mpv passieren."""
+        if self.ctx is not None:
+            try:
+                self.makeCurrent()
+                self.ctx.free()
+                self.doneCurrent()
+            except Exception:
+                pass
+            self.ctx = None
+            if self.backend is not None:
+                self.backend.render = None
+
+
 class VideoView(QWidget):
     """„Wird gespielt“: zeigt das Video oder – bei Musik – groß das Cover vor leuchtendem Hintergrund."""
     double_clicked = Signal()
@@ -4435,6 +4696,9 @@ class VideoView(QWidget):
         self.sink = QVideoSink(self)
         self.sink.videoFrameChanged.connect(self._frame)
         self.sink.subtitleTextChanged.connect(self._embedded_sub)
+        # Videos über mpv: eigene OpenGL-Fläche, liegt unter den Knöpfen von VideoView
+        self.gl = MpvVideoWidget(self, on_fail=lambda: self.win.player.video_failed())
+        self.gl.hide()
         self.img = None
         self.has_video = False
         self.ended = False
@@ -4486,7 +4750,17 @@ class VideoView(QWidget):
         if not v:
             self.img = None
             self._pending = None
+        player = getattr(self.win, "player", None)
+        self.show_gl(bool(v and player is not None and player.on_mpv_video()))
         self.update()
+
+    def show_gl(self, on):
+        if on:
+            self.gl.setGeometry(self.rect())
+            self.gl.show()
+            self.gl.lower()                 # Ende-Auswahl und Knöpfe bleiben darüber
+        else:
+            self.gl.hide()
 
     def show_end(self, on):
         self.ended = on
@@ -4504,6 +4778,7 @@ class VideoView(QWidget):
         super().resizeEvent(e)
 
     def _place(self):
+        self.gl.setGeometry(self.rect())
         self.lib_btn.adjustSize()
         self.lib_btn.move(self.width() - self.lib_btn.width() - 12, 12)
         self.end_box.adjustSize()
@@ -6399,11 +6674,20 @@ class SettingsDialog(QDialog):
         w.settings.setValue("audio/gapless", self.s_gapless.isChecked())
         w.settings.setValue("system/no_sleep", self.s_nosleep.isChecked())
         w.settings.setValue("video/hwdec", self.v_hw.currentData())
+        w.settings.setValue("video/mpv", self.v_mpv.isChecked())
+        w.player.video_mpv = bool(w.player.mp) and self.v_mpv.isChecked()
+        w.player.video_hwdec = mpv_hwdec(self.v_hw.currentData())
+        if w.player.mv is not None:
+            try:
+                w.player.mv.m.hwdec = w.player.video_hwdec      # mpv übernimmt das ab dem nächsten Video
+            except Exception:
+                pass
         w.settings.setValue("video/hwtex", self.v_tex.isChecked())
         w.settings.setValue("video/audio_lang", self.v_alang.currentData())
         w.settings.setValue("video/sub_lang", self.v_slang.currentData())
         w.settings.setValue("video/subs", self.v_subs.currentData())
         w.settings.setValue("video/srt_auto", self.v_srt.isChecked())
+        w.settings.setValue("video/resume", self.v_resume.isChecked())
         w.update_sleep_guard()
         w.apply_nav_layout(self._layout_from_list(), save=True)
         w._prepare_next()
@@ -6426,6 +6710,16 @@ class SettingsDialog(QDialog):
     def _build_video_tab(self, win):
         st = win.settings
         w = QWidget(); v = QVBoxLayout(w); v.setContentsMargins(16, 16, 16, 16); v.setSpacing(10)
+        v.addWidget(QLabel(tr_("<b>Wiedergabe</b>")))
+        self.v_mpv = QCheckBox(tr_("Videos über mpv abspielen (empfohlen)"))
+        self.v_mpv.setChecked(st.value("video/mpv", True, type=bool))
+        self.v_mpv.setEnabled(bool(getattr(win.player, "mp", None)))
+        v.addWidget(self.v_mpv)
+        mh = QLabel(tr_("mpv zeichnet das Bild direkt auf der Grafikkarte: flüssiges 4K, HDR-Videos mit richtigen Farben "
+                        "auf normalen Bildschirmen, Bild-Untertitel von Blu-rays und DVDs sowie Kapitel. Ohne Häkchen "
+                        "spielt NeoNote Videos wie bisher über Qt Multimedia ab. Wirkt ab dem nächsten Video."))
+        mh.setObjectName("hint"); mh.setWordWrap(True); v.addWidget(mh)
+        v.addSpacing(8)
         v.addWidget(QLabel(tr_("<b>Hardwarebeschleunigung</b>")))
         g = QGridLayout(); g.setHorizontalSpacing(12); g.setVerticalSpacing(6)
         g.addWidget(QLabel(tr_("Videos decodieren mit")), 0, 0)
@@ -6442,8 +6736,8 @@ class SettingsDialog(QDialog):
         v.addWidget(self.v_tex)
         hh = QLabel(tr_("Die Grafikkarte entlastet den Prozessor und spart bei 4K- und HEVC-Videos viel Strom. "
                         "Ruckelt ein Video, bleibt das Bild schwarz oder stimmen die Farben nicht, stell hier "
-                        "„Nur Prozessor“ ein oder nimm das Häkchen darunter weg. Änderungen wirken nach einem "
-                        "Neustart von NeoNote."))
+                        "„Nur Prozessor“ ein oder nimm das Häkchen darunter weg. Bei Videos über mpv wirkt die Änderung "
+                        "ab dem nächsten Video, sonst nach einem Neustart von NeoNote."))
         hh.setObjectName("hint"); hh.setWordWrap(True); v.addWidget(hh)
         cur = active_hwdec_text()
         if cur:
@@ -6478,9 +6772,12 @@ class SettingsDialog(QDialog):
                   tr_("Sprache der Untertitel"))) + 16
         g.setColumnMinimumWidth(0, lw); g2.setColumnMinimumWidth(0, lw)
         v.addLayout(g2)
+        self.v_resume = QCheckBox(tr_("Lange Videos und Hörbücher (ab 20 Minuten) an der letzten Stelle fortsetzen"))
+        self.v_resume.setChecked(st.value("video/resume", True, type=bool))
         self.v_srt = QCheckBox(tr_("Gleichnamige Untertiteldatei (.srt) neben dem Video automatisch laden"))
         self.v_srt.setChecked(st.value("video/srt_auto", True, type=bool))
         v.addWidget(self.v_srt)
+        v.addWidget(self.v_resume)
         sh = QLabel(tr_("Gilt für jedes neu geöffnete Video. Während der Wiedergabe kannst du Tonspur und Untertitel "
                         "jederzeit über den Knopf in der Steuerleiste wechseln."))
         sh.setObjectName("hint"); sh.setWordWrap(True); v.addWidget(sh)
@@ -6829,6 +7126,7 @@ class MainWindow(QMainWindow):
         self.np_mode = False
         self.sort_col, self.sort_desc = None, False
         self._pending_pos = None
+        self._resume_note = 0
         self._resume_ready = False
         self._really_quit = False
         self._mini_was_max = False
@@ -7015,8 +7313,17 @@ class MainWindow(QMainWindow):
         self.btn_play.update()
 
     # ── Video & Vollbild ──────────────────────────────────────────────────
+    def _video_needed(self):
+        """Ein Video läuft gleich über mpv: Videofläche zeigen, damit OpenGL startet und mpv zeichnen kann."""
+        self.enter_np_mode()
+        self.video.show_gl(True)
+        self.apply_audio_settings()
+
     def _has_video_changed(self, v):
         self.video.set_has_video(v)
+        if v:
+            self._sub_margin = None
+            self._update_sub_margin(self.controls.isVisible())
         self._tracks_changed()
         if v:
             self.enter_np_mode()
@@ -7167,7 +7474,23 @@ class MainWindow(QMainWindow):
                                     self.winbox.sizeHint().height())
             self.winbox.raise_()
 
+    def _update_sub_margin(self, controls_visible):
+        """Bei Videos über mpv: Untertitel über die eingeblendete Steuerleiste heben, sonst liegen sie darunter."""
+        if not getattr(self, "player", None) or not self.player.on_mpv_video():
+            return
+        margin = 22
+        if controls_visible and self._overlay and self.video.height() > 0:
+            # sub-margin-y rechnet in Pixeln eines 720 Zeilen hohen Bildes
+            margin += int(self.controls.height() / self.video.height() * 720)
+        if margin != getattr(self, "_sub_margin", None):
+            self._sub_margin = margin
+            try:
+                self.player.mv.m["sub-margin-y"] = margin
+            except Exception:
+                pass
+
     def _fade_to(self, visible):
+        self._update_sub_margin(visible)
         target = 1.0 if visible else 0.0
         for w in self._ovl_items():
             a = self._fades.get(w)
@@ -7673,6 +7996,7 @@ class MainWindow(QMainWindow):
 
     # ── Sitzung speichern / wiederherstellen ──────────────────────────────
     def save_session(self):
+        self._save_resume()
         st = self.settings
         st.setValue("session/queue", json.dumps([[e["t"]["path"], e["t"]["title"]] for e in self.queue]))
         st.setValue("session/index", self._cur_index())
@@ -8499,7 +8823,8 @@ class MainWindow(QMainWindow):
                           ("Alt+Left", self.go_back), ("Alt+Right", self.go_forward),
                           (Qt.Key_MediaPlay, self.toggle_play), (Qt.Key_MediaTogglePlayPause, self.toggle_play),
                           (Qt.Key_MediaNext, self.next_track), (Qt.Key_MediaPrevious, self.prev_track),
-                          (Qt.Key_MediaStop, self.stop)):
+                          (Qt.Key_MediaStop, self.stop),
+                          ("Ctrl+PgDown", lambda: self.step_chapter(1)), ("Ctrl+PgUp", lambda: self.step_chapter(-1))):
             QShortcut(QKeySequence(seq), self, slot)
 
     def set_cmdbar_visible(self, on):
@@ -8623,6 +8948,10 @@ class MainWindow(QMainWindow):
         self.player = Engine(self, use_mpv)
         self.audio = self.player.audio
         self.player.setVideoSink(self.video.sink)
+        self.player.video_widget = self.video.gl
+        self.player.video_mpv = use_mpv and self.settings.value("video/mpv", True, type=bool)
+        self.player.video_hwdec = mpv_hwdec(self.settings.value("video/hwdec", "auto"))
+        self.player.video_needed.connect(self._video_needed)
         self.player.advanced.connect(self._gapless_advanced)
         self._next_entry = None
         self.apply_audio_settings()
@@ -9390,8 +9719,10 @@ class MainWindow(QMainWindow):
             gains = [int(x) for x in json.loads(st.value("eq/gains", "[]") or "[]")] or [0] * 10
         except ValueError:
             gains = [0] * 10
-        self.player.mp.set_filter(st.value("eq/enabled", False, type=bool), gains, st.value("eq/preamp", 0, type=int))
-        self.player.mp.set_replaygain(st.value("eq/replaygain", "no"))
+        for be in (self.player.mp, self.player.mv):
+            if be is not None:
+                be.set_filter(st.value("eq/enabled", False, type=bool), gains, st.value("eq/preamp", 0, type=int))
+                be.set_replaygain(st.value("eq/replaygain", "no"))
         self._prepare_next()
 
     def open_equalizer(self):
@@ -9460,9 +9791,24 @@ class MainWindow(QMainWindow):
         return -1
 
     # ── Wiedergabe ────────────────────────────────────────────────────────
+    RESUME_MIN_LEN = 20 * 60 * 1000          # ab 20 Minuten Länge merkt sich NeoNote die Stelle
+
+    def _save_resume(self):
+        """Stelle des laufenden langen Titels merken (Filme, Hörbücher) – oder vergessen, wenn er fast zu Ende war."""
+        if self.cur is None or not getattr(self, "player", None) or self.cur["t"].get("stream"):
+            return
+        if not self.settings.value("video/resume", True, type=bool):
+            return
+        d, pos = self.player.duration(), self.player.position()
+        if d < self.RESUME_MIN_LEN:
+            return
+        self.stats.set_resume(self.cur["t"]["path"], pos if 60_000 < pos < d - 90_000 else 0)
+
     def play_entry(self, e):
         if e is None:
             return
+        if e is not self.cur:
+            self._save_resume()
         self._resume_ready = False
         self.video.show_end(False)
         self.sub_mode, self._srt, self._srt_file, self._sub_auto_done = "off", None, None, False
@@ -9489,6 +9835,10 @@ class MainWindow(QMainWindow):
         self._end_handled = False
         self._end_watchdog.stop()
         crash_note(f"Öffne {src}")
+        res = self.stats.resume(t["path"]) if self.settings.value("video/resume", True, type=bool) else 0
+        if res and not self._pending_pos:
+            self._pending_pos = res
+            self._resume_note = res
         self.player.setSource(QUrl(src) if src.startswith(("http://", "https://")) else QUrl.fromLocalFile(src))
         self.player.play()
         self._mark_current()
@@ -9730,6 +10080,11 @@ class MainWindow(QMainWindow):
         audio = self.player.audioTracks()
         subs = self.player.subtitleTracks()
         ext = self._external_subs()
+        on_mv = self.player.on_mpv_video()
+        if on_mv and not self.player.mv._tracks:
+            return                            # Datei noch nicht geladen – mpv meldet die Spuren gleich
+        if on_mv and self.sub_mode == "off" and self.player.activeSubtitleTrack() >= 0:
+            self.sub_mode = "embedded"        # mpv hat eine als Standard markierte Spur (z. B. Forced) gewählt
         if self.sub_mode == "off" and not self._sub_auto_done:
             self._sub_auto_done = True
             exact = [x for x in ext if x.stem == Path(self.cur["t"]["path"]).stem] if self.cur else []
@@ -9761,21 +10116,50 @@ class MainWindow(QMainWindow):
             a.setChecked(self.sub_mode == "embedded" and i == self.player.activeSubtitleTrack())
             a.setEnabled(not bitmap)
             a.triggered.connect(lambda _=False, i=i: self._subs_embedded(i))
+        loaded = {str(t.get("external-filename")) for t in self.player.mv._tracks if t.get("external")} if on_mv else set()
         for f in ext:
+            if str(f) in loaded:              # schon als Spur geladen (mpv)
+                continue
             a = sm.addAction(tr_("Datei: {0}").format(f.name)); a.setCheckable(True); g2.addAction(a)
             a.setChecked(self.sub_mode == "srt" and self._srt_file == f)
             a.triggered.connect(lambda _=False, f=f: self._load_srt(f))
         sm.addSeparator()
         sm.addAction(tr_("Untertiteldatei laden…"), self._pick_srt)
+        chapters = self.player.mv.chapters() if on_mv else []
+        if len(chapters) > 1:
+            cm = m.addMenu(tr_("Kapitel"))
+            cur = self.player.mv.current_chapter()
+            g3 = QActionGroup(cm)
+            for i, (ms, title) in enumerate(chapters):
+                name = title if title and not re.fullmatch(r"(?i)(chapter|kapitel)\s*\d+", title.split(":", 1)[-1].strip()) \
+                    else tr_("Kapitel {0}").format(i + 1)
+                a = cm.addAction(f"{name}\t{fmt_time(ms / 1000)}"); a.setCheckable(True); a.setChecked(i == cur)
+                g3.addAction(a)
+                a.triggered.connect(lambda _=False, i=i: self.goto_chapter(i))
         self.btn_tracks.setMenu(m)
         self.btn_tracks.setVisible(self.video.has_video or len(audio) > 1)
+
+    def goto_chapter(self, i):
+        if self.player.on_mpv_video():
+            try:
+                self.player.mv.m.chapter = i
+            except Exception:
+                pass
+
+    def step_chapter(self, d):
+        """Vorheriges/nächstes Kapitel (Bild↑/Bild↓) – nur bei Videos über mpv."""
+        if self.player.on_mpv_video() and self.player.mv.chapters():
+            try:
+                self.player.mv.m.command("add", "chapter", d)
+            except Exception:
+                pass
 
     def _sub_is_bitmap(self, i, count):
         """Ist Untertitelspur i ein Bild-Untertitel (PGS, VobSub, DVB)? Daran stürzt Qt Multimedia ab.
         Nur sicher, wenn NeoNote in der Datei genauso viele Untertitelspuren findet wie Qt."""
         t = self.cur["t"] if self.cur else None
-        if not t or t.get("remote") or t.get("stream"):
-            return False
+        if not t or t.get("remote") or t.get("stream") or self.player.on_mpv_video():
+            return False                  # mpv zeigt Bild-Untertitel selbst an
         codecs = mkv_subtitle_codecs(t["path"])
         return len(codecs) == count and 0 <= i < count and codecs[i].startswith(BITMAP_SUB_CODECS)
 
@@ -9837,6 +10221,15 @@ class MainWindow(QMainWindow):
         self._tracks_changed()
 
     def _load_srt(self, f):
+        if self.player.on_mpv_video():        # mpv lädt und zeichnet die Datei selbst (auch .ass, .vtt …)
+            try:
+                self.player.mv.add_subtitle_file(f)
+            except Exception as e:
+                self.flash(tr_("Untertitel konnten nicht geladen werden: {0}").format(e))
+                return
+            self.sub_mode, self._srt, self._srt_file = "embedded", None, None
+            self.video.set_subtitle("")
+            return
         try:
             cues = parse_srt(f)
         except OSError as e:
@@ -10097,8 +10490,14 @@ class MainWindow(QMainWindow):
     def _status_changed(self, s):
         if s == QMediaPlayer.LoadedMedia and self._pending_pos:
             self.player.setPosition(self._pending_pos)
+            if getattr(self, "_resume_note", 0) == self._pending_pos:
+                self.flash(tr_("Weiter bei {0} – wo du aufgehört hast. Zum Anfang: Fortschrittsbalken ganz nach links.")
+                           .format(fmt_time(self._pending_pos / 1000)), 8000)
+            self._resume_note = 0
             self._pending_pos = None
         if s == QMediaPlayer.EndOfMedia:
+            if self.cur is not None and not self.cur["t"].get("stream"):
+                self.stats.set_resume(self.cur["t"]["path"], 0)      # zu Ende geschaut: nächstes Mal von vorn
             self._track_ended()
 
     def _track_ended(self):
