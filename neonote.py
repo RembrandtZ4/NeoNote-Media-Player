@@ -53,7 +53,7 @@ from PySide6.QtWidgets import (QScrollArea, QTextBrowser, QAbstractButton, QAbst
                                QColorDialog, QComboBox, QDialog,
                                QDialogButtonBox, QFileDialog, QFormLayout,
                                QFrame, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel,
-                               QLineEdit, QListView, QListWidget,
+                               QLineEdit, QListView, QListWidget, QSpinBox,
                                QListWidgetItem, QMainWindow, QMenu,
                                QMessageBox, QProgressBar, QPushButton,
                                QSlider, QSplitter, QSplitterHandle, QStackedWidget, QStyle, QSystemTrayIcon,
@@ -112,6 +112,7 @@ STATS_FILE = DATA_DIR / "stats.json"
 OVERRIDES_FILE = DATA_DIR / "overrides.json"
 HIDDEN_FILE = DATA_DIR / "hidden.json"
 JF_CACHE_FILE = DATA_DIR / "jellyfin.json"
+SMART_FILE = DATA_DIR / "smart_playlists.json"
 JF_OFFLINE_DIR = DATA_DIR / "jellyfin-offline"
 PLAYLIST_DIR = DATA_DIR / "playlists"
 APP_VERSION = "1.1.9"
@@ -4194,6 +4195,9 @@ def make_icon(name, size=20, color=None):
         p.setPen(Qt.NoPen); p.setBrush(c)
         for x, y in ((.25, .62), (.5, .36), (.75, .55)):
             p.drawRoundedRect(QRectF((x - .1) * s, (y - .06) * s, .2 * s, .12 * s), 1, 1)
+    elif name == "smart":                              # Blitz: intelligente Wiedergabeliste
+        p.setPen(Qt.NoPen); p.setBrush(c)
+        p.drawPolygon(QPolygonF([P(.58, .1), P(.24, .56), P(.47, .56), P(.4, .9), P(.76, .42), P(.53, .42)]))
     elif name == "moon":
         a = QPainterPath(); a.addEllipse(P(.47, .53), .33 * s, .33 * s)
         b = QPainterPath(); b.addEllipse(P(.66, .36), .27 * s, .27 * s)
@@ -5221,7 +5225,11 @@ class NavDelegate(QStyledItemDelegate):
         fm = p.fontMetrics()
         x = r.left() + 16
         icon = idx.data(NAV_ICON)
-        if kind == "child":
+        if kind == "child" and icon:
+            col = T.accent if sel else T.ov(0.70)
+            p.drawPixmap(x, r.center().y() - 8, self.icon(icon, col))
+            x += 22
+        elif kind == "child":
             p.setPen(Qt.NoPen)
             p.setBrush(T.accent if sel else T.ov(0.55))
             p.drawEllipse(QPointF(x + 7, r.center().y() + 0.5), 2.6, 2.6)
@@ -6438,6 +6446,288 @@ class ThemePage(QWidget):
             self.blur_hint.setText(tr_("Wird beim nächsten Start des Players aktiviert (läuft dann über XWayland)."))
 
 
+# ── Intelligente Wiedergabelisten ────────────────────────────────────────
+# Regeln wie im WMP12 („Genre enthält Rock“, „Bewertung mindestens 4“, „nicht gespielt in den letzten 30 Tagen“).
+# Gespeichert in smart_playlists.json; die Titel werden bei jedem Öffnen neu ermittelt.
+def smart_fields():
+    return [("artist", tr_("Interpret"), "text"), ("albumartist", tr_("Albuminterpret"), "text"),
+            ("album", tr_("Album"), "text"), ("title", tr_("Titel"), "text"), ("genre", tr_("Genre"), "text"),
+            ("year", tr_("Jahr"), "num"), ("rating", tr_("Bewertung (Sterne)"), "num"),
+            ("plays", tr_("Wiedergaben"), "num"), ("last", tr_("Zuletzt gespielt"), "days"),
+            ("added", tr_("Hinzugefügt"), "days"), ("length", tr_("Länge (Minuten)"), "num"),
+            ("ext", tr_("Dateityp"), "text"), ("folder", tr_("Ordner"), "text")]
+
+
+def smart_ops(kind):
+    if kind == "text":
+        return [("contains", tr_("enthält")), ("not_contains", tr_("enthält nicht")), ("is", tr_("ist")),
+                ("is_not", tr_("ist nicht")), ("starts", tr_("beginnt mit"))]
+    if kind == "num":
+        return [("ge", tr_("mindestens")), ("le", tr_("höchstens")), ("eq", tr_("gleich")),
+                ("ne", tr_("ungleich")), ("between", tr_("zwischen"))]
+    return [("within", tr_("in den letzten … Tagen")), ("not_within", tr_("nicht in den letzten … Tagen")),
+            ("never", tr_("noch nie"))]
+
+
+SMART_SORTS = ["random", "plays", "last", "rating", "added", "artist", "title", "year"]
+
+
+def smart_sort_label(k):
+    return {"random": tr_("Zufällig"), "plays": tr_("Meistgespielt zuerst"), "last": tr_("Zuletzt gespielt zuerst"),
+            "rating": tr_("Beste Bewertung zuerst"), "added": tr_("Zuletzt hinzugefügt zuerst"),
+            "artist": tr_("Interpret, Album, Titelnummer"), "title": tr_("Titel A–Z"),
+            "year": tr_("Neuestes Jahr zuerst")}[k]
+
+
+def _num(v):
+    try:
+        return float(str(v).replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
+def smart_value(t, key, stats, now):
+    """Wert eines Titels für ein Regelfeld. Texte klein geschrieben, Zeiten als „vor wie vielen Tagen“ (None = nie)."""
+    if key in ("artist", "albumartist", "album", "title", "genre"):
+        v = t.get(key) or (t.get("artist") if key == "albumartist" else "")
+        return disp(str(v or "")).casefold()
+    if key == "ext":
+        return Path(t["path"]).suffix.lstrip(".").casefold()
+    if key == "folder":
+        return str(Path(t["path"]).parent).casefold()
+    if key == "year":
+        return to_num(t.get("year"))
+    if key == "rating":
+        return stats.rating(t["path"])
+    if key == "plays":
+        return stats.plays(t["path"])
+    if key == "length":
+        return (t.get("length") or 0) / 60
+    if key == "last":
+        ts = stats.last(t["path"])
+        return (now - ts) / 86400 if ts else None
+    if key == "added":
+        ts = t.get("mtime") or 0
+        return (now - ts) / 86400 if ts else None
+    return None
+
+
+def smart_rule_ok(rule, t, stats, now, kinds):
+    key, op = rule.get("f"), rule.get("op")
+    kind = kinds.get(key)
+    v = smart_value(t, key, stats, now)
+    if kind == "text":
+        x = str(rule.get("v", "")).casefold().strip()
+        if op == "contains":
+            return x in v
+        if op == "not_contains":
+            return x not in v
+        if op == "is":
+            return v == x
+        if op == "is_not":
+            return v != x
+        if op == "starts":
+            return v.startswith(x)
+        return True
+    if kind == "num":
+        a, b = _num(rule.get("v")), _num(rule.get("v2"))
+        if v is None or a is None:
+            return False if a is not None else True
+        if op == "ge":
+            return v >= a
+        if op == "le":
+            return v <= a
+        if op == "eq":
+            return abs(v - a) < 1e-6 if key != "length" else abs(v - a) < 0.5
+        if op == "ne":
+            return abs(v - a) >= 1e-6
+        if op == "between":
+            lo, hi = (a, b) if b is None or a <= b else (b, a)
+            return v >= lo and (hi is None or v <= hi)
+        return True
+    if kind == "days":
+        if op == "never":
+            return v is None
+        n = _num(rule.get("v"))
+        if n is None:
+            return True
+        if op == "within":
+            return v is not None and v <= n
+        if op == "not_within":
+            return v is None or v > n
+    return True
+
+
+def smart_tracks(pl, tracks, stats):
+    """Titel einer intelligenten Wiedergabeliste nach Regeln, Sortierung und Begrenzung."""
+    now = time.time()
+    kinds = {k: kind for k, _l, kind in smart_fields()}
+    rules = [r for r in pl.get("rules", []) if r.get("f") in kinds]
+    anyof = pl.get("match") == "any"
+    out = []
+    for t in tracks:
+        if t.get("missing"):
+            continue
+        if rules:
+            res = (smart_rule_ok(r, t, stats, now, kinds) for r in rules)
+            if not (any(res) if anyof else all(res)):
+                continue
+        out.append(t)
+    srt = pl.get("sort", "artist")
+    if srt == "random":
+        rnd = random.Random(f"{pl.get('id')}:{time.strftime('%Y-%m-%d')}")   # stabil für einen Tag
+        out.sort(key=lambda t: t["path"]); rnd.shuffle(out)
+    elif srt == "plays":
+        out.sort(key=lambda t: -stats.plays(t["path"]))
+    elif srt == "last":
+        out.sort(key=lambda t: -stats.last(t["path"]))
+    elif srt == "rating":
+        out.sort(key=lambda t: (-stats.rating(t["path"]), -stats.plays(t["path"])))
+    elif srt == "added":
+        out.sort(key=lambda t: -(t.get("mtime") or 0))
+    elif srt == "title":
+        out.sort(key=lambda t: str(t.get("title", "")).casefold())
+    elif srt == "year":
+        out.sort(key=lambda t: -(to_num(t.get("year")) or 0))
+    else:
+        out.sort(key=lambda t: (sort_name(t.get("albumartist") or t["artist"]), str(t["album"]).casefold(),
+                                t.get("disc") or 0, t.get("track") or 0))
+    lim = pl.get("limit") or {}
+    n = int(lim.get("n") or 0)
+    if lim.get("kind") == "count" and n > 0:
+        out = out[:n]
+    elif lim.get("kind") == "minutes" and n > 0:
+        acc, cut = 0.0, []
+        for t in out:
+            acc += (t.get("length") or 0) / 60
+            if acc > n and cut:
+                break
+            cut.append(t)
+        out = cut
+    return out
+
+
+class SmartPlaylistDialog(QDialog):
+    """Editor für intelligente Wiedergabelisten, mit Live-Vorschau der Trefferzahl."""
+
+    def __init__(self, win, pl=None):
+        super().__init__(win)
+        self.win = win
+        pl = dict(pl or {})
+        self.pl_id = pl.get("id") or f"s{int(time.time() * 1000):x}"
+        self.setWindowTitle(tr_("Intelligente Wiedergabeliste bearbeiten") if pl.get("id")
+                            else tr_("Neue intelligente Wiedergabeliste"))
+        self.setMinimumWidth(640)
+        lay = QVBoxLayout(self); lay.setContentsMargins(16, 16, 16, 12); lay.setSpacing(10)
+        top = QHBoxLayout(); top.addWidget(QLabel(tr_("Name:")))
+        self.name = QLineEdit(pl.get("name") or ""); self.name.setPlaceholderText(tr_("z. B. Rock der 80er"))
+        top.addWidget(self.name, 1); lay.addLayout(top)
+        mrow = QHBoxLayout(); mrow.addWidget(QLabel(tr_("Titel aufnehmen, auf die")))
+        self.match = QComboBox()
+        self.match.addItem(tr_("alle Regeln zutreffen"), "all"); self.match.addItem(tr_("mindestens eine Regel zutrifft"), "any")
+        self.match.setCurrentIndex(1 if pl.get("match") == "any" else 0)
+        mrow.addWidget(self.match); mrow.addStretch(); lay.addLayout(mrow)
+        self.rules_box = QVBoxLayout(); self.rules_box.setSpacing(6)
+        lay.addLayout(self.rules_box)
+        add = QPushButton(tr_("+ Regel hinzufügen")); add.setObjectName("ghost")
+        add.clicked.connect(lambda: self._add_rule()); lay.addWidget(add, 0, Qt.AlignLeft)
+        lay.addSpacing(4)
+        lrow = QHBoxLayout()
+        self.lim_on = QCheckBox(tr_("Begrenzen auf"))
+        self.lim_n = QSpinBox(); self.lim_n.setRange(1, 100000)
+        self.lim_kind = QComboBox(); self.lim_kind.addItem(tr_("Titel"), "count"); self.lim_kind.addItem(tr_("Minuten"), "minutes")
+        lim = pl.get("limit") or {}
+        self.lim_on.setChecked(lim.get("kind") in ("count", "minutes"))
+        self.lim_n.setValue(int(lim.get("n") or 100))
+        self.lim_kind.setCurrentIndex(1 if lim.get("kind") == "minutes" else 0)
+        for w_ in (self.lim_on, self.lim_n, self.lim_kind):
+            lrow.addWidget(w_)
+        lrow.addSpacing(16); lrow.addWidget(QLabel(tr_("Sortierung:")))
+        self.sort = QComboBox()
+        for k in SMART_SORTS:
+            self.sort.addItem(smart_sort_label(k), k)
+        self.sort.setCurrentIndex(max(0, self.sort.findData(pl.get("sort", "artist"))))
+        lrow.addWidget(self.sort); lrow.addStretch(); lay.addLayout(lrow)
+        self.preview = QLabel(""); self.preview.setObjectName("hint"); lay.addWidget(self.preview)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.button(QDialogButtonBox.Ok).setText(tr_("Speichern")); bb.button(QDialogButtonBox.Cancel).setText(tr_("Abbrechen"))
+        bb.accepted.connect(self._ok); bb.rejected.connect(self.reject); lay.addWidget(bb)
+        self._timer = QTimer(self, singleShot=True, interval=250); self._timer.timeout.connect(self._update_preview)
+        for w_ in (self.match, self.sort, self.lim_kind):
+            w_.currentIndexChanged.connect(lambda *_: self._timer.start())
+        self.lim_on.toggled.connect(lambda *_: self._timer.start()); self.lim_n.valueChanged.connect(lambda *_: self._timer.start())
+        for r in pl.get("rules") or [{"f": "genre", "op": "contains", "v": ""}]:
+            self._add_rule(r)
+        self._update_preview()
+
+    def _add_rule(self, rule=None):
+        rule = rule or {"f": "artist", "op": "contains", "v": ""}
+        row = QWidget(); h = QHBoxLayout(row); h.setContentsMargins(0, 0, 0, 0); h.setSpacing(6)
+        fcb = QComboBox()
+        for k, label, kind in smart_fields():
+            fcb.addItem(label, (k, kind))
+        ocb = QComboBox()
+        v1 = QLineEdit(str(rule.get("v", ""))); v2 = QLineEdit(str(rule.get("v2", "")))
+        andl = QLabel(tr_("und")); unit = QLabel(""); unit.setObjectName("hint")
+        rm = QToolButton(); rm.setText("✕"); rm.setToolTip(tr_("Regel entfernen")); rm.setAutoRaise(True)
+        for w_ in (fcb, ocb, v1, andl, v2, unit, rm):
+            h.addWidget(w_)
+        h.setStretch(2, 1); h.setStretch(4, 1)
+
+        def fill_ops(keep=None):
+            kind = fcb.currentData()[1]
+            ocb.blockSignals(True); ocb.clear()
+            for k, label in smart_ops(kind):
+                ocb.addItem(label, k)
+            ocb.setCurrentIndex(max(0, ocb.findData(keep)))
+            ocb.blockSignals(False)
+            sync()
+
+        def sync():
+            kind, op = fcb.currentData()[1], ocb.currentData()
+            v1.setVisible(op != "never"); between = op == "between"
+            andl.setVisible(between); v2.setVisible(between)
+            key = fcb.currentData()[0]
+            unit.setText(tr_("Tage") if kind == "days" and op != "never" else
+                         ("0–5" if key == "rating" else ""))
+            v1.setPlaceholderText({"text": tr_("Text"), "num": tr_("Zahl"), "days": tr_("Tage")}[kind])
+            self._timer.start()
+        fcb.setCurrentIndex(max(0, next((i for i in range(fcb.count()) if fcb.itemData(i)[0] == rule.get("f")), 0)))
+        fcb.currentIndexChanged.connect(lambda *_: fill_ops())
+        ocb.currentIndexChanged.connect(lambda *_: sync())
+        v1.textChanged.connect(lambda *_: self._timer.start()); v2.textChanged.connect(lambda *_: self._timer.start())
+        rm.clicked.connect(lambda: (row.setParent(None), row.deleteLater(), self._timer.start()))
+        row._get = lambda: {"f": fcb.currentData()[0], "op": ocb.currentData(), "v": v1.text().strip(),
+                            "v2": v2.text().strip()}
+        self.rules_box.addWidget(row)
+        fill_ops(rule.get("op"))
+
+    def data(self):
+        rules = []
+        for i in range(self.rules_box.count()):
+            w_ = self.rules_box.itemAt(i).widget()
+            if w_ is not None and hasattr(w_, "_get"):
+                rules.append(w_._get())
+        return {"id": self.pl_id, "name": self.name.text().strip() or tr_("Intelligente Liste"),
+                "match": self.match.currentData(), "rules": rules, "sort": self.sort.currentData(),
+                "limit": {"kind": self.lim_kind.currentData() if self.lim_on.isChecked() else "none",
+                          "n": self.lim_n.value()}}
+
+    def _update_preview(self):
+        L = self.win.local_lib.tracks + self.win.jf_lib.tracks
+        tr = smart_tracks(self.data(), L, self.win.stats)
+        mins = sum((t.get("length") or 0) for t in tr) / 60
+        self.preview.setText(tr_("Passend: {0} Titel · {1}").format(f"{len(tr):,}".replace(",", "."),
+                                                                     fmt_time(mins * 60)))
+
+    def _ok(self):
+        if not self.name.text().strip():
+            self.name.setFocus()
+            self.name.setPlaceholderText(tr_("Bitte einen Namen eingeben"))
+            return
+        self.accept()
+
+
 # Hardware-Decoder von Qt Multimedia (FFmpeg); werden vor dem Start über Umgebungsvariablen gesetzt
 HWDEC_CHOICES = ([("d3d11va", "Direct3D 11 (D3D11VA)"), ("d3d12va", "Direct3D 12 (D3D12VA)"),
                   ("dxva2", "DXVA2"), ("cuda", "NVIDIA CUDA"), ("qsv", "Intel Quick Sync")] if IS_WIN else
@@ -7289,6 +7579,9 @@ class MainWindow(QMainWindow):
             self._title_styler = DialogTitleStyler(self)
             QApplication.instance().installEventFilter(self._title_styler)
         self.local_lib, self.stats, self.covers = Library(), Stats(), CoverCache()
+        self.smart = read_json_file(SMART_FILE, [])           # intelligente Wiedergabelisten
+        if not isinstance(self.smart, list):
+            self.smart = []
         self.covers.attach_loader(self)
         self._cover_upd = QTimer(self); self._cover_upd.setSingleShot(True); self._cover_upd.setInterval(16)
         self._cover_upd.timeout.connect(lambda: (self.grid.viewport().update(), self.tracks.viewport().update()))
@@ -7789,6 +8082,52 @@ class MainWindow(QMainWindow):
             return sorted(L, key=lambda t: -(t.get("mtime") or 0))[:100]
         return []
 
+    # ── intelligente Wiedergabelisten ──────────────────────────────────────
+    def _smart(self, sid):
+        return next((p for p in self.smart if p.get("id") == sid), None)
+
+    def smart_list_tracks(self, sid):
+        pl = self._smart(sid)
+        return smart_tracks(pl, self.local_lib.tracks + self.jf_lib.tracks, self.stats) if pl else []
+
+    def _save_smart(self):
+        try:
+            atomic_write_text(SMART_FILE, json.dumps(self.smart, ensure_ascii=False, indent=1))
+        except OSError as e:
+            self.flash(tr_("Konnte nicht speichern: {0}").format(e))
+
+    def new_smart_playlist(self):
+        d = SmartPlaylistDialog(self)
+        if d.exec() == QDialog.Accepted:
+            pl = d.data()
+            self.smart.append(pl); self._save_smart()
+            self.refresh_playlists_nav()
+            self.navigate(f"smart:{pl['id']}")
+
+    def edit_smart_playlist(self, sid):
+        old = self._smart(sid)
+        if old is None:
+            return
+        d = SmartPlaylistDialog(self, old)
+        if d.exec() == QDialog.Accepted:
+            self.smart[self.smart.index(old)] = d.data(); self._save_smart()
+            self.refresh_playlists_nav()
+            if self.state == f"smart:{sid}":
+                self.render()
+
+    def delete_smart_playlist(self, sid):
+        pl = self._smart(sid)
+        if pl is None:
+            return
+        if QMessageBox.question(self, tr_("Löschen"),
+                                tr_("Intelligente Wiedergabeliste „{0}“ löschen? Die Titel selbst bleiben erhalten.")
+                                .format(pl.get("name", ""))) != QMessageBox.Yes:
+            return
+        self.smart.remove(pl); self._save_smart()
+        if self.state == f"smart:{sid}":
+            self.navigate("artists")
+        self.refresh_playlists_nav()
+
     def playlist_names(self):
         try:
             return sorted((p.stem for p in PLAYLIST_DIR.glob("*.m3u8")), key=str.casefold)
@@ -8098,7 +8437,7 @@ class MainWindow(QMainWindow):
         if "queue" in self.nav_items:
             self.nav_items["queue"].setData(0, NAV_COUNT, str(len(self.queue)) if getattr(self, "queue", None) else "")
         st = getattr(self, "state", "")
-        nk = st if st.startswith(("playlist:", "auto:")) else \
+        nk = st if st.startswith(("playlist:", "auto:", "smart:")) else \
             {"artist": "artists", "genre": "genres", "album": "albums"}.get(st.split(":")[0], st.split(":")[0])
         if nk in self.nav_items:
             self.nav.setCurrentItem(self.nav_items[nk])
@@ -8138,18 +8477,26 @@ class MainWindow(QMainWindow):
         root = self.nav_items["playlists"]
         cur = self.state
         root.takeChildren()
+        for k in [k for k in self.nav_items if k.startswith("smart:")]:
+            del self.nav_items[k]
+        for pl in sorted(self.smart, key=lambda p: str(p.get("name", "")).casefold()):
+            st = f"smart:{pl['id']}"
+            it = QTreeWidgetItem([pl.get("name", "?")]); it.setData(0, Qt.UserRole, st)
+            it.setData(0, NAV_KIND, "child"); it.setData(0, NAV_ICON, "smart")
+            root.addChild(it)
+            self.nav_items[st] = it
         for name in self.playlist_names():
             it = QTreeWidgetItem([name]); it.setData(0, Qt.UserRole, f"playlist:{name}")
             it.setData(0, NAV_KIND, "child")
             root.addChild(it)
             self.nav_items[f"playlist:{name}"] = it
         root.setExpanded(True)
-        if cur.startswith("playlist:") and cur in self.nav_items:
+        if cur.startswith(("playlist:", "smart:")) and cur in self.nav_items:
             self.nav.setCurrentItem(self.nav_items[cur])
 
     def _nav_menu(self, pos):
         it = self.nav.itemAt(pos)
-        if not it or not (it.data(0, Qt.UserRole) or "").startswith(("playlist", "auto:", "radio")):
+        if not it or not (it.data(0, Qt.UserRole) or "").startswith(("playlist", "auto:", "radio", "smart:")):
             m = QMenu(self)
             m.addAction(tr_("Leiste anpassen…"), lambda: self.open_settings(SettingsDialog.TAB_NAV))
             m.exec(self.nav.viewport().mapToGlobal(pos))
@@ -8158,7 +8505,16 @@ class MainWindow(QMainWindow):
         m = QMenu(self)
         if st == "playlists":
             m.addAction(tr_("Neue Wiedergabeliste…"), self.new_playlist)
+            m.addAction(make_icon("smart", 14), tr_("Neue intelligente Wiedergabeliste…"), self.new_smart_playlist)
             m.addAction(tr_("Wiedergabeliste importieren…"), self.import_playlist)
+        elif st.startswith("smart:"):
+            sid = st[6:]
+            m.addAction(make_icon("play", 14), tr_("Wiedergeben"), lambda: self.play_tracks(self.smart_list_tracks(sid), 0))
+            m.addAction(tr_("Zur aktuellen Wiedergabeliste hinzufügen"), lambda: self.add_tracks(self.smart_list_tracks(sid)))
+            m.addSeparator()
+            m.addAction(tr_("Regeln bearbeiten…"), lambda: self.edit_smart_playlist(sid))
+            m.addAction(tr_("Als normale Wiedergabeliste speichern…"), lambda: self.new_playlist(self.smart_list_tracks(sid)))
+            m.addAction(tr_("Löschen"), lambda: self.delete_smart_playlist(sid))
         elif st.startswith("playlist:"):
             name = st[9:]
             m.addAction(make_icon("play", 14), tr_("Wiedergeben"), lambda: self.play_tracks(self.playlist_tracks(name), 0))
@@ -8831,6 +9187,7 @@ class MainWindow(QMainWindow):
         m.addAction(tr_("Datei öffnen…\tStrg+O"), self.open_dialog)
         m.addSeparator()
         m.addAction(tr_("Neue Wiedergabeliste…"), self.new_playlist)
+        m.addAction(make_icon("smart", 14), tr_("Neue intelligente Wiedergabeliste…"), self.new_smart_playlist)
         m.addAction(tr_("Wiedergabeliste importieren…"), self.import_playlist)
         m.addAction(tr_("Aktuelle Wiedergabeliste exportieren…"), lambda: self.export_playlist(None))
         m.addSeparator()
@@ -9378,6 +9735,10 @@ class MainWindow(QMainWindow):
             parts += [(tr_("Jahr"), None), (st[5:], None)]
         elif st.startswith("playlist:"):
             parts = [(tr_("Medienbibliothek"), "artists"), (tr_("Wiedergabelisten"), None), (st[9:], None)]
+        elif st.startswith("smart:"):
+            pl = self._smart(st[6:])
+            parts = [(tr_("Medienbibliothek"), "artists"), (tr_("Wiedergabelisten"), None),
+                     (pl.get("name", "?") if pl else "?", None)]
         elif st == "auto:recent":
             parts = [(tr_("Medienbibliothek"), "artists"), (tr_("Zuletzt gespielt"), None)]
         elif st.startswith("auto:"):
@@ -9413,7 +9774,7 @@ class MainWindow(QMainWindow):
             st = st[3:]
         base = st.split(":")[0]
         nk = {"artist": "artists", "genre": "genres", "album": "albums", "year": "albums"}.get(base, base)
-        if st.startswith(("playlist:", "auto:")):
+        if st.startswith(("playlist:", "auto:", "smart:")):
             nk = st
         nk = pre + nk
         if nk in self.nav_items:
@@ -9450,6 +9811,26 @@ class MainWindow(QMainWindow):
             self.radio.reload()
             self.stack.setCurrentWidget(self.radio)
             self.count_label.setText(tr_("{0} Sender").format(self.radio.count()))
+            return
+
+        if st.startswith("smart:"):
+            pl = self._smart(st[6:])
+            tracks = self.smart_list_tracks(st[6:])
+            if q:
+                tracks = [t for t in tracks if q in t["title"].lower() or q in t["artist"].lower()
+                          or q in t["album"].lower()]
+            if self.sort_col is not None:
+                tracks = self._sorted(tracks)
+            if not tracks and not q:
+                self.empty.setText(tr_("Zu den Regeln von „{0}“ passt gerade kein Titel. Rechtsklick in der "
+                                       "Navigation ▸ „Regeln bearbeiten…“").format(pl.get("name", "") if pl else ""))
+                self.stack.setCurrentWidget(self.empty)
+                self.count_label.setText(tr_("0 Titel"))
+                return
+            self.track_model.set_flat(tracks)
+            self._update_sort_indicator()
+            self.stack.setCurrentWidget(self.tracks)
+            self._update_count()
             return
 
         if st.startswith("auto:"):
@@ -9836,7 +10217,8 @@ class MainWindow(QMainWindow):
         gone = (st.startswith("artist:") and not any(a["artist"] == st[7:] for a in self.lib.albums.values())) or \
                (st.startswith("album:") and st[6:] not in self.lib.albums) or \
                (st.startswith("genre:") and not any(a["genre"] == st[6:] for a in self.lib.albums.values())) or \
-               (st.startswith("year:") and not any(a["year"] == st[5:] for a in self.lib.albums.values()))
+               (st.startswith("year:") and not any(a["year"] == st[5:] for a in self.lib.albums.values())) or \
+               (st.startswith("smart:") and self._smart(st[6:]) is None)
         if gone:
             self.navigate("artists")
         elif self._quiet_scan:
