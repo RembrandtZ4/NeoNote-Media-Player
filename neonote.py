@@ -1700,6 +1700,244 @@ def move_with_sidecars(old, new):
     return moved
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# Scrobbeln: ListenBrainz (Token) und Last.fm (eigener API-Schlüssel, Sitzung statt Passwort)
+SCROBBLE_FILE = DATA_DIR / "scrobble_queue.json"
+LB_API = "https://api.listenbrainz.org/1/"
+LASTFM_API = "https://ws.audioscrobbler.com/2.0/"
+
+
+def http_post(url, data, headers=None, timeout=20):
+    h = {"User-Agent": USER_AGENT}
+    h.update(headers or {})
+    req = urllib.request.Request(url, data=data, headers=h, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+def lastfm_call(params, secret, post=True):
+    """Signierter Aufruf der Last.fm-API (api_sig = md5 aller Parameter + Geheimnis)."""
+    p = {k: str(v) for k, v in params.items() if v not in (None, "")}
+    sig = "".join(k + p[k] for k in sorted(p) if k not in ("format", "callback")) + secret
+    p["api_sig"] = hashlib.md5(sig.encode("utf-8")).hexdigest()
+    p["format"] = "json"
+    body = urllib.parse.urlencode(p).encode("utf-8")
+    try:
+        raw = http_post(LASTFM_API, body, {"Content-Type": "application/x-www-form-urlencoded"}) if post else \
+            http_get(LASTFM_API + "?" + body.decode())
+    except urllib.error.HTTPError as e:
+        raw = e.read()
+    res = json.loads(raw or b"{}")
+    if isinstance(res, dict) and res.get("error"):
+        raise OnlineError(f"Last.fm: {res.get('message') or res.get('error')}")
+    return res
+
+
+def listenbrainz_call(path, token, payload=None):
+    try:
+        if payload is None:
+            req = urllib.request.Request(LB_API + path, headers={"User-Agent": USER_AGENT, "Authorization": f"Token {token}"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return json.loads(r.read() or b"{}")
+        return json.loads(http_post(LB_API + path, json.dumps(payload).encode("utf-8"),
+                                    {"Authorization": f"Token {token}", "Content-Type": "application/json"}) or b"{}")
+    except urllib.error.HTTPError as e:
+        try:
+            msg = json.loads(e.read()).get("error", "")
+        except Exception:
+            msg = ""
+        raise OnlineError(f"ListenBrainz: HTTP {e.code} {msg}".strip())
+
+
+class Scrobbler:
+    """Meldet gehörte Titel im Hintergrund. Was ohne Verbindung nicht rausgeht, wird gespeichert und nachgereicht."""
+
+    def __init__(self):
+        self.cfg = {}
+        self.status = {"lb": "", "lfm": ""}
+        self._lock = threading.Lock()
+        q = read_json_file(SCROBBLE_FILE, [])
+        self.queue = q if isinstance(q, list) else []
+        self._np = None
+        self._ev = threading.Event()
+        threading.Thread(target=self._run, name="scrobbler", daemon=True).start()
+
+    def configure(self, cfg):
+        with self._lock:
+            self.cfg = dict(cfg)
+        self._ev.set()
+
+    def services(self):
+        c = self.cfg
+        out = []
+        if c.get("lb_on") and c.get("lb_token"):
+            out.append("lb")
+        if c.get("lfm_on") and c.get("lfm_sk") and c.get("lfm_key") and c.get("lfm_secret"):
+            out.append("lfm")
+        return out
+
+    def now_playing(self, meta):
+        if self.services():
+            with self._lock:
+                self._np = meta
+            self._ev.set()
+
+    def scrobble(self, meta, ts):
+        sv = self.services()
+        if not sv:
+            return
+        with self._lock:
+            self.queue.append({**meta, "ts": int(ts), "todo": sv})
+            self.queue = self.queue[-3000:]                   # nicht endlos wachsen, falls ein Dienst ewig fehlt
+            self._save()
+        self._ev.set()
+
+    def _save(self):
+        try:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            atomic_write_text(SCROBBLE_FILE, json.dumps(self.queue, ensure_ascii=False), backup=False)
+        except Exception:
+            pass
+
+    def _run(self):
+        while True:
+            self._ev.wait(300)
+            self._ev.clear()
+            with self._lock:
+                cfg, np, self._np = dict(self.cfg), self._np, None
+            if np:
+                for sv in self.services():
+                    try:
+                        self._send_np(sv, cfg, np)
+                    except Exception:
+                        pass
+            self._flush(cfg)
+
+    def _send_np(self, sv, c, m):
+        if sv == "lb":
+            listenbrainz_call("submit-listens", c["lb_token"], {"listen_type": "playing_now",
+                                                               "payload": [{"track_metadata": self._lb_meta(m)}]})
+        else:
+            lastfm_call({"method": "track.updateNowPlaying", "artist": m["artist"], "track": m["title"],
+                         "album": m.get("album"), "duration": m.get("duration"), "api_key": c["lfm_key"],
+                         "sk": c["lfm_sk"]}, c["lfm_secret"])
+
+    @staticmethod
+    def _lb_meta(m):
+        info = {"media_player": APP_NAME, "submission_client": APP_NAME, "submission_client_version": APP_VERSION}
+        if m.get("duration"):
+            info["duration_ms"] = int(m["duration"] * 1000)
+        if m.get("track"):
+            info["tracknumber"] = m["track"]
+        md = {"artist_name": m["artist"], "track_name": m["title"], "additional_info": info}
+        if m.get("album"):
+            md["release_name"] = m["album"]
+        return md
+
+    def _flush(self, c):
+        for sv in ("lb", "lfm"):
+            with self._lock:
+                items = [x for x in self.queue if sv in x.get("todo", [])][:50]
+            if not items or sv not in self.services():
+                continue
+            try:
+                if sv == "lb":
+                    listenbrainz_call("submit-listens", c["lb_token"], {"listen_type": "import" if len(items) > 1 else "single",
+                                      "payload": [{"listened_at": x["ts"], "track_metadata": self._lb_meta(x)} for x in items]})
+                else:
+                    p = {"method": "track.scrobble", "api_key": c["lfm_key"], "sk": c["lfm_sk"]}
+                    for i, x in enumerate(items):
+                        p.update({f"artist[{i}]": x["artist"], f"track[{i}]": x["title"], f"timestamp[{i}]": x["ts"],
+                                  f"album[{i}]": x.get("album"), f"duration[{i}]": x.get("duration")})
+                    lastfm_call(p, c["lfm_secret"])
+                self.status[sv] = "ok"
+            except Exception as e:
+                self.status[sv] = str(e)
+                continue
+            with self._lock:
+                for x in items:
+                    x["todo"] = [y for y in x.get("todo", []) if y != sv]
+                self.queue = [x for x in self.queue if x.get("todo")]
+                self._save()
+            if len(items) == 50:
+                self._ev.set()                                  # weitere warten noch
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Infos zum Interpreten: MusicBrainz → Wikidata → Wikipedia, ähnliche Künstler von ListenBrainz
+ARTIST_DIR = DATA_DIR / "artistinfo"
+LB_SIMILAR = ("https://labs.api.listenbrainz.org/similar-artists/json?artist_mbids={0}&algorithm="
+              "session_based_days_7500_session_300_contribution_5_threshold_10_limit_100_filter_True_skip_30")
+
+
+def main_artist(name):
+    """„A feat. B“, „A & B“ → A (für die Suche nach Infos)."""
+    n = re.split(r"\s+(?:feat\.?|ft\.?|featuring|vs\.?|x)\s+|\s*[;/]\s*", str(name or ""), flags=re.I)[0]
+    return n.strip() or str(name or "")
+
+
+def fetch_artist_info(name, lang="de"):
+    key = hashlib.sha1(f"{_norm(name)}|{lang}".encode()).hexdigest()[:20]
+    cf = ARTIST_DIR / f"{key}.json"
+    c = read_json_file(cf) if cf.exists() else None
+    if isinstance(c, dict) and time.time() - c.get("ts", 0) < 30 * 86400:
+        return c
+    info = {"name": name, "ts": int(time.time())}
+    res = mb_get("artist", query=f"artist:{_phrase(name)}", limit=5) or {}
+    cands = res.get("artists") or []
+    best = next((a for a in cands if _norm(a.get("name", "")) == _norm(name)), None) or \
+        next((a for a in cands if int(a.get("score", 0)) >= 95), None)
+    if best is None:
+        info["none"] = True
+    else:
+        mbid = best["id"]
+        info.update(mbid=mbid, name=best.get("name", name))
+        d = mb_get(f"artist/{mbid}", inc="url-rels+genres") or {}
+        ls = d.get("life-span") or {}
+        info.update(type=d.get("type") or "", begin=(ls.get("begin") or "")[:4], end=(ls.get("end") or "")[:4],
+                    area=(d.get("area") or {}).get("name", ""), disambiguation=d.get("disambiguation", ""),
+                    genres=[g["name"] for g in sorted(d.get("genres") or [], key=lambda g: -g.get("count", 0))][:5])
+        wd = next((r.get("url", {}).get("resource", "") for r in d.get("relations") or [] if r.get("type") == "wikidata"), "")
+        qid = wd.rstrip("/").rsplit("/", 1)[-1] if wd else ""
+        if qid.startswith("Q"):
+            try:
+                ent = json.loads(http_get(f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json"))["entities"][qid]
+                links = ent.get("sitelinks") or {}
+                for wl in (lang, "en"):
+                    title = (links.get(f"{wl}wiki") or {}).get("title")
+                    if title:
+                        sm = json.loads(http_get(f"https://{wl}.wikipedia.org/api/rest_v1/page/summary/"
+                                                 + urllib.parse.quote(title.replace(" ", "_"))))
+                        info.update(bio=sm.get("extract", ""), bio_lang=wl,
+                                    bio_url=((sm.get("content_urls") or {}).get("desktop") or {}).get("page", ""))
+                        img = (sm.get("thumbnail") or {}).get("source")
+                        if img:
+                            try:
+                                ARTIST_DIR.mkdir(parents=True, exist_ok=True)
+                                ip = ARTIST_DIR / f"{key}.img"
+                                ip.write_bytes(http_get(img))
+                                info["image"] = str(ip)
+                            except Exception:
+                                pass
+                        break
+            except Exception:
+                pass
+        try:
+            sim = json.loads(http_get(LB_SIMILAR.format(mbid)))
+            rows = sim if isinstance(sim, list) else []
+            if rows and isinstance(rows[0], dict) and "data" in rows[0]:      # ältere Antwortform
+                rows = [r for blk in rows for r in blk.get("data", [])]
+            info["similar"] = [r.get("artist_name") or r.get("name") for r in rows if r.get("artist_name") or r.get("name")][:14]
+        except Exception:
+            info["similar"] = []
+    try:
+        ARTIST_DIR.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(cf, json.dumps(info, ensure_ascii=False), backup=False)
+    except Exception:
+        pass
+    return info
+
+
 class Job(QThread):
     """Führt eine Funktion im Hintergrund aus."""
     done = Signal(object)
@@ -4950,6 +5188,12 @@ def make_icon(name, size=20, color=None):
     elif name == "smart":                              # Blitz: intelligente Wiedergabeliste
         p.setPen(Qt.NoPen); p.setBrush(c)
         p.drawPolygon(QPolygonF([P(.58, .1), P(.24, .56), P(.47, .56), P(.4, .9), P(.76, .42), P(.53, .42)]))
+    elif name == "artistinfo":                         # Kreis mit „i“: Infos zum Interpreten
+        lp = QPen(c, 1.5); p.setPen(lp); p.setBrush(Qt.NoBrush)
+        p.drawEllipse(P(.5, .5), .38 * s, .38 * s)
+        p.setPen(Qt.NoPen); p.setBrush(c)
+        p.drawEllipse(P(.5, .31), .055 * s, .055 * s)
+        p.drawRoundedRect(QRectF(.455 * s, .42 * s, .09 * s, .32 * s), .04 * s, .04 * s)
     elif name == "folder":                             # Ordner
         p.setPen(Qt.NoPen); p.setBrush(c)
         pp = QPainterPath(P(.12, .3)); pp.lineTo(P(.12, .24)); pp.lineTo(P(.38, .24)); pp.lineTo(P(.46, .32))
@@ -5875,6 +6119,84 @@ class LyricsPanel(QWidget, LyricsPainter):
         self.win.video.contextMenuEvent(e)
 
 
+class ArtistInfoView(QTextBrowser):
+    """Infos zum Interpreten (Biografie, Daten, ähnliche Künstler) – in „Wird gespielt“ und rechts unter der Liste."""
+
+    def __init__(self, win, on_dark=False):
+        super().__init__()
+        self.win, self.on_dark = win, on_dark
+        self.setOpenLinks(False)
+        self.setFrameShape(QFrame.NoFrame)
+        self.anchorClicked.connect(self._link)
+        self.viewport().setAutoFillBackground(False)
+        self.setStyleSheet("QTextBrowser { background: transparent; border: none; }")
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+    def _link(self, url):
+        u = url.toString()
+        if u.startswith("nnartist:"):
+            name = urllib.parse.unquote(u[9:])
+            if self.win.np_mode:
+                self.win.exit_np_mode()
+            self.win.navigate("artist:" + name)
+        else:
+            QDesktopServices.openUrl(url)
+
+    def show_info(self, info, state):
+        fg = QColor("white") if self.on_dark else QColor(T.fg)
+        dim = QColor(255, 255, 255, 150) if self.on_dark else QColor(T.dim)
+        acc = T.accent.lighter(135) if self.on_dark else T.accent
+        e = html.escape
+        css = (f"<style>body{{color:{fg.name()};}} a{{color:{acc.name()};text-decoration:none;}} "
+               f".dim{{color:{dim.name()};}} h2{{margin:0 0 4px 0;}} h3{{margin:14px 0 4px 0;}}</style>")
+        if state == "loading" or info is None:
+            msg = {"loading": tr_("Infos zum Interpreten werden geladen …"),
+                   "error": tr_("Keine Verbindung – Infos zum Interpreten konnten nicht geladen werden.")}.get(state, "")
+            self.setHtml(css + f'<p class="dim">{e(msg)}</p>')
+            return
+        lib_artists = {_norm(a["artist"]): a["artist"] for a in self.win.local_lib.albums.values()}
+        out = [css]
+        if info.get("image") and os.path.exists(info["image"]):
+            out.append(f'<img src="{QUrl.fromLocalFile(info["image"]).toString()}" width="{110 if self.on_dark else 64}" align="right">')
+        out.append(f"<h2>{e(info.get('name', ''))}</h2>")
+        if info.get("none"):
+            out.append(f'<p class="dim">{e(tr_("Zu diesem Interpreten wurden keine Infos gefunden."))}</p>')
+        else:
+            kind = {"Group": tr_("Band"), "Person": tr_("Künstler"), "Orchestra": tr_("Orchester"),
+                    "Choir": tr_("Chor")}.get(info.get("type"), "")
+            span = info.get("begin", "")
+            if span and info.get("end"):
+                span += "–" + info["end"]
+            elif span:
+                span = (tr_("seit {0}") if info.get("type") == "Group" else tr_("geb. {0}")).format(span)
+            meta = [x for x in (kind, span, info.get("area", "")) if x]
+            if meta:
+                out.append(f'<p class="dim">{e(" · ".join(meta))}</p>')
+            if info.get("genres"):
+                out.append(f'<p class="dim">{e(", ".join(info["genres"]))}</p>')
+            if info.get("bio"):
+                out.append(f"<p>{e(info['bio'])}</p>")
+                if info.get("bio_url"):
+                    out.append(f'<p><a href="{e(info["bio_url"], quote=True)}">{e(tr_("Weiterlesen bei Wikipedia"))}</a></p>')
+            own = lib_artists.get(_norm(info.get("name", "")))
+            if own:
+                n = sum(1 for a in self.win.local_lib.albums.values() if a["artist"] == own)
+                label = tr_("In deiner Sammlung: {0} Alben").format(n) if n != 1 else tr_("In deiner Sammlung: 1 Album")
+                out.append(f'<p><a href="nnartist:{urllib.parse.quote(own)}">{e(label)}</a></p>')
+            sim = info.get("similar") or []
+            if sim:
+                out.append(f"<h3>{e(tr_('Ähnliche Interpreten'))}</h3><p>")
+                parts = []
+                for name in sim:
+                    hit = lib_artists.get(_norm(name))
+                    parts.append(f'<a href="nnartist:{urllib.parse.quote(hit)}">{e(name)}</a>' if hit
+                                 else f'<span class="dim">{e(name)}</span>')
+                out.append(" · ".join(parts) + "</p>")
+                out.append(f'<p class="dim"><small>{e(tr_("Verlinkt: in deiner Sammlung vorhanden."))}</small></p>')
+            out.append(f'<p class="dim"><small>{e(tr_("Quellen: MusicBrainz, Wikipedia (CC BY-SA), ListenBrainz"))}</small></p>')
+        self.setHtml("".join(out))
+
+
 class VideoView(QWidget, LyricsPainter):
     """„Wird gespielt“: zeigt das Video oder – bei Musik – groß das Cover vor leuchtendem Hintergrund."""
     double_clicked = Signal()
@@ -5913,6 +6235,8 @@ class VideoView(QWidget, LyricsPainter):
         self.btn_replay.clicked.connect(lambda: self.win.replay())
         self.btn_tolib.clicked.connect(lambda: self.win.exit_np_mode())
         self.end_box.hide()
+        self.info = ArtistInfoView(win, on_dark=True)
+        self.info.setParent(self); self.info.hide()
         self.refresh_icons()
 
     def refresh_icons(self):
@@ -6020,7 +6344,23 @@ class VideoView(QWidget, LyricsPainter):
         t = self.win.cur["t"] if self.win.cur else None
         self._ly_hits = []
         self._ly_area = None
-        if self.win.lyrics_visible() and not self.ended:
+        show_info = self.win.info_visible() and not self.ended
+        if show_info:
+            if r.width() >= 620:
+                left = QRect(r.left(), r.top(), int(r.width() * 0.44), r.height())
+                area = QRect(left.right() + 10, r.top() + 40, r.right() - left.right() - 50, r.height() - 70)
+                r = left
+            else:
+                area = QRect(r.left() + 24, r.top() + 40, r.width() - 48, r.height() - 70)
+            if self.info.geometry() != area:
+                self.info.setGeometry(area)
+            if self.info.isHidden():
+                self.info.show()
+            if r.width() >= self.width() - 1:              # schmales Fenster: nur die Infos
+                return
+        elif not self.info.isHidden():
+            self.info.hide()
+        if self.win.lyrics_visible() and not self.ended and not show_info:
             if r.width() >= 620:
                 left = QRect(r.left(), r.top(), int(r.width() * 0.44), r.height())
                 self._ly_area = QRect(left.right() + 10, r.top() + 40, r.right() - left.right() - 50, r.height() - 70)
@@ -8145,8 +8485,81 @@ class SettingsDialog(QDialog):
                 win.load_lyrics(win.cur["t"], force=True)
         lyb.clicked.connect(_clear_ly)
         ov.addWidget(lyb, 0, Qt.AlignLeft)
+        # Scrobbeln
+        ov.addSpacing(10)
+        ov.addWidget(QLabel(tr_("<b>Gehörte Titel melden (Scrobbeln)</b>")))
+        sch = QLabel(tr_("NeoNote meldet Titel, die du mindestens zur Hälfte (oder 4 Minuten) gehört hast – "
+                         "Vorspulen zählt nicht. Ohne Verbindung wird nachgereicht."))
+        sch.setObjectName("hint"); sch.setWordWrap(True); ov.addWidget(sch)
+        cfg = win.scrobble_config()
+        self.sc_lb = QCheckBox(tr_("An ListenBrainz melden")); self.sc_lb.setChecked(cfg["lb_on"])
+        ov.addWidget(self.sc_lb)
+        lbr = QHBoxLayout()
+        self.sc_lb_token = QLineEdit(cfg["lb_token"]); self.sc_lb_token.setEchoMode(QLineEdit.Password)
+        self.sc_lb_token.setPlaceholderText(tr_("Benutzer-Token (listenbrainz.org ▸ Einstellungen)"))
+        lbt = QPushButton(tr_("Prüfen")); self.sc_lb_status = QLabel(""); self.sc_lb_status.setObjectName("hint")
+        lbr.addWidget(self.sc_lb_token, 1); lbr.addWidget(lbt)
+        ov.addLayout(lbr); ov.addWidget(self.sc_lb_status)
+
+        def check_lb():
+            tok = self.sc_lb_token.text().strip()
+            self.sc_lb_status.setText(tr_("Prüfe …"))
+            win.run_job(lambda: listenbrainz_call("validate-token", tok),
+                        lambda r: self.sc_lb_status.setText(tr_("Gültig – angemeldet als {0}").format(r.get("user_name"))
+                                                            if r.get("valid") else tr_("Token ungültig")),
+                        lambda m: self.sc_lb_status.setText(m))
+        lbt.clicked.connect(check_lb)
+        self.sc_lfm = QCheckBox(tr_("An Last.fm melden")); self.sc_lfm.setChecked(cfg["lfm_on"])
+        ov.addWidget(self.sc_lfm)
+        lg = QGridLayout(); lg.setHorizontalSpacing(8)
+        self.sc_key = QLineEdit(cfg["lfm_key"]); self.sc_key.setPlaceholderText(tr_("API-Schlüssel"))
+        self.sc_secret = QLineEdit(cfg["lfm_secret"]); self.sc_secret.setPlaceholderText(tr_("Gemeinsames Geheimnis"))
+        self.sc_secret.setEchoMode(QLineEdit.Password)
+        self.sc_user = QLineEdit(win.settings.value("scrobble/lfm_user", "") or "")
+        self.sc_user.setPlaceholderText(tr_("Benutzername"))
+        self.sc_pw = QLineEdit(); self.sc_pw.setEchoMode(QLineEdit.Password); self.sc_pw.setPlaceholderText(tr_("Passwort"))
+        lg.addWidget(self.sc_key, 0, 0); lg.addWidget(self.sc_secret, 0, 1)
+        lg.addWidget(self.sc_user, 1, 0); lg.addWidget(self.sc_pw, 1, 1)
+        ov.addLayout(lg)
+        lrow = QHBoxLayout()
+        lgo = QPushButton(tr_("Bei Last.fm anmelden")); lout = QPushButton(tr_("Abmelden"))
+        self.sc_lfm_status = QLabel(tr_("Angemeldet als {0}").format(self.sc_user.text()) if cfg["lfm_sk"] else "")
+        self.sc_lfm_status.setObjectName("hint")
+        lrow.addWidget(lgo); lrow.addWidget(lout); lrow.addWidget(self.sc_lfm_status, 1)
+        ov.addLayout(lrow)
+        lfh = QLabel(tr_("Last.fm verlangt einen eigenen, kostenlosen API-Schlüssel: "
+                         "<a href=\"https://www.last.fm/api/account/create\">last.fm/api/account/create</a> "
+                         "(Name z. B. „NeoNote“, Rückruf-Adresse leer lassen). Das Passwort wird nicht gespeichert – "
+                         "NeoNote merkt sich nur die Sitzung, die Last.fm dafür ausstellt."))
+        lfh.setObjectName("hint"); lfh.setWordWrap(True); lfh.setOpenExternalLinks(True); ov.addWidget(lfh)
+
+        def lfm_login():
+            key, sec, user, pw = (self.sc_key.text().strip(), self.sc_secret.text().strip(),
+                                  self.sc_user.text().strip(), self.sc_pw.text())
+            if not (key and sec and user and pw):
+                self.sc_lfm_status.setText(tr_("Bitte Schlüssel, Geheimnis, Benutzername und Passwort eintragen."))
+                return
+            self.sc_lfm_status.setText(tr_("Melde an …"))
+
+            def ok(r):
+                sk = (r.get("session") or {}).get("key", "")
+                win.settings.setValue("scrobble/lfm_sk", sk)
+                win.settings.setValue("scrobble/lfm_key", key); win.settings.setValue("scrobble/lfm_secret", sec)
+                win.settings.setValue("scrobble/lfm_user", (r.get("session") or {}).get("name", user))
+                self.sc_pw.clear(); self.sc_lfm.setChecked(True)
+                self.sc_lfm_status.setText(tr_("Angemeldet als {0}").format((r.get("session") or {}).get("name", user)))
+                win.scrobbler.configure(win.scrobble_config())
+            win.run_job(lambda: lastfm_call({"method": "auth.getMobileSession", "username": user, "password": pw,
+                                             "api_key": key}, sec), ok, lambda m: self.sc_lfm_status.setText(m))
+
+        def lfm_logout():
+            win.settings.setValue("scrobble/lfm_sk", "")
+            self.sc_lfm_status.setText(tr_("Abgemeldet")); self.sc_lfm.setChecked(False)
+            win.scrobbler.configure(win.scrobble_config())
+        lgo.clicked.connect(lfm_login); lout.clicked.connect(lfm_logout)
         ov.addStretch()
-        self.tabs.addTab(on, tr_("Online-Informationen"))
+        ona = QScrollArea(); ona.setWidgetResizable(True); ona.setFrameShape(QFrame.NoFrame); ona.setWidget(on)
+        self.tabs.addTab(ona, tr_("Online-Informationen"))
 
         sysw = QWidget(); sv = QVBoxLayout(sysw); sv.setContentsMargins(16, 16, 16, 16); sv.setSpacing(10)
         sv.addWidget(QLabel(tr_("<b>Systemleiste</b>")))
@@ -8380,6 +8793,12 @@ class SettingsDialog(QDialog):
         w.settings.setValue("online/write_tags", self.o_tags.isChecked())
         w.settings.setValue("online/embed_cover", self.o_embed.isChecked())
         w.settings.setValue("online/folder_cover", self.o_folder.isChecked())
+        w.settings.setValue("scrobble/lb_on", self.sc_lb.isChecked())
+        w.settings.setValue("scrobble/lb_token", self.sc_lb_token.text().strip())
+        w.settings.setValue("scrobble/lfm_on", self.sc_lfm.isChecked())
+        w.settings.setValue("scrobble/lfm_key", self.sc_key.text().strip())
+        w.settings.setValue("scrobble/lfm_secret", self.sc_secret.text().strip())
+        w.scrobbler.configure(w.scrobble_config())
         if self.o_lyrics.isChecked() != w.settings.value("online/lyrics", True, type=bool):
             w.settings.setValue("online/lyrics", self.o_lyrics.isChecked())
             if w.cur and w.lyrics_on and not w.lyrics:
@@ -8845,6 +9264,8 @@ class MainWindow(QMainWindow):
             self._title_styler = DialogTitleStyler(self)
             QApplication.instance().installEventFilter(self._title_styler)
         self.local_lib, self.stats, self.covers = Library(), Stats(), CoverCache()
+        self.scrobbler = Scrobbler()
+        self.scrobbler.configure(self.scrobble_config())
         self.smart = read_json_file(SMART_FILE, [])           # intelligente Wiedergabelisten
         if not isinstance(self.smart, list):
             self.smart = []
@@ -8869,6 +9290,8 @@ class MainWindow(QMainWindow):
         self._blur_timer.timeout.connect(lambda: self._apply_blur())
         self.np_mode = False
         self.lyrics_on = self.settings.value("ui/lyrics", False, type=bool)
+        self.info_on = self.settings.value("ui/artistinfo", False, type=bool) and not self.lyrics_on
+        self.artist_info, self.artist_info_state, self._info_name, self._info_tok = None, "", None, 0
         self.lyrics, self.lyrics_state, self._lyrics_path, self._lyrics_tok = None, "", None, 0
         self.sort_col, self.sort_desc = None, False
         self._pending_pos = None
@@ -9090,6 +9513,7 @@ class MainWindow(QMainWindow):
     def _has_video_changed(self, v):
         self.video.set_has_video(v)
         self.btn_lyrics.setVisible(not v)
+        self.btn_info.setVisible(not v)
         self._update_lyrics_panel()
         if v:
             self._sub_margin = None
@@ -10644,10 +11068,14 @@ class MainWindow(QMainWindow):
         lyh = QFrame(); lyh.setObjectName("queueHead")
         lyhl = QHBoxLayout(lyh); lyhl.setContentsMargins(12, 6, 6, 6)
         lyt = QLabel(tr_("Songtext")); lyt.setObjectName("queueTitle"); lyt.setMinimumWidth(40)
-        lyx = self._icon_btn("close", 14, tr_("Songtext ausblenden (Strg+T)"), self.toggle_lyrics)
+        self.side_title = lyt
+        lyx = self._icon_btn("close", 14, tr_("Ausblenden"), self.close_side)
         lyhl.addWidget(lyt, 1); lyhl.addWidget(lyx)
         self.lyrics_panel = LyricsPanel(self)
-        lbl_.addWidget(lyh); lbl_.addWidget(self.lyrics_panel, 1)
+        self.info_panel = ArtistInfoView(self)
+        ipw = QWidget(); ipl = QVBoxLayout(ipw); ipl.setContentsMargins(12, 6, 8, 6); ipl.addWidget(self.info_panel)
+        self.side_stack = QStackedWidget(); self.side_stack.addWidget(self.lyrics_panel); self.side_stack.addWidget(ipw)
+        lbl_.addWidget(lyh); lbl_.addWidget(self.side_stack, 1)
         self.qsplit = QSplitter(Qt.Vertical); self.qsplit.setChildrenCollapsible(False); self.qsplit.setHandleWidth(1)
         self.qsplit.addWidget(qtop); self.qsplit.addWidget(self.lyrics_box)
         self.qsplit.setStretchFactor(0, 1); self.qsplit.setStretchFactor(1, 1)
@@ -10685,7 +11113,7 @@ class MainWindow(QMainWindow):
         self.btn_queue.setChecked(self.queue_visible); self.top_queue.setChecked(self.queue_visible)
         self.qpanel.setVisible(self.queue_visible)
         for seq, slot in (("Ctrl+L", lambda: self.set_queue_visible(not self.queue_visible)),
-                          ("F11", self.toggle_fullscreen), ("Ctrl+O", self.open_dialog), ("Ctrl+M", self.show_mini), ("Ctrl+E", self.open_equalizer), ("Ctrl+T", self.toggle_lyrics),
+                          ("F11", self.toggle_fullscreen), ("Ctrl+O", self.open_dialog), ("Ctrl+M", self.show_mini), ("Ctrl+E", self.open_equalizer), ("Ctrl+T", self.toggle_lyrics), ("Ctrl+I", self.toggle_info),
                           ("Ctrl+P", self.toggle_play), ("Ctrl+Right", self.next_track),
                           ("Ctrl+Left", self.prev_track), ("Ctrl+F", self.search.setFocus),
                           ("Alt+Left", self.go_back), ("Alt+Right", self.go_forward),
@@ -10797,6 +11225,8 @@ class MainWindow(QMainWindow):
         self.btn_eq = self._icon_btn("eq", 18, tr_("Equalizer (Strg+E)"), self.open_equalizer, obj="ctl")
         self.btn_lyrics = self._icon_btn("lyrics", 18, tr_("Songtext (Strg+T)"), self.toggle_lyrics, True, "ctl")
         self.btn_lyrics.setChecked(self.lyrics_on)
+        self.btn_info = self._icon_btn("artistinfo", 18, tr_("Infos zum Interpreten (Strg+I)"), self.toggle_info, True, "ctl")
+        self.btn_info.setChecked(self.info_on)
         self.btn_sleep = QToolButton(); self.btn_sleep.setObjectName("ctl")
         self.btn_sleep.setIcon(make_icon("moon", 16)); self.btn_sleep.setIconSize(QSize(16, 16))
         self.btn_sleep.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
@@ -10809,7 +11239,7 @@ class MainWindow(QMainWindow):
         self.btn_speed.setMenu(self.build_speed_menu(self.btn_speed))
         self.btn_speed.hide()
         rl.addWidget(self.btn_speed)
-        rl.addWidget(self.btn_tracks); rl.addWidget(self.btn_lyrics); rl.addWidget(self.btn_eq); rl.addWidget(self.btn_mini); rl.addWidget(self.btn_mode)
+        rl.addWidget(self.btn_tracks); rl.addWidget(self.btn_info); rl.addWidget(self.btn_lyrics); rl.addWidget(self.btn_eq); rl.addWidget(self.btn_mini); rl.addWidget(self.btn_mode)
         row.addWidget(rightw)
         v.addLayout(row)
         bar.installEventFilter(self)
@@ -12173,16 +12603,112 @@ class MainWindow(QMainWindow):
         self.ovl_title.setText(disp(t["title"]) if t else "")
         self._update_vis()
         self.load_lyrics(t)
+        self.load_artist_info(t)
+        self._scrobble_start(t)
 
     # ── Songtexte ─────────────────────────────────────────────────────────
     def lyrics_visible(self):
         t = self.cur["t"] if self.cur else None
         return bool(self.lyrics_on and t and not t.get("stream") and not self.video.has_video)
 
+    # ── Scrobbeln ─────────────────────────────────────────────────────────
+    def scrobble_config(self):
+        g = self.settings.value
+        return {"lb_on": g("scrobble/lb_on", False, type=bool), "lb_token": g("scrobble/lb_token", "") or "",
+                "lfm_on": g("scrobble/lfm_on", False, type=bool), "lfm_key": g("scrobble/lfm_key", "") or "",
+                "lfm_secret": g("scrobble/lfm_secret", "") or "", "lfm_sk": g("scrobble/lfm_sk", "") or ""}
+
+    def _scrobble_start(self, t):
+        self._sc = None
+        if not t or t.get("stream") or not getattr(self, "scrobbler", None) or not self.scrobbler.services():
+            return
+        if Path(str(t.get("path", ""))).suffix.lower() in VIDEO_EXT or (t.get("length") or 0) < 30:
+            return
+        meta = {"artist": main_artist(t["artist"]) if t.get("artist") not in UNKNOWN else "",
+                "title": t.get("title", ""), "album": t.get("album") if t.get("album") not in UNKNOWN else "",
+                "duration": int(t.get("length") or 0), "track": t.get("track") or 0}
+        if not meta["artist"] or not meta["title"]:
+            return
+        meta["artist"] = t["artist"]                          # vollständiger Interpret (inkl. „feat.“)
+        self._sc = {"meta": meta, "start": time.time(), "heard": 0, "last": None, "done": False}
+        self.scrobbler.now_playing(meta)
+
+    def _scrobble_pos(self, pos):
+        sc = getattr(self, "_sc", None)
+        if not sc or sc["done"]:
+            return
+        if sc["last"] is not None and self.player.playbackState() == QMediaPlayer.PlayingState:
+            d = pos - sc["last"]
+            if 0 < d < 1500:                                  # nur wirklich gehörte Zeit, kein Vorspulen
+                sc["heard"] += d
+        sc["last"] = pos
+        need = min(sc["meta"]["duration"] * 500, 240000)       # Hälfte des Titels, höchstens 4 Minuten
+        if sc["heard"] >= need:
+            sc["done"] = True
+            self.scrobbler.scrobble(sc["meta"], sc["start"])
+
+    def info_visible(self):
+        t = self.cur["t"] if self.cur else None
+        return bool(self.info_on and t and not t.get("stream") and not self.video.has_video)
+
+    def close_side(self):
+        if self.info_on:
+            self.toggle_info()
+        elif self.lyrics_on:
+            self.toggle_lyrics()
+
+    def toggle_info(self):
+        if self.video.has_video:
+            return
+        self.info_on = not self.info_on
+        self.settings.setValue("ui/artistinfo", self.info_on)
+        self.btn_info.setChecked(self.info_on)
+        if self.info_on and self.lyrics_on:                    # Songtext und Infos teilen sich den Platz
+            self.lyrics_on = False
+            self.settings.setValue("ui/lyrics", False); self.btn_lyrics.setChecked(False)
+        if self.info_on:
+            self.load_artist_info(self.cur["t"] if self.cur else None)
+            if not self.np_mode and not self.queue_visible:
+                self.set_queue_visible(True)
+        self._update_lyrics_panel()
+        self.video.update()
+
+    def load_artist_info(self, t):
+        if not self.info_on or not t or t.get("stream"):
+            return
+        name = main_artist(t.get("artist") if t.get("artist") not in UNKNOWN else t.get("albumartist", ""))
+        if not name or name in UNKNOWN:
+            self.artist_info, self.artist_info_state = {"name": tr_("Unbekannter Interpret"), "none": True}, "ok"
+            self._show_info(); return
+        if name == self._info_name and self.artist_info_state in ("ok", "loading"):
+            return
+        self._info_name = name
+        self._info_tok += 1
+        tok = self._info_tok
+        self.artist_info, self.artist_info_state = None, "loading"
+        self._show_info()
+        lang = "de" if LANG == "de" else "en"
+
+        def done(res, tok=tok):
+            if tok == self._info_tok:
+                self.artist_info, self.artist_info_state = res, "ok"; self._show_info()
+
+        def fail(_msg, tok=tok):
+            if tok == self._info_tok:
+                self.artist_info_state, self._info_name = "error", None; self._show_info()
+        self.run_job(lambda: fetch_artist_info(name, lang), done, fail)
+
+    def _show_info(self):
+        for v in (self.video.info, self.info_panel):
+            v.show_info(self.artist_info, self.artist_info_state)
+
     def toggle_lyrics(self):
         if self.video.has_video:
             return
         self.lyrics_on = not self.lyrics_on
+        if self.lyrics_on and self.info_on:
+            self.info_on = False
+            self.settings.setValue("ui/artistinfo", False); self.btn_info.setChecked(False)
         self.settings.setValue("ui/lyrics", self.lyrics_on)
         self.btn_lyrics.setChecked(self.lyrics_on)
         if self.lyrics_on:
@@ -12198,7 +12724,10 @@ class MainWindow(QMainWindow):
         self.lyrics_panel.lyrics_reset()
 
     def _update_lyrics_panel(self):
-        on = bool(self.lyrics_on and self.cur and not self.cur["t"].get("stream") and not self.video.has_video)
+        on = bool((self.lyrics_on or self.info_on) and self.cur and not self.cur["t"].get("stream")
+                  and not self.video.has_video)
+        self.side_stack.setCurrentIndex(1 if self.info_on else 0)
+        self.side_title.setText(tr_("Interpret") if self.info_on else tr_("Songtext"))
         if on == self.lyrics_box.isHidden():
             self.lyrics_box.setVisible(on)
             if on:
@@ -12355,6 +12884,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         self._update_srt(pos)
+        self._scrobble_pos(pos)
         if self.lyrics:
             if self.np_mode:
                 self.video.lyrics_pos(pos)
