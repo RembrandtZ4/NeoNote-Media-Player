@@ -11,7 +11,7 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [x] **Intelligente Wiedergabelisten** mit eigenen Regeln (z. B. „Rock aus den 80ern, mindestens 4 Sterne, seit 3 Monaten nicht gespielt“) – wie in Windows Media Player 12
 - [x] **Songtexte**, zeitgesteuert im „Wird gespielt“-Modus (z. B. über LRCLIB) und aus den Dateien selbst
 - [x] **Transparente Dialoge** (Einstellungen, Equalizer …) mit eigener Titelleiste und demselben Weichzeichner wie das Hauptfenster – eine durchgehende Fläche unter Windows und KDE
-- [ ] **Flatpak / Flathub** – für Ubuntu, Fedora, Mint und andere Distributionen
+- [x] **Flatpak** – für Ubuntu, Fedora, Mint und andere Distributionen (Aufnahme in Flathub folgt später)
 
 ## Als Nächstes
 - [ ] **AUR-Paket** – Installation mit `yay -S neonote`
@@ -42,7 +42,7 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [x] **Smart playlists** with custom rules (e.g. “80s rock, at least 4 stars, not played for 3 months”) – like in Windows Media Player 12
 - [x] **Lyrics**, synced in “Now playing” mode (e.g. via LRCLIB) and from the files themselves
 - [x] **Transparent dialogs** (settings, equalizer …) with their own title bar and the same blur as the main window – one continuous surface on Windows and KDE
-- [ ] **Flatpak / Flathub** – for Ubuntu, Fedora, Mint and other distributions
+- [x] **Flatpak** – for Ubuntu, Fedora, Mint and other distributions (Flathub listing to follow)
 
 ## Next
 - [ ] **AUR package** – install with `yay -S neonote`
