@@ -1,10 +1,10 @@
 # Maintainer: RembrandtZ4 <RembrandtZ4 at users dot noreply dot github dot com>
 
 pkgname=neonote
-pkgver=1.1.5
+pkgver=1.2
 pkgrel=1
 epoch=1
-pkgdesc="Music and video player inspired by Windows Media Player 12 (Qt 6, mpv, Jellyfin)"
+pkgdesc="Music and video player inspired by Windows Media Player 12 (Qt 6, mpv, lyrics, Jellyfin)"
 arch=('any')
 url="https://github.com/RembrandtZ4/NeoNote-Media-Player"
 license=('GPL-3.0-only')
@@ -22,7 +22,7 @@ optdepends=(
   'xdg-utils: open folders if no file manager is reachable via D-Bus'
 )
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('6be8f02ae2d4c2d2f004e69552edd2a82dd3ecfd4de151269e83b6171019bc49')
+sha256sums=('SKIP')   # setzt der Release-Workflow (updpkgsums)
 
 package() {
   cd "NeoNote-Media-Player-$pkgver"
