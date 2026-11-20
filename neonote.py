@@ -698,6 +698,134 @@ def rounded_region(w, h, r):
     return rects
 
 
+class GlassTitle(QFrame):
+    """Titelleiste eines durchscheinenden Dialogs: Titel links, Schließen rechts, Ziehen verschiebt."""
+    H = 36
+
+    def __init__(self, dlg):
+        super().__init__(dlg)
+        self.dlg = dlg
+        self.setObjectName("glassTitle")
+        lay = QHBoxLayout(self); lay.setContentsMargins(14, 0, 4, 0); lay.setSpacing(6)
+        self.lbl = QLabel(dlg.windowTitle()); self.lbl.setObjectName("glassTitleText")
+        self.lbl.setTextFormat(Qt.PlainText)
+        self.btn = QToolButton(); self.btn.setObjectName("glassClose"); self.btn.setIconSize(QSize(14, 14))
+        self.btn.setIcon(make_icon("close", 14)); self.btn.setToolTip(tr_("Schließen"))
+        self.btn.setFocusPolicy(Qt.NoFocus)
+        self.btn.clicked.connect(dlg.close)
+        lay.addWidget(self.lbl, 1); lay.addWidget(self.btn)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton and self.dlg.windowHandle():
+            self.dlg.windowHandle().startSystemMove()
+            return
+        super().mousePressEvent(e)
+
+
+class GlassDialogs(QObject):
+    """Dialoge im Look des Hauptfensters (bei eigener Fensterleiste): ohne Systemrahmen, mit eigener Titelleiste,
+    durchscheinend mit Weichzeichner und runden Ecken. Gilt für alle Dialoge, auch Rückfragen (QMessageBox)."""
+    RADIUS = 10
+    EDGE = 6
+
+    def __init__(self, win):
+        super().__init__(win)
+        self.win = win
+
+    def active(self):
+        return (bool(getattr(self.win, "frameless", False)) and os.environ.get("NEONOTE_PLAIN_DIALOGS") != "1"
+                and self.win.settings.value("ui/glass_dialogs", True, type=bool))
+
+    @staticmethod
+    def radius():
+        return 0 if IS_WIN else GlassDialogs.RADIUS        # Windows 11 rundet selbst
+
+    def eventFilter(self, obj, ev):
+        t = ev.type()
+        if t == QEvent.Polish:
+            if (isinstance(obj, QDialog) and obj.isWindow() and obj.property("nnGlass") is None
+                    and not isinstance(obj, (QFileDialog, QColorDialog)) and self.active()):
+                self.convert(obj)
+            return False
+        if not isinstance(obj, QDialog) or obj.property("nnGlass") is not True:
+            return False
+        if t == QEvent.Paint:
+            self.paint(obj)
+        elif t in (QEvent.Resize, QEvent.Show):
+            tb = getattr(obj, "_nn_title", None)
+            if tb is not None:
+                tb.setGeometry(0, 0, obj.width(), GlassTitle.H); tb.raise_()
+            if t == QEvent.Show or not getattr(obj, "_nn_blur_t", None):
+                QTimer.singleShot(0, lambda o=obj: self.blur(o))
+            else:
+                obj._nn_blur_t.start()
+        elif t == QEvent.WindowTitleChange and getattr(obj, "_nn_title", None):
+            obj._nn_title.lbl.setText(obj.windowTitle())
+        elif t in (QEvent.HoverMove, QEvent.MouseButtonPress, QEvent.HoverLeave) and self.resizable(obj):
+            if t == QEvent.HoverLeave:
+                obj.unsetCursor()
+                return False
+            e = self.edges(obj, ev.position().toPoint())
+            if t == QEvent.HoverMove:
+                L, R, Tp, B = Qt.LeftEdge, Qt.RightEdge, Qt.TopEdge, Qt.BottomEdge
+                cur = (Qt.SizeFDiagCursor if e in (L | Tp, R | B) else Qt.SizeBDiagCursor if e in (R | Tp, L | B)
+                       else Qt.SizeHorCursor if e & (L | R) else Qt.SizeVerCursor if e & (Tp | B) else None)
+                obj.setCursor(cur) if cur is not None else obj.unsetCursor()
+            elif ev.button() == Qt.LeftButton and e and obj.windowHandle():
+                obj.windowHandle().startSystemResize(e)
+                return True
+        return False
+
+    @staticmethod
+    def resizable(d):
+        return d.minimumSize() != d.maximumSize() and not isinstance(d, QMessageBox)
+
+    def edges(self, d, pos):
+        m, e = self.EDGE, Qt.Edges()
+        if pos.x() <= m: e |= Qt.LeftEdge
+        if pos.x() >= d.width() - m: e |= Qt.RightEdge
+        if pos.y() <= m: e |= Qt.TopEdge
+        if pos.y() >= d.height() - m: e |= Qt.BottomEdge
+        return e
+
+    def convert(self, d):
+        d.setProperty("nnGlass", True)
+        d.setAttribute(Qt.WA_TranslucentBackground)
+        d.setAttribute(Qt.WA_Hover)
+        d.setWindowFlags(d.windowFlags() | Qt.FramelessWindowHint)
+        d.style().unpolish(d); d.style().polish(d)
+        tb = GlassTitle(d)
+        d._nn_title = tb
+        lay = d.layout()
+        if lay is not None:
+            m = lay.contentsMargins()
+            lay.setContentsMargins(max(m.left(), 4), m.top() + GlassTitle.H, max(m.right(), 4), max(m.bottom(), 4))
+        tb.setGeometry(0, 0, max(d.width(), 100), GlassTitle.H)
+        d._nn_blur_t = QTimer(d, singleShot=True, interval=120)
+        d._nn_blur_t.timeout.connect(lambda: self.blur(d))
+
+    def blur(self, d):
+        if d.isVisible():
+            set_window_blur(d, bool(self.win.theme_dict.get("blur")), self.radius())
+
+    def paint(self, d):
+        p = QPainter(d)
+        p.setRenderHint(QPainter.Antialiasing)
+        bg = QColor(T.solid)
+        # etwas deckender als das Hauptfenster: Dialoge bestehen fast nur aus Text und Eingabefeldern
+        bg.setAlphaF(min(1.0, T.alpha + 0.12) if self.win.theme_dict.get("blur") else max(T.alpha, 0.94))
+        r = self.radius()
+        rect = QRectF(d.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        p.setPen(QPen(T.ov(0.16), 1)); p.setBrush(bg)
+        if r:
+            p.setCompositionMode(QPainter.CompositionMode_Source)
+            p.drawRoundedRect(rect, r, r)
+        else:
+            p.setCompositionMode(QPainter.CompositionMode_Source)
+            p.drawRect(rect)
+        p.end()
+
+
 def set_window_blur(widget, on, radius=0):
     """Weichzeichner hinter dem Fenster: KWin unter Linux, DWM unter Windows 10/11."""
     if IS_WIN:
@@ -728,7 +856,7 @@ class DialogTitleStyler(QObject):
     """Gibt jedem Dialog beim Anzeigen die passende Titelleiste (nur Windows)."""
 
     def eventFilter(self, obj, ev):
-        if ev.type() == QEvent.Show and isinstance(obj, QDialog) and obj.isWindow():
+        if ev.type() == QEvent.Show and isinstance(obj, QDialog) and obj.isWindow() and not obj.property("nnGlass"):
             win_titlebar_color(obj)
         return False
 
@@ -6866,6 +6994,15 @@ class ThemePage(QWidget):
         fh.setObjectName("hint"); fh.setWordWrap(True)
         form.addRow(tr_("Fenster"), self.frameless)
         form.addRow("", fh)
+        self.glassdlg = QCheckBox(tr_("Dialoge im selben Look (durchscheinend, eigene Titelleiste)"))
+        self.glassdlg.setChecked(win.settings.value("ui/glass_dialogs", True, type=bool))
+        self.glassdlg.setEnabled(win.frameless)
+        self.frameless.toggled.connect(self.glassdlg.setEnabled)
+        self.glassdlg.toggled.connect(lambda v: win.settings.setValue("ui/glass_dialogs", v))
+        gh = QLabel(tr_("Gilt für Einstellungen, Equalizer, Rückfragen und alle anderen Dialoge, ab dem nächsten Öffnen."))
+        gh.setObjectName("hint"); gh.setWordWrap(True)
+        form.addRow("", self.glassdlg)
+        form.addRow("", gh)
         # Sprache (wirkt nach einem Neustart)
         self.lang = QComboBox()
         for code, name in LANGUAGES:
@@ -8109,6 +8246,8 @@ class MainWindow(QMainWindow):
         self.settings = QSettings(APP_NAME, APP_NAME)
         self.theme_dict = self.load_theme()
         T.update(self.theme_dict)
+        self._glass = GlassDialogs(self)       # Dialoge im Look des Fensters (bei eigener Fensterleiste)
+        QApplication.instance().installEventFilter(self._glass)
         if IS_WIN:      # Dialoge mit Titelleiste in Fensterfarbe
             self._title_styler = DialogTitleStyler(self)
             QApplication.instance().installEventFilter(self._title_styler)
@@ -12023,6 +12162,12 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
 def app_style():
     return f"""
 QDialog, QMessageBox {{ background: {css(T.solid)}; color: {css(T.fg)}; }}
+QDialog[nnGlass="true"], QMessageBox[nnGlass="true"] {{ background: transparent; }}
+QFrame#glassTitle {{ background: transparent; border: none; }}
+QLabel#glassTitleText {{ color: {css(T.fg)}; font-weight: 600; background: transparent; }}
+QToolButton#glassClose {{ border: none; border-radius: 4px; padding: 5px 8px; background: transparent; }}
+QToolButton#glassClose:hover {{ background: #e81123; }}
+QToolButton#glassClose:pressed {{ background: #b50e1c; }}
 QDialog QLabel, QMessageBox QLabel {{ color: {css(T.fg)}; background: transparent; }}
 QLineEdit {{ background: {css(T.ov(0.06))}; border: 1px solid {css(T.ov(0.12))}; border-radius: 4px; padding: 5px; color: {css(T.fg)}; }}
 QLineEdit:focus {{ border-color: {css(T.accent)}; }}
