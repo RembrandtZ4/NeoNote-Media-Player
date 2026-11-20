@@ -1,352 +1,369 @@
 # NeoNote Media Player
 
-🇩🇪 **Deutsch** | 🇬🇧 [English](README.en.md)
+🇬🇧 **English** | 🇩🇪 [Deutsch](README.de.md)
 
-Ein Musik- und Videoplayer für Linux und Windows, angelehnt an Windows Media Player 12: flaches Design mit Transparenz, anpassbaren Farben, WMP12-Titelliste mit Albumcovern, „Wird gespielt“-Modus, Wiedergabelisten, Internetradio, Jellyfin-Anbindung und Mediensteuerung. Oberfläche auf Deutsch und Englisch.
+A music and video player for Linux and Windows inspired by Windows Media Player 12: a flat design with transparency, customizable colors, the WMP12 track list with album art, a “Now playing” mode, playlists, internet radio, Jellyfin support and system media controls. The interface is available in English and German.
 
-![Titelliste mit Albumcovern](docs/screenshots/songs.png)
+![Track list with album art](docs/screenshots/songs.png)
 
-| Interpreten | Alben |
+| Artists | Albums |
 |---|---|
-| ![Interpreten](docs/screenshots/artists.png) | ![Alben](docs/screenshots/albums.png) |
-| **„Wird gespielt“** | **Akzentfarbe Silber auf Schwarz** |
-| ![Wird gespielt](docs/screenshots/nowplaying.png) | ![Silber](docs/screenshots/silver.png) |
+| ![Artists](docs/screenshots/artists.png) | ![Albums](docs/screenshots/albums.png) |
+| **“Now playing”** | **Silver accent on black** |
+| ![Now playing](docs/screenshots/nowplaying.png) | ![Silver](docs/screenshots/silver.png) |
 
-**Helle Version und weitere Farben** – 10 Akzentfarben (oder eine eigene) und 8 Hintergründe lassen sich frei kombinieren:
+**Light theme and more colors** – 10 accent colors (or your own) and 8 backgrounds can be combined freely:
 
-| Hell · Blau | Hell · Rot |
+| Light · Blue | Light · Red |
 |---|---|
-| ![Hell, Blau](docs/screenshots/theme_light.png) | ![Hell, Rot](docs/screenshots/theme_light_artists.png) |
-| **Violett auf Aubergine** | **Grün auf Wald** |
-| ![Violett](docs/screenshots/theme_violet.png) | ![Grün](docs/screenshots/theme_green.png) |
-| **Orange auf Anthrazit** | **Pink auf Mitternacht** |
+| ![Light, blue](docs/screenshots/theme_light.png) | ![Light, red](docs/screenshots/theme_light_artists.png) |
+| **Violet on Aubergine** | **Green on Forest** |
+| ![Violet](docs/screenshots/theme_violet.png) | ![Green](docs/screenshots/theme_green.png) |
+| **Orange on Anthracite** | **Pink on Midnight** |
 | ![Orange](docs/screenshots/theme_orange.png) | ![Pink](docs/screenshots/theme_pink.png) |
-| **Silber auf Graphit** (schwarz-weiß-silbern, ganz ohne Farbe) | |
-| ![Silber](docs/screenshots/theme_silver.png) | |
+| **Silver on Graphite** (black, white and silver – no color at all) | |
+| ![Silver](docs/screenshots/theme_silver.png) | |
 
-<sub>Transparenz 70 % mit Weichzeichner (KDE Plasma). Interpreten, Alben, Cover und Hintergrund in den Bildern sind frei erfunden.</sub>
+<sub>70 % opacity with background blur (KDE Plasma). The screenshots show the German interface. Artists, albums, covers and wallpaper are made up.</sub>
 
 ## Download
 
-Die fertigen Dateien gibt es auf der **[Release-Seite](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest)**:
+Get the ready-to-use files from the **[releases page](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest)**:
 
-- **Windows 10/11:** `NeoNote-Setup-<Version>.exe`
-- **Linux (Arch, CachyOS, Manjaro …):** `neonote-<Version>-linux-arch.zip`
+- **Windows 10/11:** `NeoNote-Setup-<version>.exe`
+- **Linux (all distributions):** `NeoNote-<version>-x86_64.flatpak`
+- **Linux (Arch, CachyOS, Manjaro …):** `neonote-<version>-linux-arch.zip`
 
-## Funktionen
+## Features
 
-**Bibliothek**
-- Ansichten wie im WMP12: Interpreten und Genres als Kacheln mit aufgefächerten Cover-Stapeln, Alben, Titelliste mit Albumcover-Blöcken und Buchstaben-Trennern
-- Frei wählbare, verschiebbare Spalten (Nr., Titel, Länge, Bewertung, Interpret, Album, Jahr, Genre, Bitrate, Dateipfad …), Sortieren per Klick
-- Bewertungen mit Sternen, Wiedergabezähler, automatische Listen (Favoriten, Meistgespielt, Zuletzt hinzugefügt, Zuletzt gespielt)
-- Überwacht die Musikordner und übernimmt neue, geänderte und gelöschte Dateien automatisch
-- **Bibliothek prüfen:** findet doppelte Titel, Alben ohne Cover, lückenhafte Tags und fehlende Dateien
-- Flüssig auch bei großen Sammlungen (getestet mit 120.000 Titeln und 4.000 Interpreten)
+**Library**
+- Views like in WMP12: artists and genres as tiles with fanned-out cover stacks, albums, and a track list with album art blocks and letter dividers
+- Freely selectable, movable columns (No., title, length, rating, artist, album, year, genre, bit rate, file path …), click to sort
+- Star ratings, play counts, automatic playlists (favorites, most played, recently added, recently played)
+- **Smart playlists** like in WMP12: rules for artist, genre, year, rating, play count, last played, date added and more – they update themselves
+- Watches your music folders and picks up new, changed and deleted files automatically
+- **Check library:** finds duplicate tracks, albums without cover, incomplete tags and missing files
+- Smooth even with large collections (tested with 120,000 tracks and 4,000 artists)
 
-**Wiedergabe**
-- Praktisch alle Audio- und Videoformate (MP3, FLAC, Opus, AAC/ALAC, WAV, DSD …; MP4, MKV, WebM, AVI …)
-- Lückenlose Wiedergabe, 10-Band-Equalizer mit Voreinstellungen, Lautstärkeausgleich (ReplayGain)
-- „Wird gespielt“-Modus mit großem, gespiegeltem Cover vor einem Leuchtband in der Akzentfarbe, Wellenform-Anzeige in der Steuerleiste
-- Videos mit ausblendender Steuerleiste über dem Bild, Vollbild, Untertitel (auch .srt) und Tonspurwahl
-- Wiedergabeliste rechts, per Drag & Drop sortierbar, als M3U/M3U8 speichern und laden (auch PLS, WPL, ZPL)
-- Internetradio mit eigener Senderliste
-- Mini-Player, Symbol in der Systemleiste
-- Kein Standby, solange Musik läuft; bei Videos bleibt der Bildschirm an
+**Playback**
+- Practically every audio and video format (MP3, FLAC, Opus, AAC/ALAC, WAV, DSD …; MP4, MKV, WebM, AVI …)
+- Gapless playback, 10-band equalizer with presets, volume normalization (ReplayGain)
+- “Now playing” mode with a large, mirrored cover in front of a glow in your accent color, waveform display in the control bar
+- Videos via **mpv** with hardware decoding (smooth 4K, HDR), auto-hiding control bar, full screen, subtitles (.srt, .ass, Blu-ray/DVD image subtitles), audio track selection, chapters and resume where you left off
+- **Lyrics:** synced (the current line is highlighted) or plain, from .lrc files, the music file itself or LRCLIB – next to the cover in “Now playing” or below the playlist
+- **Sleep timer:** after a set time, this track or this album, with a gentle fade-out
+- Playlist on the right, sortable via drag & drop, save and load as M3U/M3U8 (also PLS, WPL, ZPL)
+- Internet radio with your own station list
+- Mini player, system tray icon
+- Prevents sleep while music is playing; the screen stays on during videos
 
 **Online**
-- Fehlende Albuminfos und Cover von MusicBrainz und dem Cover Art Archive
-- Albumcover per Drag & Drop oder Rechtsklick ändern
-- Tags direkt in der Liste bearbeiten (`F2`), auch für mehrere Titel gleichzeitig
-- **Jellyfin:** Musik vom eigenen Server streamen, mit wählbarer Qualität für unterwegs, Offline-Kopien und Abgleich von Favoriten und gespielten Titeln
+- Missing album info and covers from MusicBrainz and the Cover Art Archive
+- Change album covers via drag & drop or right-click
+- Edit tags right in the list (`F2`), for several tracks at once
+- **Jellyfin:** stream music from your own server, with selectable quality for on the go, offline copies and syncing of favorites and played tracks
 
-**Oberfläche**
-- Dunkles, flaches Glas-Design mit einstellbarer Transparenz und Weichzeichner, 10 Akzentfarben plus eigene Farbe, 8 Hintergründe (auch hell)
-- Eigene Fensterleiste oder Systemrahmen, frei konfigurierbare Navigationsleiste, ziehbare Bereiche
-- Maustasten Zurück/Vor, Tastenkürzel wie im WMP
-- Deutsch und Englisch (automatisch nach Systemsprache)
+**Interface**
+- Dark, flat glass design with adjustable transparency and blur, 10 accent colors plus a custom color, 8 backgrounds (including a light one)
+- Custom title bar or system frame – dialogs too get the same translucent look with their own title bar
+- Freely configurable navigation bar, resizable panes
+- Mouse back/forward buttons, keyboard shortcuts like in WMP
+- English and German (automatically follows the system language)
 
 **System**
-- Linux: Mediensteuerung von KDE Plasma (MPRIS), Medientasten, Sperrbildschirm
-- Windows: Windows-Mediensteuerung, eigener Installer, Dateizuordnungen mit eigenen Dateisymbolen, Standardplayer festlegen
+- Linux: KDE Plasma media controls (MPRIS), media keys, lock screen
+- Windows: Windows media controls, own installer, file associations with custom file icons, set as default player
 
-## Installation unter CachyOS / Arch (KDE Plasma)
+## Installation on CachyOS / Arch (KDE Plasma)
 
-`neonote-<Version>-linux-arch.zip` von der Release-Seite herunterladen, entpacken, im Terminal in den Ordner wechseln und das Installationsskript starten (ohne `sudo`):
+Download `neonote-<version>-linux-arch.zip` from the releases page, unpack it, open a terminal in the folder and run the install script (without `sudo`):
 
 ```bash
 cd neonote
 ./install.sh
 ```
 
-Das Skript baut aus dem beiliegenden `PKGBUILD` ein normales pacman-Paket und installiert es. Alle Abhängigkeiten (PySide6, Qt Multimedia, mpv, python-mpv, mutagen, jeepney) installiert pacman dabei automatisch mit. Danach gilt:
+The script builds a regular pacman package from the included `PKGBUILD` and installs it. pacman installs all dependencies (PySide6, Qt Multimedia, mpv, python-mpv, mutagen, jeepney) automatically. After that:
 
-- **NeoNote Media Player** steht im Anwendungsmenü und in Dolphin unter Rechtsklick ▸ Öffnen mit.
-- Im Terminal startest du ihn mit `neonote`.
-- **Aktualisieren:** neue Version entpacken und `./install.sh` erneut ausführen.
-- **Entfernen:** `sudo pacman -R neonote`. Deine Einstellungen und die Bibliothek bleiben dabei erhalten.
+- **NeoNote Media Player** appears in the application menu and in Dolphin under right-click ▸ Open with.
+- In a terminal, start it with `neonote`.
+- **Update:** unpack the new version and run `./install.sh` again.
+- **Remove:** `sudo pacman -R neonote`. Your settings and library are kept.
 
-Als Standardprogramm für Musik oder Videos legst du NeoNote so fest: Rechtsklick auf eine Datei ▸ Eigenschaften ▸ Dateityp-Optionen, oder Systemeinstellungen ▸ Standard-Anwendungen ▸ Dateizuordnungen.
+To make NeoNote the default player for music or videos: right-click a file ▸ Properties ▸ File type options, or System Settings ▸ Default Applications ▸ File Associations.
 
-Ohne Installation zum Ausprobieren: `python3 neonote.py` (die Pakete oben müssen dann vorhanden sein).
+To try it without installing: `python3 neonote.py` (the packages above must be installed).
 
-## Installation unter Windows 10/11
+## Installation on other Linux distributions (Flatpak)
 
-`NeoNote-Setup-<Version>.exe` starten. Nach der Windows-Abfrage („Möchten Sie zulassen …“) öffnet sich der Installer im NeoNote-Look: Ordner wählen (Standard: `C:\Programme\NeoNote`), Desktop-Verknüpfung und „Öffnen mit“ an- oder abwählen, „Installieren“. Ein Update installierst du einfach über die alte Version; Bibliothek, Wiedergabelisten und Einstellungen bleiben erhalten. Ältere Versionen (bis 1.0.3, im Benutzerordner installiert) räumt der Installer dabei automatisch weg.
+For Fedora, Ubuntu, Linux Mint, openSUSE, Debian, the Steam Deck and others: download `NeoNote-<version>-x86_64.flatpak` from the releases page and open it with a double-click (Discover, GNOME Software), or in a terminal:
 
-Der Installer legt an:
+```bash
+flatpak install --user NeoNote-<version>-x86_64.flatpak
+```
 
-- einen Eintrag im Startmenü und auf Wunsch eine Desktop-Verknüpfung,
-- „Öffnen mit ▸ NeoNote Media Player“ für alle Musik- und Videoformate,
-- einen Eintrag unter Einstellungen ▸ Apps ▸ Standard-Apps, damit du NeoNote als Standardplayer festlegen kannst,
-- einen Eintrag unter „Installierte Apps“ zum Deinstallieren.
+The Flatpak includes everything (Qt 6, PySide6, libmpv). On first install Flatpak downloads the KDE runtime from Flathub once – if Flathub isn't set up yet: `flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo`. NeoNote shows new versions; install them the same way or via Discover / `flatpak update`.
 
-Stille Installation (z. B. für Skripte): `NeoNote-Setup-<Version>.exe /S`.
+**Without Flatpak:** NeoNote needs Python 3.10 or newer, PySide6 (Qt 6), mutagen and – optionally – mpv/python-mpv and jeepney. On Debian 13, Ubuntu 25.04 or newer and Fedora, PySide6 is available as a system package; on older versions install it with `pip`.
 
-Windows zeigt beim ersten Start eventuell eine SmartScreen-Warnung („Unbekannter Herausgeber“), weil der Installer nicht signiert ist: „Weitere Informationen“ ▸ „Trotzdem ausführen“.
+## Installation on Windows 10/11
 
-**mpv unter Windows:** Equalizer, Gapless und die Waveform laufen über mpv. Seit 1.1.8 liegt `libmpv-2.dll` (Projekt shinchiro/mpv-winbuild-cmake) dem Installer bei – es muss nichts nachgeladen werden, und mit jedem Update kommt eine aktuelle Fassung mit.
+Run `NeoNote-Setup-<version>.exe`. After the Windows prompt (“Do you want to allow …”), the installer opens in the NeoNote look: choose a folder (default: `C:\Program Files\NeoNote`), tick or untick the desktop shortcut and “Open with”, then click “Install”. To update, simply install the new version over the old one; library, playlists and settings are kept.
 
-**Umstieg vom Windows Media Player:** Musikordner unter Einstellungen ▸ Bibliothek eintragen. Sternbewertungen, die der WMP in die Dateien geschrieben hat, übernimmt NeoNote beim Einlesen. WMP-Wiedergabelisten (`.wpl`) importierst du über Organisieren ▸ Wiedergabeliste importieren.
+The installer creates:
 
-Deinstallieren lässt Bibliothek, Einstellungen und Wiedergabelisten stehen. Die liegen in `%APPDATA%\NeoNote`, die Einstellungen in der Registry unter `HKEY_CURRENT_USER\Software\NeoNote`. Unter Linux kann NeoNote diese Daten nicht direkt übernehmen, die Wiedergabelisten aber schon (Export als `.m3u8`).
+- a Start menu entry and, if you like, a desktop shortcut,
+- “Open with ▸ NeoNote Media Player” for all music and video formats,
+- an entry under Settings ▸ Apps ▸ Default apps so you can make NeoNote your default player,
+- an entry under “Installed apps” for uninstalling.
 
-Selbst bauen: siehe `windows/build_windows.sh` (PyInstaller und NSIS).
+Silent installation (e.g. for scripts): `NeoNote-Setup-<version>.exe /S`.
 
-## Formate
+On first launch Windows may show a SmartScreen warning (“Unknown publisher”) because the installer isn't signed: click “More info” ▸ “Run anyway”.
 
-Musik und Internetradio spielt NeoNote über **mpv** ab, Videos über **Qt Multimedia**. Beide nutzen FFmpeg, damit läuft praktisch alles, was FFmpeg kennt:
+**mpv on Windows:** the equalizer, gapless playback and the waveform use mpv. Since 1.1.8, `libmpv-2.dll` (from the shinchiro/mpv-winbuild-cmake project) is included in the installer – nothing needs to be downloaded, and every update brings a current version.
 
-- **Musik:** MP3, FLAC, OGG Vorbis, Opus, AAC/M4A (auch ALAC), WAV, WMA, APE, WavPack, AIFF, Musepack, TTA, DSD (DSF/DFF), MKA, AC3, DTS, Speex, MP2, AMR
-- **Video:** MP4, MKV, WebM, AVI, MOV, WMV/ASF, FLV, MPEG, TS/M2TS, 3GP, OGV, VOB/DivX, mit gängigen Codecs wie H.264, H.265/HEVC, VP9, AV1, MPEG-2/4
+**Switching from Windows Media Player:** add your music folders under Settings ▸ Library. NeoNote picks up star ratings that WMP wrote into the files. Import WMP playlists (`.wpl`) via Organize ▸ Import playlist….
 
-Nicht möglich sind kopiergeschützte Inhalte (DRM, z. B. gekaufte iTunes-Videos oder verschlüsselte Blu-rays) und MIDI-Dateien.
+Uninstalling keeps your library, settings and playlists. They are stored in `%APPDATA%\NeoNote`, the settings in the registry under `HKEY_CURRENT_USER\Software\NeoNote`.
 
-**Videos** öffnest du über Dolphin, per Drag & Drop ins Fenster oder über Organisieren ▸ Datei öffnen… (`Strg+O`). Videos landen nicht in der Musikbibliothek.
+Building it yourself: see `windows/build_windows.sh` (PyInstaller and NSIS).
 
-## „Wird gespielt“-Modus
+## Formats
 
-Wie bei WMP12 gibt es neben der Bibliothek einen eigenen Wiedergabemodus. Bei Musik zeigt er das Cover mit Spiegelung vor einem Leuchtband in der Akzentfarbe, bei Videos das Bild.
+NeoNote plays music and internet radio with **mpv** and videos with **Qt Multimedia**. Both use FFmpeg, so practically everything FFmpeg supports works:
 
-- **Hin und zurück:** mit dem Button unten rechts in der Steuerleiste, über „Wird gespielt“ in der Navigation oder mit dem Button oben rechts („Zur Bibliothek wechseln“). Videos öffnen sich automatisch in diesem Modus.
-- **Am Ende der Wiedergabe** erscheint die Auswahl „Erneut wiedergeben“ oder „Zur Bibliothek wechseln“.
-- **Vollbild:** Doppelklick aufs Bild oder `F11`, `Esc` beendet es.
-- Bei Videos blenden sich Steuerleiste und Mauszeiger nach 2,5 Sekunden ohne Mausbewegung aus.
-- **Tonspur und Untertitel:** Der Button „Spuren“ in der Steuerleiste zeigt die Tonspuren und Untertitel im Video. Eine `.srt`-Datei mit demselben Namen wie das Video wird automatisch geladen, weitere über „Untertiteldatei laden…“.
+- **Music:** MP3, FLAC, OGG Vorbis, Opus, AAC/M4A (including ALAC), WAV, WMA, APE, WavPack, AIFF, Musepack, TTA, DSD (DSF/DFF), MKA, AC3, DTS, Speex, MP2, AMR
+- **Video:** MP4, MKV, WebM, AVI, MOV, WMV/ASF, FLV, MPEG, TS/M2TS, 3GP, OGV, VOB/DivX, with common codecs such as H.264, H.265/HEVC, VP9, AV1, MPEG-2/4
 
-## Kein Standby während der Wiedergabe
+Not supported: copy-protected content (DRM, e.g. purchased iTunes videos or encrypted Blu-rays) and MIDI files.
 
-Wie beim Windows Media Player geht der Rechner nicht in den Standby, solange Musik oder Internetradio läuft (der Bildschirm darf sich ausschalten). Bei Videos bleibt zusätzlich der Bildschirm an. Pausiert oder gestoppt gilt wieder die normale Energieeinstellung. Abschaltbar unter Einstellungen ▸ System ▸ Wiedergabe.
+**Videos** can be opened from the file manager, by dragging them into the window or via Organize ▸ Open file… (`Ctrl+O`). Videos are not added to the music library.
 
-## Equalizer und lückenlose Wiedergabe
+## “Now playing” mode
 
-**Equalizer:** Button mit den drei Reglern in der Steuerleiste, `Strg+E` oder Organisieren ▸ Equalizer…
+Like in WMP12 there is a dedicated playback mode next to the library. For music it shows the cover with a reflection in front of a glow in your accent color, for videos the picture.
 
-- 10 Bänder von 31 Hz bis 16 kHz, jeweils ±12 dB, Änderungen hörst du sofort.
-- Voreinstellungen: Neutral, Rock, Pop, Dance, Techno, Jazz, Klassik, Bassverstärkung, Höhenverstärkung, Sprache, Loudness. Sobald du einen Regler bewegst, wird daraus „Eigene Einstellung“, die der Player sich merkt.
-- Vorverstärkung von −12 bis +12 dB. Bei Anhebungen schützt ein Limiter automatisch vor Übersteuerung.
-- **Lautstärke angleichen (ReplayGain)** pro Titel oder pro Album. Das wirkt nur bei Dateien mit ReplayGain-Angaben, die du z. B. mit `rsgain`, foobar2000 oder MusicBrainz Picard erzeugst.
-- Gilt für Musik und Internetradio, nicht für Videos.
+- **Switching:** with the button at the bottom right of the control bar, via “Now playing” in the navigation, or with the button at the top right (“Go to library”). Videos open in this mode automatically.
+- **At the end of playback** you can choose “Play again” or “Go to library”.
+- **Full screen:** double-click the picture or press `F11`; `Esc` exits.
+- During videos, the control bar and mouse pointer hide after 2.5 seconds without mouse movement.
+- **Lyrics:** the lyrics button in the control bar (`Ctrl+T`) shows the lyrics next to the cover; in the library they appear below the playlist. Click a line to jump there, scroll with the mouse wheel.
+- **Audio tracks and subtitles:** the “Audio track and subtitles” button in the control bar lists the video's audio tracks and subtitles. An `.srt` file with the same name as the video is loaded automatically; load others via “Load subtitle file…”.
 
-**Lückenlose Wiedergabe (Gapless):** Der Player lädt den nächsten Titel schon vorab, sodass Live-Alben, DJ-Mixe und ineinander übergehende Alben ohne Aussetzer durchlaufen. Das gilt auch bei Zufallswiedergabe und Wiederholen. Bei MP3 wird die Stille, die der Encoder einfügt, automatisch weggeschnitten. Abschalten kannst du das unter Einstellungen ▸ System.
+## No sleep during playback
 
-## Navigationsleiste
+Like Windows Media Player, NeoNote keeps the computer from going to sleep while music or internet radio is playing (the screen may still turn off). During videos the screen stays on as well. When paused or stopped, your normal power settings apply again. You can turn this off under Settings ▸ System ▸ Playback.
 
-Links findest du:
+## Equalizer and gapless playback
 
-- **Zuletzt gespielt**
-- **Interpret, Album, Genre, Titel**
-- **Automatische Listen**, die sich selbst füllen:
-  - **Lieblingstitel**: alle Titel mit 4 oder 5 Sternen
-  - **Meistgespielt**
-  - **Zuletzt hinzugefügt**
-- **Wiedergabelisten**: das „+“ legt eine neue an
-- **Internetradio**
-- **Wird gespielt**
-- **Bibliothek prüfen**
-- **Wiedergabeliste**: die aktuelle Liste, mit der Anzahl der Titel
+**Equalizer:** the button with the three sliders in the control bar, `Ctrl+E` or Organize ▸ Equalizer…
 
-Ein Rechtsklick auf eine automatische Liste spielt sie ab oder speichert sie als feste Wiedergabeliste.
+- 10 bands from 31 Hz to 16 kHz, ±12 dB each; you hear changes immediately.
+- Presets: Flat, Rock, Pop, Dance, Techno, Jazz, Classical, Bass boost, Treble boost, Speech, Loudness. As soon as you move a slider it becomes “Custom”, which the player remembers.
+- Preamp from −12 to +12 dB. A limiter automatically prevents clipping when boosting.
+- **Normalize volume (ReplayGain)** per track or per album. This only works for files with ReplayGain information, e.g. created with `rsgain`, foobar2000 or MusicBrainz Picard.
+- Applies to music and internet radio, not to videos.
 
-**Leiste anpassen:** Einstellungen ▸ Navigation, oder Rechtsklick auf die Leiste ▸ Leiste anpassen…
+**Gapless playback:** the player preloads the next track so live albums, DJ mixes and albums with seamless transitions play without interruptions – also with shuffle and repeat. For MP3, the silence added by the encoder is trimmed automatically. You can turn this off under Settings ▸ System.
 
-- **Ein- und ausblenden:** Häkchen setzen oder entfernen.
-- **Reihenfolge:** ziehen oder die Pfeil-Buttons nutzen.
-- **Umbenennen:** Doppelklick, z. B. „Interpret“ in „Künstler“. Ein leerer Name stellt den ursprünglichen wieder her.
-- **Trennlinien** einfügen oder entfernen.
-- **„Standard“** stellt den Ausgangszustand wieder her.
+## Navigation bar
 
-Einträge direkt unter „Automatische Listen“ erscheinen als Unterpunkte. Änderungen siehst du sofort, „Abbrechen“ macht sie rückgängig.
+On the left you'll find:
 
-**Breite der Bereiche:** Die Grenzen zwischen Leiste, Inhalt und Wiedergabeliste lassen sich mit der Maus ziehen. Beim Drüberfahren leuchtet der Griff auf. Die Breiten merkt sich NeoNote, ein Doppelklick auf einen Griff stellt die Standardbreiten wieder her. Die Spalten der Titelliste ziehst du genauso am Spaltenkopf breiter oder schmaler.
+- **Recently played**
+- **Artist, Album, Genre, Songs**
+- **Automatic playlists** that fill themselves:
+  - **Favorites**: all tracks rated 4 or 5 stars
+  - **Most played**
+  - **Recently added**
+- **Playlists**: the “+” creates a new one
+- **Internet radio**
+- **Now playing**
+- **Check library**
+- **Playlist**: the current list, with the number of tracks
 
-## Wiedergabelisten
+Right-clicking an automatic playlist plays it or saves it as a regular playlist.
 
-- **Speichern:** In der Wiedergabeliste rechts auf „Liste speichern“ klicken, oder Rechtsklick auf Titel, Alben oder Interpreten ▸ Hinzufügen zu ▸ Neue Wiedergabeliste…
-- Gespeicherte Listen stehen links unter **Wiedergabelisten**. Ein Rechtsklick darauf bietet Wiedergeben, Umbenennen, Exportieren und Löschen.
-- **Import/Export** als M3U/M3U8 über Organisieren oder per Rechtsklick. Listen mit Windows-Pfaden wie `G:\Musik\…` aus WMP findet der Player unter Linux nicht. Dort musst du die Pfade vorher in einem Texteditor anpassen.
-- Beim Beenden merkt sich der Player die aktuelle Wiedergabeliste und die Position im Titel. Beim nächsten Start geht es mit Play an derselben Stelle weiter.
+**Customize the bar:** Settings ▸ Navigation, or right-click the bar ▸ Customize bar…
 
-## Internetradio
+- **Show and hide:** tick or untick entries.
+- **Order:** drag, or use the arrow buttons.
+- **Rename:** double-click. An empty name restores the original one.
+- **Dividers** can be inserted or removed.
+- **“Default”** restores the original layout.
 
-Unter **Internetradio** in der Navigation legst du Sender mit Name und Stream-Adresse an, oder du importierst sie aus einer `.pls`/`.m3u`-Datei. Viele Sender findest du auf radio-browser.info. Senden die Sender den aktuellen Songtitel mit, zeigt der Player ihn an.
+Entries directly below “Automatic playlists” appear as sub-items. Changes show up immediately; “Cancel” reverts them.
+
+**Pane widths:** the borders between the navigation bar, the content and the playlist can be dragged with the mouse; the handle lights up when you hover over it. NeoNote remembers the widths, and double-clicking a handle restores the defaults. Columns in the track list are resized the same way at the column header.
+
+## Playlists
+
+- **Save:** in the playlist on the right, click “List ▾” ▸ “Save as playlist…”, or right-click tracks, albums or artists ▸ Add to ▸ New playlist…
+- Saved playlists appear on the left under **Playlists**. Right-click one to play, rename, export or delete it.
+- **Import/export** as M3U/M3U8 via Organize or right-click. Playlists from WMP with Windows paths like `G:\Music\…` can't be found on Linux; adjust the paths in a text editor first.
+- When you quit, the player remembers the current playlist and the position in the track. On the next start, press Play to continue right where you left off.
+
+## Internet radio
+
+Under **Internet radio** in the navigation you can add stations with a name and stream address, or import them from a `.pls`/`.m3u` file. You'll find many stations on radio-browser.info. If a station sends the current song title, the player shows it.
 
 ## Jellyfin
 
-Unter **Einstellungen ▸ Jellyfin** verbindest du NeoNote mit deinem Jellyfin-Server (Adresse, Benutzer, Passwort). Gespeichert wird nur ein Anmelde-Token, nicht das Passwort. Die Musik erscheint links unter **Jellyfin** mit Interpret, Album, Genre, Titeln und den Wiedergabelisten des Servers.
+Under **Settings ▸ Jellyfin** you connect NeoNote to your Jellyfin server (address, user, password). Only a sign-in token is stored, not your password. Your music appears on the left under **Jellyfin** with artists, albums, genres, songs and the server's playlists.
 
-- **Qualität:** „Original“ für zu Hause, 320/192/128 kbit/s für unterwegs (z. B. über WireGuard) – der Server rechnet dann in MP3 um.
-- **Offline speichern:** Rechtsklick auf Titel oder Album legt eine Kopie auf dem Rechner ab; sie spielt auch ohne Verbindung.
-- **Abgleich:** Gespielte Titel werden an den Server gemeldet; 4–5 Sterne setzen den Titel dort als Favorit, Favoriten vom Server erscheinen mit 5 Sternen.
+- **Quality:** “Original” at home, 320/192/128 kbit/s on the go (e.g. via WireGuard) – the server then converts to MP3.
+- **Save offline:** right-click a track or album to keep a copy on your computer; it plays without a connection too.
+- **Sync:** played tracks are reported to the server; 4–5 stars mark a track as a favorite there, and favorites from the server show up with 5 stars.
 
-## Bibliothek prüfen
+## Check library
 
-**Organisieren ▸ Bibliothek prüfen** (oder der Eintrag in der Navigation) sucht nach doppelten Titeln, Alben ohne Cover, lückenhaften Tags und fehlenden Dateien. Bei Doppelten ist die beste Fassung vorausgewählt; die anderen kannst du ausblenden oder in den Papierkorb verschieben (Bewertungen und Zähler wandern zur behaltenen Fassung). Ausgeblendete lassen sich unter Einstellungen ▸ Bibliothek wieder einblenden.
+**Organize ▸ Check library…** (or the entry in the navigation) looks for duplicate tracks, albums without cover, incomplete tags and missing files. For duplicates, the best version is preselected; you can hide the others or move them to the trash (ratings and play counts move to the version you keep). Hidden duplicates can be shown again under Settings ▸ Library.
 
-## Sprache
+## Language
 
-Unter **Einstellungen ▸ Darstellung ▸ Sprache**: Deutsch, Englisch oder automatisch nach der Systemsprache. Die Änderung gilt nach einem Neustart („Jetzt neu starten“). Übersetzungen liegen als JSON-Dateien im Ordner `i18n` neben dem Programm.
+Under **Settings ▸ Appearance ▸ Language**: English, German or automatic (system language). The change takes effect after a restart (“Restart now”). Translations are JSON files in the `i18n` folder next to the program – adding a new language only takes one more file.
 
-## Mini-Player und Systemleiste
+## Mini player and system tray
 
-- **Mini-Player:** Button unten rechts in der Steuerleiste oder `Strg+M`. Ein kleines Fenster mit Cover, Titel, Zeitleiste und Tasten. Doppelklick oder der Button rechts bringt die Vollansicht zurück. Unter Wayland legt KWin den Mini-Player eventuell nicht automatisch über andere Fenster. Dann hilft Rechtsklick auf das Fenster in der Taskleiste ▸ Weitere Aktionen ▸ Im Vordergrund halten.
-- **Systemleiste:** Ein Klick auf das Symbol zeigt oder versteckt das Fenster, Mittelklick startet bzw. pausiert. Optional minimiert der Schließen-Button in die Systemleiste (Einstellungen ▸ System).
+- **Mini player:** the button at the bottom right of the control bar or `Ctrl+M`. A small window with cover, title, seek bar and buttons. Double-click it or use the button on the right to return to the full view. On Wayland, KWin may not keep the mini player on top automatically; right-click the window in the task bar ▸ More actions ▸ Keep above others.
+- **System tray:** clicking the icon shows or hides the window, middle-click plays or pauses. Optionally, the close button minimizes to the tray (Settings ▸ System).
 
-## KDE-Mediensteuerung
+## Media controls on Linux
 
-Mit `python-jeepney` meldet sich NeoNote bei Plasma an (MPRIS). Dann gilt:
-- Der Player erscheint mit Cover und Tasten im Medien-Widget der Leiste und auf dem Sperrbildschirm.
-- Die Medientasten der Tastatur funktionieren systemweit.
-- KDE Connect kann den Player vom Handy aus steuern.
+With `python-jeepney`, NeoNote registers with the desktop (MPRIS). Then:
+- The player shows up with cover and buttons in the Plasma panel's media widget and on the lock screen.
+- The keyboard's media keys work system-wide.
+- KDE Connect can control the player from your phone.
 
-**Aus Dolphin geöffnete Dateien** werden abgespielt, aber standardmäßig nicht in die Bibliothek aufgenommen. Das kannst du unter Einstellungen ▸ Bibliothek mit einem Häkchen ändern. Läuft der Player schon, übernimmt das offene Fenster die Dateien, es startet kein zweites.
+**Files opened from the file manager** are played but not added to the library by default. You can change this with a checkbox under Settings ▸ Library. If the player is already running, the open window takes the files – no second instance starts.
 
-## Einstellungen
+## Settings
 
-Zahnrad oben rechts, das Menü ☰ daneben oder **Organisieren ▸ Einstellungen…**. Ist die Befehlsleiste ausgeblendet, sitzen Zahnrad und ☰ oben in der Titelleiste. Es gibt acht Reiter:
+The gear icon at the top right, the ☰ menu next to it or **Organize ▸ Settings…**. If the command bar is hidden, the gear and ☰ move up into the title bar. There are eight tabs:
 
-- **Bibliothek:** Musikordner hinzufügen oder entfernen und die Bibliothek komplett neu einlesen. Dazu kommen die Ordnerüberwachung (an), die Suche beim Start (an) und die Aufnahme von Dateien aus Dolphin (aus). Beim Neueinlesen liest der Player nur geänderte Dateien, das geht auch bei großen Sammlungen in Sekunden.
-- **Darstellung:** Farben, Transparenz, Covergröße, Fensterleiste und Sprache (siehe unten).
-- **Online-Informationen:** wohin gefundene Angaben und Cover gespeichert werden, und ob von Hand bearbeitete Tags in die Dateien geschrieben werden (an).
-- **System:** Symbol in der Systemleiste, Verhalten des Schließen-Buttons, Mediensteuerung, mpv, lückenlose Wiedergabe, Standby-Sperre und Updates (bei jedem Start, täglich, wöchentlich oder nie; unter Windows auf Wunsch automatisch).
-- **Video:** Hardwarebeschleunigung (automatisch, nur Prozessor oder ein bestimmtes Verfahren wie D3D11VA, VA-API oder CUDA), bevorzugte Tonspur, Untertitel automatisch einschalten (nie, bei fremdsprachigem Ton, immer) mit Wunschsprache und das automatische Laden gleichnamiger .srt-Dateien.
-- **Navigation:** Navigationsleiste anpassen.
-- **Jellyfin:** Verbindung zu deinem Jellyfin-Server.
-- **Über:** Version und Datum, Credits, die genauen Versionen von Qt, FFmpeg und mpv („Versionen kopieren“ für Fehlermeldungen) und deine Datenordner.
+- **Library:** add or remove music folders and rescan the whole library, plus folder watching (on), scanning at startup (on) and adding files opened from the file manager (off). A rescan only reads changed files, which takes seconds even for large collections.
+- **Appearance:** colors, transparency, cover size, title bar and language (see below).
+- **Online information:** where found information and covers are saved, and whether manually edited tags are written into the files (on).
+- **System:** system tray icon, close button behavior, media controls, mpv, gapless playback, sleep prevention and updates (at every start, daily, weekly or never; on Windows optionally automatic).
+- **Video:** hardware acceleration (automatic, CPU only or a specific method such as D3D11VA, VA-API or CUDA), preferred audio track, turning on subtitles automatically (never, when the audio is in another language, always) with a preferred language, and auto-loading .srt files with the same name.
+- **Navigation:** customize the navigation bar.
+- **Jellyfin:** connection to your Jellyfin server.
+- **About:** version and date, credits, the exact versions of Qt, FFmpeg and mpv (“Copy versions” for bug reports) and your data folders.
 
-## Tags bearbeiten
+## Editing tags
 
-Wie in WMP12: Titel markieren, dann **noch einmal auf das Feld klicken** oder `F2` drücken, Wert eintippen und mit Enter bestätigen. Bearbeitbar sind Titel, Interpret, Albuminterpret, Album, Komponist, Jahr, Genre, Nr. und CD.
+Like in WMP12: select a track, then **click the field again** or press `F2`, type the value and confirm with Enter. Editable fields are title, artist, album artist, album, composer, year, genre, track number and disc.
 
-Sind mehrere Titel markiert, gilt eine Änderung an Interpret, Album, Jahr, Genre usw. für alle markierten Titel. Am schnellsten markierst du ein ganzes Album mit einem Klick aufs Cover. Titel und Nummer ändern sich nur beim bearbeiteten Titel. Benennst du ein Album um, behält es sein Cover.
+If several tracks are selected, a change to artist, album, year, genre etc. applies to all of them. The quickest way to select a whole album is to click its cover. Title and number only change for the track you edit. Renaming an album keeps its cover.
 
-**Doppelte Interpreten zusammenführen:** Wie im WMP12 in der Interpretenansicht eine Kachel (oder mehrere markierte) auf den richtigen Interpreten ziehen. Nach einer Rückfrage wandern alle Titel dorthin.
+**Merging duplicate artists:** like in WMP12, drag a tile (or several selected ones) onto the right artist in the artist view. After a confirmation, all tracks move there.
 
-## Albuminformationen aus dem Internet
+## Album information from the internet
 
-NeoNote holt fehlende Angaben (Jahr, Genre, Titelnummern, Titel) bei **MusicBrainz** und Cover beim **Cover Art Archive**. Beides ist kostenlos, eine Anmeldung ist nicht nötig.
+NeoNote fetches missing information (year, genre, track numbers, titles) from **MusicBrainz** and covers from the **Cover Art Archive**. Both are free and need no account.
 
-- **Ein Album:** Rechtsklick auf das Album (Kachel oder Cover in der Titelliste) ▸ **Albuminformationen suchen…**. Du siehst alle Treffer mit Cover und Titelliste und wählst den passenden aus. Fett gedruckt ist die Titelanzahl, wenn sie zu deinem Album passt. Wenn nichts gefunden wird, passe Album- oder Interpretennamen im Suchfeld an.
-  - „Nur fehlende Angaben ergänzen“ lässt Vorhandenes in Ruhe.
-  - „Vorhandene Angaben überschreiben“ ersetzt Titel, Jahr, Genre und Nummern durch die Angaben von MusicBrainz.
-- **Alle Alben:** **Organisieren ▸ Fehlende Albuminfos und Cover suchen** (oder in den Einstellungen). Durchsucht werden nur Alben, denen Cover, Jahr, Genre oder Titelnummern fehlen. Übernommen wird nur, was sicher passt: Die Trefferquote muss hoch sein und die Titelanzahl übereinstimmen. Der Rest wird übersprungen, dafür nimmst du die Einzelsuche. Rechtsklick auf einen Interpreten sucht für alle seine Alben.
+- **One album:** right-click the album (tile or cover in the track list) ▸ **Find album info…**. You see all matches with cover and track list and pick the right one. The track count is shown in bold when it matches your album. If nothing is found, adjust the album or artist name in the search field.
+  - “Only fill in missing information” leaves existing information alone.
+  - “Overwrite existing information” replaces title, year, genre and numbers with the information from MusicBrainz.
+- **All albums:** **Organize ▸ Find missing album info and covers** (or in the settings). Only albums missing a cover, year, genre or track numbers are searched. Only safe matches are applied: the match score must be high and the track count must match. Everything else is skipped – use the single-album search for those. Right-clicking an artist searches all of their albums.
 
-MusicBrainz erlaubt etwa eine Anfrage pro Sekunde. Bei 500 Alben dauert die Massensuche deshalb rund 20 bis 30 Minuten. Sie läuft im Hintergrund und lässt sich über das ✕ neben dem Fortschrittsbalken abbrechen.
+MusicBrainz allows about one request per second, so the bulk search takes roughly 20 to 30 minutes for 500 albums. It runs in the background and can be cancelled with the ✕ next to the progress bar.
 
-**Wohin wird gespeichert?** (Einstellungen ▸ Online-Informationen)
+**Where is it saved?** (Settings ▸ Online information)
 
-| Option | Wirkung |
+| Option | Effect |
 |---|---|
-| nichts ausgewählt (Standard) | Nur in der NeoNote-Bibliothek, deine Dateien bleiben unverändert |
-| Angaben in die Musikdateien schreiben | Tags in MP3, FLAC, OGG, Opus, M4A, WMA, WAV, AIFF |
-| Cover einbetten | Cover wird in jede Datei des Albums geschrieben |
-| Cover als cover.jpg ablegen | Datei im Albumordner, wird von vielen Programmen erkannt |
+| nothing selected (default) | Only in the NeoNote library; your files stay unchanged |
+| Write information into the music files | Tags in MP3, FLAC, OGG, Opus, M4A, WMA, WAV, AIFF |
+| Embed covers | The cover is written into every file of the album |
+| Save cover as cover.jpg | A file in the album folder, recognized by many programs |
 
-Schaltest du das Schreiben in die Dateien später ein, bietet NeoNote an, bisher nur in der Bibliothek gespeicherte Ergänzungen nachträglich in die Dateien zu schreiben.
+If you turn on writing into files later, NeoNote offers to write the additions saved only in the library into the files as well.
 
-## Darstellung anpassen
+## Customizing the look
 
-**Einstellungen ▸ Darstellung** oder **Organisieren ▸ Darstellung…**:
+**Settings ▸ Appearance** or **Organize ▸ Appearance…**:
 
-- **Akzentfarbe** und **Hintergrund**: Vorlagen (u. a. „Silber“ und „Anthrazit“) oder über „…“ jede beliebige Farbe. Bei hellem Hintergrund schaltet die Schrift automatisch auf Dunkel um, bei hellen Akzentfarben die Schrift auf Buttons.
-- **Markierung in der Navigation**: „Neutral (grau)“, dann leuchtet nur das Symbol in der Akzentfarbe, oder „Akzentfarbe“ für den ganzen Balken.
-- **Deckkraft**: steuert, wie stark der Desktop durchscheint.
-- **Hintergrund weichzeichnen (KDE)**: Milchglas-Effekt wie bei Windows Aero. Wird beim nächsten Start aktiv.
-- **Covergröße** in den Titellisten: Klein, Mittel oder Groß.
-- **Eigene Fensterleiste** (ab Werk an): Statt des KDE-Fensterrahmens sitzen Minimieren, Maximieren und Schließen oben rechts im Player. Das Fenster hat abgerundete Ecken, auch die KDE-Unschärfe folgt der Rundung. Maximiert und im Vollbild sind die Ecken gerade. Verschieben geht über die obere Leiste, ein Doppelklick maximiert, die Größe änderst du an den Fensterrändern. Schaltest du sie aus, nutzt NeoNote die normale KDE-Titelleiste, der Schließen-Button im Player bleibt trotzdem da.
+- **Accent color** and **Background**: presets (including “Silver”, “Anthracite” and a light background) or any color via “…”. With a light background the text switches to dark automatically; with light accent colors, the text on buttons does.
+- **Highlight in the navigation**: “Neutral (gray)” lights up only the icon in the accent color, “Accent color” the whole bar.
+- **Opacity**: controls how much of the desktop shines through.
+- **Blur background (KDE Plasma)**: frosted glass like Windows Aero. Takes effect on the next start.
+- **Cover size** in track lists: Small, Medium or Large.
+- **Custom title bar** (on by default): instead of the system window frame, minimize, maximize and close sit at the top right of the player. The window has rounded corners, and KDE's blur follows them. Maximized and in full screen the corners are square. Move the window by its top bar, double-click to maximize, resize at the window edges. If you turn it off, NeoNote uses the normal title bar of your desktop.
 
-Änderungen sind sofort sichtbar. „Abbrechen“ stellt den vorherigen Zustand wieder her.
+Changes are visible immediately; “Cancel” restores the previous state.
 
-### Zum Weichzeichnen unter Plasma (Wayland)
+### Blur on Plasma (Wayland)
 
-KWin zeichnet ein Fenster nur weich, wenn das Fenster das selbst anfordert. Das geht für Python-Programme nur über X11, deshalb startet der Player bei aktivierter Unschärfe automatisch über XWayland. Voraussetzungen:
+KWin only blurs a window if the window requests it. For Python programs this only works via X11, so the player automatically starts via XWayland when blur is enabled. Requirements:
 
-- Der KWin-Effekt **Unschärfe** ist eingeschaltet (Systemeinstellungen ▸ Fensterverwaltung ▸ Arbeitsflächen-Effekte).
-- Die Deckkraft liegt unter 100 %.
+- The KWin effect **Blur** is enabled (System Settings ▸ Window Management ▸ Desktop Effects).
+- Opacity is below 100 %.
 
-Wenn die Schrift bei fraktionaler Skalierung (z. B. 125 %) unscharf wirkt, schalte die Unschärfe ab. Der Player läuft dann nativ unter Wayland, transparent, aber ohne Weichzeichner.
+If text looks blurry with fractional scaling (e.g. 125 %), turn blur off. The player then runs natively on Wayland – transparent, but without blur.
 
-## Bedienung
+## Usage
 
-| Aktion | Wie |
+| Action | How |
 |---|---|
-| Alle Alben eines Interpreten anzeigen | Doppelklick auf den Cover-Stapel |
-| Ganzes Album markieren | Einfacher Klick auf das Cover in der Titelliste |
-| Album abspielen | Doppelklick auf das Cover in der Titelliste |
-| Zum Album, Interpreten, Genre oder Jahr springen | Auf die Angaben neben dem Cover klicken |
-| Interpreten zusammenführen | Kachel auf einen anderen Interpreten ziehen |
-| Spalten ein- und ausblenden | Rechtsklick auf die Spaltenköpfe |
-| Spalten verschieben oder breiter machen | Spaltenkopf ziehen |
-| Sortieren | Klick auf einen Spaltenkopf (nochmal = umgekehrt), Klick auf „Album“ = wieder nach Alben gruppiert |
-| Tags bearbeiten | Markierten Titel nochmal anklicken oder `F2` |
-| Bewerten | Auf die Sterne klicken (gleiche Zahl noch mal = Bewertung löschen) oder Rechtsklick ▸ Bewerten |
-| Abspielen / zur Liste hinzufügen | Rechtsklick auf Interpret, Album oder Titel |
-| Datei im Dateimanager zeigen | Rechtsklick auf einen Titel ▸ Dateispeicherort öffnen (Dolphin markiert die Datei) |
-| Dateipfad kopieren | Rechtsklick auf einen Titel ▸ Dateipfad kopieren |
-| Wiedergabeliste umsortieren | Drag & Drop |
-| Fenster verschieben | Titelleiste oben oder freie Stellen der Steuerleiste unten ziehen |
-| Aus der Wiedergabeliste entfernen | Markieren und `Entf` |
-| Wiedergabe / Pause | `Strg+P` oder Medientaste |
-| Nächster / vorheriger Titel | `Strg+→` / `Strg+←` |
-| Zurück / Vor | `Alt+←` / `Alt+→`, die Zurück-/Vor-Tasten der Maus oder die Pfadleiste oben anklicken |
-| Suchen | `Strg+F` |
-| Datei öffnen | `Strg+O` |
-| Vollbild | Doppelklick aufs Video / `F11`, beenden mit `Esc` |
-| Mini-Player | `Strg+M` |
-| Equalizer | `Strg+E` |
-| Wiedergabeliste rechts ein-/ausblenden | `Strg+L` |
+| Show all albums of an artist | Double-click the cover stack |
+| Select a whole album | Single-click the cover in the track list |
+| Jump to the album, artist, genre or year | Click the details next to the cover |
+| Merge artists | Drag a tile onto another artist |
+| Play an album | Double-click the cover in the track list |
+| Show and hide columns | Right-click the column headers |
+| Move or resize columns | Drag the column header |
+| Sort | Click a column header (again = reverse), click “Album” = grouped by album again |
+| Edit tags | Click the selected track again or `F2` |
+| Rate | Click the stars (same number again = remove rating) or right-click ▸ Rate |
+| Play / add to the list | Right-click an artist, album or track |
+| Show file in the file manager | Right-click a track ▸ Open file location |
+| Copy file path | Right-click a track ▸ Copy file path |
+| Reorder the playlist | Drag & drop |
+| Move the window | Drag the title bar at the top or empty spots of the control bar at the bottom |
+| Remove from the playlist | Select and press `Del` |
+| Play / pause | `Ctrl+P` or media key |
+| Next / previous track | `Ctrl+→` / `Ctrl+←` |
+| Back / forward | `Alt+←` / `Alt+→`, the mouse's back/forward buttons, or click the path bar at the top |
+| Search | `Ctrl+F` |
+| Open file | `Ctrl+O` |
+| Full screen | Double-click the video / `F11`, exit with `Esc` |
+| Mini player | `Ctrl+M` |
+| Equalizer | `Ctrl+E` |
+| Show/hide the playlist on the right | `Ctrl+L` |
 
-Die Kacheln zeigen wie bei WMP12 links das Cover, bei mehreren Alben als aufgefächerten Stapel, und rechts Anzahl, Spieldauer und den Sterne-Durchschnitt. In der Interpreten- und Genre-Ansicht trennen Buchstaben-Überschriften die Einträge. Wie bei WMP12 wird ein führendes „The“ ignoriert, „The Hooters“ steht also unter H. Die Albumansicht ist nach Interpret gruppiert.
+Like in WMP12, the tiles show the cover on the left – as a fanned-out stack for several albums – and the count, playing time and average rating on the right. In the artist and genre views, letter headings separate the entries. Like WMP12, a leading “The” is ignored, so “The Hooters” is listed under H. The album view is grouped by artist.
 
-Verfügbare Spalten: Nr., Titel, Länge, Bewertung, Mitwirkender Interpret, Albuminterpret, Albumtitel, Komponist, Jahr, Genre, Größe, Wiedergabeanzahl, Typ, Bitrate, CD, Dateipfad.
+Available columns: No., Title, Length, Rating, Contributing artist, Album artist, Album title, Composer, Year, Genre, Size, Play count, Type, Bit rate, Disc, File path.
 
-Ein Titel zählt als gespielt, sobald 30 Sekunden bzw. die Hälfte gelaufen sind.
+A track counts as played after 30 seconds or half its length.
 
-## Dateien
+## Files
 
-- Bibliothek: `~/.local/share/neonote/library.json`
-- Bewertungen und Wiedergabeanzahl: `~/.local/share/neonote/stats.json`
-- Cover-Cache: `~/.cache/neonote/covers/`
-- Ergänzungen, die nur in der Bibliothek gespeichert sind: `~/.local/share/neonote/overrides.json`
-- Wiedergabelisten: `~/.local/share/neonote/playlists/*.m3u8`
-- Jellyfin-Cache und Offline-Kopien: `~/.local/share/neonote/jellyfin*`
-- Einstellungen, Radiosender, letzte Sitzung: `~/.config/NeoNote/NeoNote.conf`
-- Unter Windows: Daten in `%APPDATA%\NeoNote`, Cover in `%LOCALAPPDATA%\NeoNote`, Einstellungen in der Registry (`HKEY_CURRENT_USER\Software\NeoNote`)
+- Library: `~/.local/share/neonote/library.json`
+- Ratings and play counts: `~/.local/share/neonote/stats.json`
+- Cover cache: `~/.cache/neonote/covers/`
+- Additions saved only in the library: `~/.local/share/neonote/overrides.json`
+- Playlists: `~/.local/share/neonote/playlists/*.m3u8`
+- Jellyfin cache and offline copies: `~/.local/share/neonote/jellyfin*`
+- Settings, radio stations, last session: `~/.config/NeoNote/NeoNote.conf`
+- On Windows: data in `%APPDATA%\NeoNote`, covers in `%LOCALAPPDATA%\NeoNote`, settings in the registry (`HKEY_CURRENT_USER\Software\NeoNote`)
 
-## Fehler und Ideen
+## Bugs and ideas
 
-Was als Nächstes geplant ist, steht in der [Roadmap](ROADMAP.md).
+What's planned next: see the [roadmap](ROADMAP.md#roadmap-english).
 
-Einen Fehler gefunden oder eine Idee? Einfach ein **[Issue](https://github.com/RembrandtZ4/NeoNote-Media-Player/issues/new/choose)** anlegen – auf Deutsch oder Englisch.
+Found a bug or have an idea? Open an **[issue](https://github.com/RembrandtZ4/NeoNote-Media-Player/issues/new/choose)** – in English or German.
 
-## Lizenz
+## License
 
 NeoNote Media Player – Copyright © 2026 RembrandtZ4
 
-Dieses Programm ist freie Software: Du kannst es unter den Bedingungen der **GNU General Public License Version 3** weitergeben und/oder verändern. Es wird in der Hoffnung verbreitet, dass es nützlich ist, aber **ohne jede Gewährleistung**. Den vollständigen Text findest du in [LICENSE](LICENSE).
+This program is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License version 3**. It is distributed in the hope that it will be useful, but **without any warranty**. See [LICENSE](LICENSE) for the full text.
 
-Verwendete Bibliotheken und ihre Lizenzen: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Libraries used and their licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
-NeoNote wurde von RembrandtZ4 gemeinsam mit [Claude](https://claude.ai) (Anthropic) entwickelt.
-
+NeoNote was developed by RembrandtZ4 together with [Claude](https://claude.ai) (Anthropic).

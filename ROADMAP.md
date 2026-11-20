@@ -1,41 +1,10 @@
 # Roadmap
 
-🇩🇪 Deutsch | 🇬🇧 English below
-
-Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE Plasma). Die Reihenfolge ist grob, nicht verbindlich. Weitere Wünsche gern als [Issue](https://github.com/RembrandtZ4/NeoNote-Media-Player/issues/new/choose).
-
-## Version 1.2 (in Arbeit)
-- [x] **Videos über mpv** – Darstellung auf der Grafikkarte: flüssiges 4K, HDR auf normalen Bildschirmen, Bild-Untertitel (PGS/VobSub) von Blu-rays und DVDs
-- [x] **Weiterhören an der letzten Stelle** bei Hörbüchern, Podcasts und langen Videos, Kapitelsprünge
-- [x] **Einschlaf-Timer** („nach 30 Minuten“, „nach diesem Album“)
-- [x] **Intelligente Wiedergabelisten** mit eigenen Regeln (z. B. „Rock aus den 80ern, mindestens 4 Sterne, seit 3 Monaten nicht gespielt“) – wie in Windows Media Player 12
-- [x] **Songtexte**, zeitgesteuert im „Wird gespielt“-Modus (z. B. über LRCLIB) und aus den Dateien selbst
-- [x] **Transparente Dialoge** (Einstellungen, Equalizer …) mit eigener Titelleiste und demselben Weichzeichner wie das Hauptfenster – eine durchgehende Fläche unter Windows und KDE
-- [x] **Flatpak** – für Ubuntu, Fedora, Mint und andere Distributionen (Aufnahme in Flathub folgt später)
-
-## Als Nächstes
-- [ ] **AUR-Paket** – Installation mit `yay -S neonote`
-- [ ] **Feinschliff unter KDE Plasma** (Wayland, Weichzeichner, Dolphin)
-
-## Später
-- [ ] **Scrobbeln** zu Last.fm und ListenBrainz
-- [x] **Updater für Windows** – neue Versionen direkt aus NeoNote installieren *(seit 1.1.8)*
-- [ ] **Überblenden** zwischen Titeln
-- [ ] **Ordneransicht** – durch die Musikordner stöbern
-- [ ] **Wiedergabegeschwindigkeit** für Hörbücher und Videos
-- [ ] **Visualisierung** wie im Windows Media Player
-- [ ] **Eigene Audioausgabe** und bitgenaue Wiedergabe (z. B. für externe DACs)
-- [ ] **Auto-DJ / Radio zu einem Titel** – endlos passende Musik aus der eigenen Sammlung (Genre, Jahr, Bewertung, „wird oft zusammen gehört“)
-- [ ] **Dateien umbenennen und einsortieren** nach Mustern wie „Interpret/Album/Nr. Titel“
-- [ ] **Infos zum Interpreten** in „Wird gespielt“ – Biografie und ähnliche Künstler
-
----
-
-# Roadmap (English)
+🇬🇧 English | 🇩🇪 Deutsch weiter unten
 
 Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The order is rough, not binding. More ideas are welcome as an [issue](https://github.com/RembrandtZ4/NeoNote-Media-Player/issues/new/choose).
 
-## Version 1.2 (in progress)
+## Version 1.2 – released 2026-11-20
 - [x] **Videos via mpv** – rendering on the GPU: smooth 4K, HDR on regular screens, image subtitles (PGS/VobSub) from Blu-rays and DVDs
 - [x] **Resume where you left off** for audiobooks, podcasts and long videos, chapter navigation
 - [x] **Sleep timer** (“after 30 minutes”, “after this album”)
@@ -59,3 +28,34 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [ ] **Auto DJ / track radio** – endless matching music from your own collection (genre, year, rating, “often played together”)
 - [ ] **Rename and organize files** using patterns like “Artist/Album/No. Title”
 - [ ] **Artist info** in “Now playing” – biography and similar artists
+
+---
+
+# Roadmap (Deutsch)
+
+Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE Plasma). Die Reihenfolge ist grob, nicht verbindlich. Weitere Wünsche gern als [Issue](https://github.com/RembrandtZ4/NeoNote-Media-Player/issues/new/choose).
+
+## Version 1.2 – erschienen am 20.11.2026
+- [x] **Videos über mpv** – Darstellung auf der Grafikkarte: flüssiges 4K, HDR auf normalen Bildschirmen, Bild-Untertitel (PGS/VobSub) von Blu-rays und DVDs
+- [x] **Weiterhören an der letzten Stelle** bei Hörbüchern, Podcasts und langen Videos, Kapitelsprünge
+- [x] **Einschlaf-Timer** („nach 30 Minuten“, „nach diesem Album“)
+- [x] **Intelligente Wiedergabelisten** mit eigenen Regeln (z. B. „Rock aus den 80ern, mindestens 4 Sterne, seit 3 Monaten nicht gespielt“) – wie in Windows Media Player 12
+- [x] **Songtexte**, zeitgesteuert im „Wird gespielt“-Modus (z. B. über LRCLIB) und aus den Dateien selbst
+- [x] **Transparente Dialoge** (Einstellungen, Equalizer …) mit eigener Titelleiste und demselben Weichzeichner wie das Hauptfenster – eine durchgehende Fläche unter Windows und KDE
+- [x] **Flatpak** – für Ubuntu, Fedora, Mint und andere Distributionen (Aufnahme in Flathub folgt später)
+
+## Als Nächstes
+- [ ] **AUR-Paket** – Installation mit `yay -S neonote`
+- [ ] **Feinschliff unter KDE Plasma** (Wayland, Weichzeichner, Dolphin)
+
+## Später
+- [ ] **Scrobbeln** zu Last.fm und ListenBrainz
+- [x] **Updater für Windows** – neue Versionen direkt aus NeoNote installieren *(seit 1.1.8)*
+- [ ] **Überblenden** zwischen Titeln
+- [ ] **Ordneransicht** – durch die Musikordner stöbern
+- [ ] **Wiedergabegeschwindigkeit** für Hörbücher und Videos
+- [ ] **Visualisierung** wie im Windows Media Player
+- [ ] **Eigene Audioausgabe** und bitgenaue Wiedergabe (z. B. für externe DACs)
+- [ ] **Auto-DJ / Radio zu einem Titel** – endlos passende Musik aus der eigenen Sammlung (Genre, Jahr, Bewertung, „wird oft zusammen gehört“)
+- [ ] **Dateien umbenennen und einsortieren** nach Mustern wie „Interpret/Album/Nr. Titel“
+- [ ] **Infos zum Interpreten** in „Wird gespielt“ – Biografie und ähnliche Künstler
