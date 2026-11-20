@@ -37,7 +37,7 @@ from collections import OrderedDict, defaultdict, deque
 from pathlib import Path
 
 import mutagen
-from PySide6.QtCore import (QDate, QMimeData, QPropertyAnimation, QEasingCurve, QProcess, QAbstractItemModel, QBuffer, QEvent, QFileSystemWatcher, QLocale, QObject, QItemSelection,
+from PySide6.QtCore import (QDate, QMimeData, QTime, QPropertyAnimation, QEasingCurve, QProcess, QAbstractItemModel, QBuffer, QEvent, QFileSystemWatcher, QLocale, QObject, QItemSelection,
                             QItemSelectionModel, QModelIndex, QPoint, QPointF, QRect,
                             QRectF, QSettings, QSize, Qt, QThread, QTimer,
                             QUrl, Signal, qVersion)
@@ -4194,6 +4194,10 @@ def make_icon(name, size=20, color=None):
         p.setPen(Qt.NoPen); p.setBrush(c)
         for x, y in ((.25, .62), (.5, .36), (.75, .55)):
             p.drawRoundedRect(QRectF((x - .1) * s, (y - .06) * s, .2 * s, .12 * s), 1, 1)
+    elif name == "moon":
+        a = QPainterPath(); a.addEllipse(P(.47, .53), .33 * s, .33 * s)
+        b = QPainterPath(); b.addEllipse(P(.66, .36), .27 * s, .27 * s)
+        p.setPen(Qt.NoPen); p.setBrush(c); p.drawPath(a.subtracted(b))
     elif name == "clock":
         lp = QPen(c, 1.5); lp.setCapStyle(Qt.RoundCap); p.setPen(lp); p.setBrush(Qt.NoBrush)
         p.drawEllipse(P(.5, .5), .34 * s, .34 * s)
@@ -7308,6 +7312,10 @@ class MainWindow(QMainWindow):
         self.sort_col, self.sort_desc = None, False
         self._pending_pos = None
         self._resume_note = 0
+        self._sleep_mode, self._sleep_mins, self._sleep_base, self._sleep_album = None, None, None, None
+        self._sleep_end = 0.0
+        self._sleep_timer = QTimer(self, interval=1000)
+        self._sleep_timer.timeout.connect(self._sleep_tick)
         self._resume_ready = False
         self._really_quit = False
         self._mini_was_max = False
@@ -8841,6 +8849,7 @@ class MainWindow(QMainWindow):
         # dasselbe Menü als ☰ neben dem Zahnrad – in der Befehlsleiste und oben, wenn sie ausgeblendet ist
         tm = QMenu(self)
         tm.addAction(tr_("Alle wiedergeben"), self.play_all_visible)
+        tm.addMenu(self.build_sleep_menu(tm))
         tm.addSeparator()
         tm.addActions(m.actions())
         self.act_cmdbar = QAction(tr_("Befehlsleiste anzeigen"), tm)
@@ -9117,6 +9126,13 @@ class MainWindow(QMainWindow):
         self.btn_mode.clicked.connect(self.toggle_np_mode)
         self.btn_mini = self._icon_btn("mini", 18, tr_("Mini-Player (Strg+M)"), self.show_mini, obj="ctl")
         self.btn_eq = self._icon_btn("eq", 18, tr_("Equalizer (Strg+E)"), self.open_equalizer, obj="ctl")
+        self.btn_sleep = QToolButton(); self.btn_sleep.setObjectName("ctl")
+        self.btn_sleep.setIcon(make_icon("moon", 16)); self.btn_sleep.setIconSize(QSize(16, 16))
+        self.btn_sleep.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.btn_sleep.setPopupMode(QToolButton.InstantPopup)
+        self.btn_sleep.setMenu(self.build_sleep_menu(self.btn_sleep))
+        self.btn_sleep.hide()
+        rl.addWidget(self.btn_sleep)
         rl.addWidget(self.btn_tracks); rl.addWidget(self.btn_eq); rl.addWidget(self.btn_mini); rl.addWidget(self.btn_mode)
         row.addWidget(rightw)
         v.addLayout(row)
@@ -9964,8 +9980,8 @@ class MainWindow(QMainWindow):
         if not getattr(self, "player", None) or not self.player.on_mpv():
             return
         if not self.settings.value("audio/gapless", True, type=bool) or self.cur is None \
-                or self.cur["t"].get("stream"):
-            self.player.set_next(None); self._next_entry = None
+                or self.cur["t"].get("stream") or getattr(self, "_sleep_mode", None) in ("track", "album"):
+            self.player.set_next(None); self._next_entry = None      # Einschlaf-Timer muss das Titelende sehen
             return
         e = self._peek_next()
         self._next_entry = e
@@ -10109,6 +10125,12 @@ class MainWindow(QMainWindow):
         if not self.queue:
             return
         i = self._cur_index()
+        if auto and self._sleep_mode in ("track", "album"):
+            nxt = self.queue[i + 1] if 0 <= i < len(self.queue) - 1 and not self.shuffle else None
+            if self._sleep_mode == "track" or nxt is None or \
+                    self._album_of(nxt["t"]) != self._sleep_album:
+                self._sleep_stop_at(nxt)
+                return
         if auto and self.repeat == 2 and self.cur is not None:
             self.play_entry(self.cur); return
         if self.shuffle and len(self.queue) > 1:
@@ -10237,6 +10259,7 @@ class MainWindow(QMainWindow):
         self.tray_play = m.addAction(tr_("Wiedergabe"), self.toggle_play)
         m.addAction(tr_("Weiter"), self.next_track)
         m.addAction(tr_("Zurück"), self.prev_track)
+        m.addMenu(self.build_sleep_menu(m))
         m.addSeparator()
         m.addAction(tr_("Mini-Player"), self.show_mini)
         m.addAction(tr_("NeoNote anzeigen"), self.show_window)
@@ -10366,6 +10389,116 @@ class MainWindow(QMainWindow):
                 a.triggered.connect(lambda _=False, i=i: self.goto_chapter(i))
         self.btn_tracks.setMenu(m)
         self.btn_tracks.setVisible(self.video.has_video or len(audio) > 1)
+
+    # ── Einschlaf-Timer ───────────────────────────────────────────────────
+    SLEEP_FADE = 10.0                 # Sekunden Ausblenden am Ende
+
+    def build_sleep_menu(self, parent):
+        m = QMenu(tr_("Einschlaf-Timer"), parent)
+        m.setIcon(make_icon("moon", 16))
+        g = QActionGroup(m)
+        items = [(tr_("Aus"), None, None)] + [(tr_("Nach {0} Minuten").format(n), "time", n) for n in (15, 30, 45, 60, 90)]
+        items += [(tr_("Eigene Zeit…"), "custom", None), (tr_("Nach diesem Titel"), "track", None),
+                  (tr_("Nach diesem Album"), "album", None)]
+        acts = []
+        for i, (label, mode, mins) in enumerate(items):
+            if i in (1, 7):
+                m.addSeparator()
+            a = m.addAction(label); a.setCheckable(mode != "custom"); g.addAction(a)
+            a.triggered.connect(lambda _=False, mode=mode, mins=mins: self.set_sleep(mode, mins))
+            acts.append((a, mode, mins))
+
+        def sync():
+            cur = getattr(self, "_sleep_mode", None)
+            for a, mode, mins in acts:
+                if mode == "time":
+                    a.setChecked(cur == "time" and getattr(self, "_sleep_mins", None) == mins)
+                elif mode != "custom":
+                    a.setChecked(cur == mode)
+        m.aboutToShow.connect(sync)
+        return m
+
+    def _album_of(self, t):
+        return t.get("akey") or album_key(t.get("albumartist") or t["artist"], t["album"])
+
+    def set_sleep(self, mode, mins=None):
+        if mode == "custom":
+            mins, ok = QInputDialog.getInt(self, tr_("Einschlaf-Timer"), tr_("Wiedergabe anhalten nach (Minuten):"),
+                                           getattr(self, "_sleep_mins", None) or 120, 1, 24 * 60)
+            if not ok:
+                return
+            mode = "time"
+        self._sleep_restore_volume()
+        self._sleep_mode, self._sleep_mins = mode, mins
+        if mode == "time":
+            self._sleep_end = time.monotonic() + mins * 60
+            self._sleep_timer.start()
+            self.flash(tr_("Einschlaf-Timer: Wiedergabe hält um {0} an.").format(
+                QTime.currentTime().addSecs(mins * 60).toString("HH:mm")))
+        elif mode in ("track", "album"):
+            self._sleep_album = self._album_of(self.cur["t"]) if self.cur else None
+            self._sleep_timer.stop()
+            self.flash(tr_("Einschlaf-Timer: Wiedergabe hält nach diesem Titel an.") if mode == "track" else
+                       tr_("Einschlaf-Timer: Wiedergabe hält nach diesem Album an."))
+        else:
+            self._sleep_timer.stop()
+            self.flash(tr_("Einschlaf-Timer aus."))
+        self._prepare_next()
+        self._sleep_tick()
+
+    def _sleep_tick(self):
+        mode = self._sleep_mode
+        if mode is None:
+            self.btn_sleep.hide()
+            return
+        if mode == "time":
+            rem = self._sleep_end - time.monotonic()
+            if rem <= 0:
+                self._sleep_finish()
+                return
+            self.btn_sleep.setText(f"{int(-(-rem // 60))} min" if rem >= 60 else f"0:{int(rem):02d}")
+            self.btn_sleep.setToolTip(tr_("Einschlaf-Timer: hält um {0} an – klicken zum Ändern").format(
+                QTime.currentTime().addSecs(int(rem)).toString("HH:mm")))
+            if rem <= self.SLEEP_FADE and self.player.playbackState() == QMediaPlayer.PlayingState:
+                if self._sleep_base is None:
+                    self._sleep_base = self.audio.gain
+                    self._sleep_timer.setInterval(100)            # gleichmäßig ausblenden
+                self.audio.setVolume(self._sleep_base * max(0.0, rem / self.SLEEP_FADE))
+        else:
+            self.btn_sleep.setText(tr_("Titel") if mode == "track" else tr_("Album"))
+            self.btn_sleep.setToolTip(tr_("Einschlaf-Timer: hält nach diesem Titel an – klicken zum Ändern")
+                                      if mode == "track" else
+                                      tr_("Einschlaf-Timer: hält nach diesem Album an – klicken zum Ändern"))
+        self.btn_sleep.show()
+
+    def _sleep_restore_volume(self):
+        if getattr(self, "_sleep_base", None) is not None:
+            self.audio.setVolume(self._sleep_base)
+        self._sleep_base = None
+        self._sleep_timer.setInterval(1000)
+
+    def _sleep_finish(self):
+        """Zeit abgelaufen: anhalten (nicht stoppen – morgen geht es an derselben Stelle weiter)."""
+        if self.player.playbackState() == QMediaPlayer.PlayingState:
+            self.player.pause()
+        self._sleep_restore_volume()
+        self._sleep_mode = None
+        self._sleep_timer.stop()
+        self.btn_sleep.hide()
+        self.flash(tr_("Gute Nacht – der Einschlaf-Timer hat die Wiedergabe angehalten."), 30000)
+        self._prepare_next()
+
+    def _sleep_stop_at(self, nxt):
+        """Titel/Album zu Ende: nicht weiterspielen. Der nächste Titel steht bereit; „Abspielen“ startet ihn."""
+        self.player.stop()
+        if nxt is not None:
+            self.cur = nxt
+            self._show_now_playing(nxt["t"])
+            self._mark_current()
+        self._resume_ready = False
+        self._sleep_mode = None
+        self.btn_sleep.hide()
+        self.flash(tr_("Gute Nacht – der Einschlaf-Timer hat die Wiedergabe angehalten."), 30000)
 
     def goto_chapter(self, i):
         if self.player.on_mpv_video():
