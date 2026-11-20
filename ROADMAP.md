@@ -5,8 +5,8 @@
 Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE Plasma). Die Reihenfolge ist grob, nicht verbindlich. Weitere Wünsche gern als [Issue](https://github.com/RembrandtZ4/NeoNote-Media-Player/issues/new/choose).
 
 ## Version 1.2 (in Arbeit)
-- [ ] **Videos über mpv** – Darstellung auf der Grafikkarte: flüssiges 4K, HDR auf normalen Bildschirmen, Bild-Untertitel (PGS/VobSub) von Blu-rays und DVDs
-- [ ] **Weiterhören an der letzten Stelle** bei Hörbüchern, Podcasts und langen Videos, Kapitelsprünge
+- [x] **Videos über mpv** – Darstellung auf der Grafikkarte: flüssiges 4K, HDR auf normalen Bildschirmen, Bild-Untertitel (PGS/VobSub) von Blu-rays und DVDs
+- [x] **Weiterhören an der letzten Stelle** bei Hörbüchern, Podcasts und langen Videos, Kapitelsprünge
 - [ ] **Einschlaf-Timer** („nach 30 Minuten“, „nach diesem Album“)
 - [ ] **Intelligente Wiedergabelisten** mit eigenen Regeln (z. B. „Rock aus den 80ern, mindestens 4 Sterne, seit 3 Monaten nicht gespielt“) – wie in Windows Media Player 12
 - [ ] **Songtexte**, zeitgesteuert im „Wird gespielt“-Modus (z. B. über LRCLIB) und aus den Dateien selbst
@@ -36,8 +36,8 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The order is rough, not binding. More ideas are welcome as an [issue](https://github.com/RembrandtZ4/NeoNote-Media-Player/issues/new/choose).
 
 ## Version 1.2 (in progress)
-- [ ] **Videos via mpv** – rendering on the GPU: smooth 4K, HDR on regular screens, image subtitles (PGS/VobSub) from Blu-rays and DVDs
-- [ ] **Resume where you left off** for audiobooks, podcasts and long videos, chapter navigation
+- [x] **Videos via mpv** – rendering on the GPU: smooth 4K, HDR on regular screens, image subtitles (PGS/VobSub) from Blu-rays and DVDs
+- [x] **Resume where you left off** for audiobooks, podcasts and long videos, chapter navigation
 - [ ] **Sleep timer** (“after 30 minutes”, “after this album”)
 - [ ] **Smart playlists** with custom rules (e.g. “80s rock, at least 4 stars, not played for 3 months”) – like in Windows Media Player 12
 - [ ] **Lyrics**, synced in “Now playing” mode (e.g. via LRCLIB) and from the files themselves
