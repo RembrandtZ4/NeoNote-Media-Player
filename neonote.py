@@ -2614,8 +2614,46 @@ class MpvBackend(QObject):
         self._next = src or None
 
     def set_volume(self, gain, muted):
-        self.m.volume = 100.0 * max(0.0, gain) ** (1 / 3)
+        self._gain, self._muted = gain, muted
+        amp = max(0.0, gain) * getattr(self, "_fade", 1.0)      # mpv-Lautstärke ist kubisch: Amplitude = (v/100)³
+        self.m.volume = 100.0 * amp ** (1 / 3)
         self.m.mute = bool(muted)
+
+    def set_fade(self, f):
+        """Blendfaktor (0…1, Amplitude) beim Überblenden."""
+        self._fade = max(0.0, min(1.0, f))
+        self.set_volume(getattr(self, "_gain", 1.0), getattr(self, "_muted", False))
+
+    def set_output(self, device, exclusive):
+        """Ausgabegerät (mpv-Name, „auto“ = Systemstandard) und exklusiver Zugriff (bitgenau)."""
+        changed = False
+        try:
+            if (self.m.audio_device or "auto") != (device or "auto"):
+                self.m.audio_device = device or "auto"; changed = True
+        except Exception:
+            pass
+        try:
+            if bool(self.m.audio_exclusive) != bool(exclusive):
+                self.m.audio_exclusive = bool(exclusive); changed = True
+        except Exception:
+            pass
+        if changed:
+            try:
+                self.m.command("ao-reload")
+            except Exception:
+                pass
+
+    def set_speed(self, x):
+        try:
+            self.m.speed = float(x)
+        except Exception:
+            pass
+
+    def audio_devices(self):
+        try:
+            return [(d.get("name"), d.get("description") or d.get("name")) for d in (self.m.audio_device_list or [])]
+        except Exception:
+            return []
 
     VIS_AF = "@nnvis:lavfi=[astats=metadata=1:reset=1:measure_perchannel=none:measure_overall=RMS_level+Peak_level]"
 
@@ -2632,8 +2670,14 @@ class MpvBackend(QObject):
         db = max(db, pk - 6)
         return 0.0 if db != db or db < -60 else max(0.0, min(1.0, (db + 48) / 44))
 
-    def set_filter(self, enabled, gains, preamp):
+    def set_filter(self, enabled, gains, preamp, bitperfect=False):
         self._filter_args = (enabled, gains, preamp)
+        if bitperfect:                             # nichts darf die Samples anfassen
+            try:
+                self.m.command("af", "clr", "")
+            except Exception:
+                pass
+            return
         af = eq_filter(enabled, gains, preamp, self._limiter_level)
         if self._vis_ok:
             af = f"{af},{self.VIS_AF}" if af else self.VIS_AF
@@ -2668,17 +2712,21 @@ class EngineAudio:
 
     def apply(self, be):
         if be is not None:
-            be.set_volume(self.gain, self.muted)
+            be.set_volume(1.0 if self.e.bitperfect else self.gain, self.muted)
+
+    def apply_all(self):
+        for be in self.e.mpv_backends():
+            self.apply(be)
 
     def setVolume(self, g):
         self.gain = g
         self.e.qt_audio.setVolume(g)
-        self.apply(self.e.mp); self.apply(self.e.mv)
+        self.apply_all()
 
     def setMuted(self, m):
         self.muted = m
         self.e.qt_audio.setMuted(m)
-        self.apply(self.e.mp); self.apply(self.e.mv)
+        self.apply_all()
 
     def isMuted(self):
         return self.muted
@@ -2711,6 +2759,19 @@ class Engine(QObject):
         self.video_mpv = False          # Videos über mpv abspielen?
         self.video_hwdec = "auto-safe"
         self._mv_failed = False
+        self.mp2 = None                 # zweites mpv für Musik: Überblenden
+        self.crossfade_ms = 0
+        self.speed = 1.0
+        self.device, self.bitperfect = "auto", False
+        self._filter = (False, [0] * 10, 0)
+        self._rg = "no"
+        self._xf_next = None            # nächster Titel zum Überblenden (statt lückenlos)
+        self._xf_ready = False          # mp2 hat ihn geladen und wartet
+        self._xf_old = None             # Instanz, die gerade ausgeblendet wird
+        self._xf_t0 = 0.0
+        self._xf_len = 0
+        self._xf_timer = QTimer(self, interval=30)
+        self._xf_timer.timeout.connect(self._xf_tick)
         if use_mpv:
             try:
                 self.mp = MpvBackend(self)
@@ -2722,18 +2783,169 @@ class Engine(QObject):
                 self._connect(be)
         if self.mp:
             self.mp.advanced.connect(self.advanced)
+            self.mp.positionChanged.connect(lambda ms, be=self.mp: self._xf_check(be, ms))
         self.audio = EngineAudio(self)
 
     def _connect(self, be):
         for name in self.SIGNALS:
             getattr(be, name).connect(lambda *a, be=be, name=name: be is self.b and getattr(self, name).emit(*a))
 
+    # ── Ausgabe, Tempo, Filter für alle mpv-Instanzen ─────────────────────
+    def mpv_backends(self):
+        return [be for be in (self.mp, self.mp2, self.mv) if be is not None]
+
+    def _setup_backend(self, be, video=False):
+        """Aktuelle Einstellungen auf eine (neue) mpv-Instanz übertragen."""
+        be.set_output(self.device, self.bitperfect)
+        be.set_speed(1.0 if self.bitperfect else self.speed)
+        be.set_filter(*self._filter, bitperfect=self.bitperfect)
+        be.set_replaygain("no" if self.bitperfect else self._rg)
+        self.audio.apply(be)
+
+    def set_audio_filter(self, enabled, gains, preamp, replaygain):
+        self._filter, self._rg = (enabled, list(gains), preamp), replaygain
+        for be in self.mpv_backends():
+            be.set_filter(*self._filter, bitperfect=self.bitperfect)
+            be.set_replaygain("no" if self.bitperfect else replaygain)
+
+    def set_output(self, device, bitperfect):
+        self.device, self.bitperfect = device or "auto", bool(bitperfect)
+        for be in self.mpv_backends():
+            self._setup_backend(be)
+        if self.bitperfect:
+            self._xf_cancel()
+        # Qt Multimedia (Videos ohne mpv): Gerät nach Namen suchen – nur wenn wirklich eins gewählt ist
+        if self.device == "auto" and not getattr(self, "_qt_dev_set", False):
+            return
+        self._qt_dev_set = self.device != "auto"
+        try:
+            from PySide6.QtMultimedia import QMediaDevices
+            want = None
+            for d in QMediaDevices.audioOutputs():
+                if device and device != "auto" and d.description() and d.description() in self.device_label(device):
+                    want = d
+            self.qt_audio.setDevice(want or QMediaDevices.defaultAudioOutput())
+        except Exception:
+            pass
+
+    def device_label(self, name):
+        for n, desc in self.audio_devices():
+            if n == name:
+                return desc
+        return name or ""
+
+    def audio_devices(self):
+        """[(mpv-Name, Beschreibung)] – „auto“ ist der Systemstandard."""
+        if self.mp is not None:
+            return self.mp.audio_devices()
+        try:
+            from PySide6.QtMultimedia import QMediaDevices
+            return [(d.description(), d.description()) for d in QMediaDevices.audioOutputs()]
+        except Exception:
+            return []
+
+    def set_speed(self, x):
+        self.speed = float(x)
+        for be in self.mpv_backends():
+            be.set_speed(1.0 if self.bitperfect else self.speed)
+        try:
+            self.qt.setPlaybackRate(self.speed)
+        except Exception:
+            pass
+
+    def set_crossfade(self, seconds):
+        self.crossfade_ms = max(0, int(seconds * 1000))
+        if not self.crossfade_ms:
+            self._xf_cancel()
+
+    # ── Überblenden: zweite mpv-Instanz übernimmt kurz vor dem Ende ───────
+    def _spare(self):
+        if self.mp2 is None and self.mp is not None:
+            try:
+                self.mp2 = MpvBackend(self)
+                self._connect(self.mp2)
+                self.mp2.advanced.connect(self.advanced)
+                self.mp2.positionChanged.connect(lambda ms, be=self.mp2: self._xf_check(be, ms))
+                self._setup_backend(self.mp2)
+            except Exception:
+                self.mp2 = None
+        return self.mp2
+
+    def _xf_cancel(self):
+        """Vorbereitetes oder laufendes Überblenden abbrechen (Sprung, Pause, Stopp …)."""
+        self._xf_next, self._xf_ready = None, False
+        if self._xf_old is not None:
+            old, self._xf_old = self._xf_old, None
+            self._xf_timer.stop()
+            old.stop(); old.set_fade(1.0)
+            if self.b is not None and hasattr(self.b, "set_fade"):
+                self.b.set_fade(1.0)
+        elif self.mp2 is not None and self.mp2 is not self.b and self.mp2._src:
+            self.mp2.stop()
+
+    def _xf_check(self, be, ms):
+        if be is not self.b or not self._xf_next or self._xf_old is not None or self.bitperfect:
+            return
+        dur = be.duration()
+        if dur <= 0:
+            return
+        L = min(self.crossfade_ms, dur // 3)
+        rem = (dur - ms) / max(0.25, self.speed)
+        spare = self._spare() if rem <= L + 2500 else None
+        if spare is None:
+            return
+        if not self._xf_ready:
+            spare.set_fade(0.0)
+            src = self._xf_next
+            spare.setSource(QUrl.fromLocalFile(src) if "://" not in src else QUrl(src))
+            self._xf_ready = True
+            return
+        if rem <= L and spare._status == QMediaPlayer.LoadedMedia:
+            self._xf_start(L)
+
+    def _xf_start(self, L):
+        old, new = self.b, self.mp2
+        old.set_next(None)                        # alter Titel soll nicht noch lückenlos weiterspielen
+        new.set_fade(0.0)
+        new.play()
+        self.mp, self.mp2 = new, old
+        self.b = new
+        self._xf_old, self._xf_len, self._xf_t0 = old, max(1, L), time.monotonic()
+        self._xf_next, self._xf_ready = None, False
+        self.durationChanged.emit(new.duration())
+        self.positionChanged.emit(new.position())
+        self.playbackStateChanged.emit(new.playbackState())
+        self.advanced.emit()
+        self._xf_timer.start()
+
+    def _xf_tick(self):
+        old = self._xf_old
+        if old is None:
+            self._xf_timer.stop(); return
+        x = min(1.0, (time.monotonic() - self._xf_t0) * 1000 / self._xf_len)
+        self.b.set_fade(math.sin(x * math.pi / 2))      # gleiche Lautheit über den ganzen Übergang
+        old.set_fade(math.cos(x * math.pi / 2))
+        if x >= 1.0:
+            self._xf_timer.stop()
+            self._xf_old = None
+            old.stop(); old.set_fade(1.0)
+
+    def pause(self):
+        if self._xf_old is not None:              # mitten im Überblenden: alten Titel gleich beenden
+            self._xf_old.stop(); self._xf_old.set_fade(1.0); self._xf_old = None
+            self._xf_timer.stop(); self.b.set_fade(1.0)
+        self.b.pause()
+
+    def stop(self):
+        self._xf_cancel()
+        self.b.stop()
+
     def _video_backend(self):
         if self.mv is None and not self._mv_failed:
             try:
                 self.mv = MpvBackend(self, video=True, hwdec=self.video_hwdec)
                 self._connect(self.mv)
-                self.audio.apply(self.mv)
+                self._setup_backend(self.mv, video=True)
                 if self.video_widget is not None:
                     self.video_widget.attach(self.mv)
             except Exception as e:
@@ -2779,6 +2991,7 @@ class Engine(QObject):
 
     def setSource(self, url):
         src = url.toLocalFile() if url.isLocalFile() else url.toString()
+        self._xf_cancel()
         target = self._target_for(src)
         if target is not self.b:
             old = self.b
@@ -2794,8 +3007,19 @@ class Engine(QObject):
             self.video_needed.emit()
         target.setSource(url)
 
-    def set_next(self, src):
-        if self.on_mpv():
+    def set_next(self, src, fade=True):
+        """Nächsten Titel vormerken: überblenden (falls eingestellt und erlaubt), sonst lückenlos vorladen."""
+        if not self.on_mpv():
+            return
+        if src and fade and self.crossfade_ms and not self.bitperfect:
+            if src != self._xf_next:
+                if self._xf_ready and self.mp2 is not None:
+                    self.mp2.stop()
+                self._xf_next, self._xf_ready = src, False
+            self.mp.set_next(None)
+        else:
+            if self._xf_next and self._xf_old is None:
+                self._xf_next, self._xf_ready = None, False
             self.mp.set_next(src)
 
     def level(self):
@@ -2813,7 +3037,7 @@ class Engine(QObject):
     def __getattr__(self, name):
         # play, pause, stop, position, duration, setPosition, playbackState, mediaStatus, metaData,
         # audioTracks, subtitleTracks, activeAudioTrack, setActiveAudioTrack, … → aktiver Wiedergabeweg
-        if name in ("qt", "mp", "b", "mv"):
+        if name in ("qt", "mp", "b", "mv", "mp2"):
             raise AttributeError(name)
         return getattr(self.b, name)
 
@@ -2824,6 +3048,8 @@ class Engine(QObject):
             self.mv.shutdown()
         if self.mp:
             self.mp.shutdown()
+        if self.mp2:
+            self.mp2.shutdown()
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -7818,6 +8044,60 @@ class SettingsDialog(QDialog):
         beq = QPushButton(tr_("Equalizer öffnen…")); beq.clicked.connect(win.open_equalizer)
         sv.addWidget(beq, 0, Qt.AlignLeft)
         sv.addSpacing(8)
+        # Übergänge zwischen Titeln
+        sv.addWidget(QLabel(tr_("<b>Übergänge</b>")))
+        xrow = QHBoxLayout()
+        xrow.addWidget(QLabel(tr_("Überblenden:")))
+        self.s_xf = QSlider(Qt.Horizontal); self.s_xf.setRange(0, 12); self.s_xf.setFixedWidth(200)
+        self.s_xf.setValue(win.settings.value("audio/crossfade", 0, type=int))
+        self.s_xf_lbl = QLabel(); self.s_xf_lbl.setMinimumWidth(80)
+
+        def _xf_text(v):
+            self.s_xf_lbl.setText(tr_("aus") if v == 0 else tr_("{0} Sekunden").format(v) if v > 1 else tr_("1 Sekunde"))
+            self.s_xf_album.setEnabled(v > 0)
+        self.s_xf_album = QCheckBox(tr_("Innerhalb eines Albums lückenlos statt überblenden"))
+        self.s_xf_album.setChecked(win.settings.value("audio/xf_album_gapless", True, type=bool))
+        self.s_xf.valueChanged.connect(_xf_text)
+        xrow.addWidget(self.s_xf); xrow.addWidget(self.s_xf_lbl); xrow.addStretch()
+        sv.addLayout(xrow)
+        sv.addWidget(self.s_xf_album)
+        _xf_text(self.s_xf.value())
+        xh = QLabel(tr_("Der nächste Titel wird sanft eingeblendet, während der laufende ausklingt. Live- und "
+                        "Konzeptalben bleiben mit der Option darunter ohne Unterbrechung."))
+        xh.setObjectName("hint"); xh.setWordWrap(True); sv.addWidget(xh)
+        sv.addSpacing(8)
+        # Ausgabegerät und bitgenaue Wiedergabe
+        sv.addWidget(QLabel(tr_("<b>Audioausgabe</b>")))
+        drow = QHBoxLayout()
+        drow.addWidget(QLabel(tr_("Ausgabegerät:")))
+        self.s_dev = QComboBox(); self.s_dev.setMinimumWidth(320)
+        self.s_dev.addItem(tr_("Systemstandard"), "auto")
+        cur_dev = win.settings.value("audio/device", "auto") or "auto"
+        for name, desc in win.player.audio_devices():
+            if name and name != "auto":
+                self.s_dev.addItem(desc, name)
+        if self.s_dev.findData(cur_dev) < 0:              # gerade nicht angeschlossen: trotzdem anzeigen
+            self.s_dev.addItem(tr_("{0} (nicht verbunden)").format(cur_dev), cur_dev)
+        self.s_dev.setCurrentIndex(max(0, self.s_dev.findData(cur_dev)))
+        drow.addWidget(self.s_dev, 1)
+        sv.addLayout(drow)
+        self.s_bp = QCheckBox(tr_("Bitgenaue Wiedergabe (exklusiver Zugriff, z. B. für externe DACs)"))
+        self.s_bp.setChecked(win.settings.value("audio/bitperfect", False, type=bool))
+        sv.addWidget(self.s_bp)
+        bph = QLabel(tr_("NeoNote gibt die Musik dann unverändert an das Gerät weiter – in der Abtastrate und "
+                         "Bittiefe der Datei. Lautstärke, Equalizer, ReplayGain, Tempo und Überblenden sind dabei aus; "
+                         "die Lautstärke regelst du am Gerät. Andere Programme können das Gerät währenddessen nicht nutzen. "
+                         "Unter Linux am besten das Gerät mit „hw:“ bzw. „Direct hardware“ im Namen wählen.")
+                      if not IS_WIN else
+                      tr_("NeoNote gibt die Musik dann unverändert an das Gerät weiter (WASAPI exklusiv) – in der "
+                          "Abtastrate und Bittiefe der Datei. Lautstärke, Equalizer, ReplayGain, Tempo und Überblenden "
+                          "sind dabei aus; die Lautstärke regelst du am Gerät. Andere Programme können das Gerät "
+                          "währenddessen nicht nutzen."))
+        bph.setObjectName("hint"); bph.setWordWrap(True); sv.addWidget(bph)
+        if not win.player.mp:
+            for wdg in (self.s_xf, self.s_xf_album, self.s_bp):
+                wdg.setEnabled(False)
+        sv.addSpacing(8)
         if IS_WIN:
             sv.addWidget(QLabel(tr_("<b>Windows-Mediensteuerung</b>")))
             self.s_mpris = QCheckBox(tr_("Mit der Windows-Mediensteuerung verbinden"))
@@ -7931,6 +8211,13 @@ class SettingsDialog(QDialog):
             w.settings.setValue("update/mode", self.s_umode.currentData())
         w.settings.setValue("audio/mpv", self.s_mpv.isChecked())
         w.settings.setValue("audio/gapless", self.s_gapless.isChecked())
+        out = (self.s_dev.currentData() or "auto", self.s_bp.isChecked(), self.s_xf.value(), self.s_xf_album.isChecked())
+        old = (w.settings.value("audio/device", "auto") or "auto", w.settings.value("audio/bitperfect", False, type=bool),
+               w.settings.value("audio/crossfade", 0, type=int), w.settings.value("audio/xf_album_gapless", True, type=bool))
+        if out != old:
+            w.settings.setValue("audio/device", out[0]); w.settings.setValue("audio/bitperfect", out[1])
+            w.settings.setValue("audio/crossfade", out[2]); w.settings.setValue("audio/xf_album_gapless", out[3])
+            w.apply_output_settings()
         w.settings.setValue("system/no_sleep", self.s_nosleep.isChecked())
         w.settings.setValue("video/hwdec", self.v_hw.currentData())
         w.settings.setValue("video/mpv", self.v_mpv.isChecked())
@@ -10014,6 +10301,7 @@ class MainWindow(QMainWindow):
         tm = QMenu(self)
         tm.addAction(tr_("Alle wiedergeben"), self.play_all_visible)
         tm.addMenu(self.build_sleep_menu(tm))
+        tm.addMenu(self.build_speed_menu(tm))
         tm.addSeparator()
         tm.addActions(m.actions())
         self.act_cmdbar = QAction(tr_("Befehlsleiste anzeigen"), tm)
@@ -10318,6 +10606,11 @@ class MainWindow(QMainWindow):
         self.btn_sleep.setMenu(self.build_sleep_menu(self.btn_sleep))
         self.btn_sleep.hide()
         rl.addWidget(self.btn_sleep)
+        self.btn_speed = QToolButton(); self.btn_speed.setObjectName("ctl")
+        self.btn_speed.setPopupMode(QToolButton.InstantPopup)
+        self.btn_speed.setMenu(self.build_speed_menu(self.btn_speed))
+        self.btn_speed.hide()
+        rl.addWidget(self.btn_speed)
         rl.addWidget(self.btn_tracks); rl.addWidget(self.btn_lyrics); rl.addWidget(self.btn_eq); rl.addWidget(self.btn_mini); rl.addWidget(self.btn_mode)
         row.addWidget(rightw)
         v.addLayout(row)
@@ -10366,6 +10659,7 @@ class MainWindow(QMainWindow):
         self.player.advanced.connect(self._gapless_advanced)
         self._next_entry = None
         self.apply_audio_settings()
+        self.apply_output_settings()
         self.player.hasVideoChanged.connect(self._has_video_changed)
         self.player.metaDataChanged.connect(self._meta_changed)
         self.player.tracksChanged.connect(self._tracks_changed)
@@ -11231,10 +11525,19 @@ class MainWindow(QMainWindow):
             gains = [int(x) for x in json.loads(st.value("eq/gains", "[]") or "[]")] or [0] * 10
         except ValueError:
             gains = [0] * 10
-        for be in (self.player.mp, self.player.mv):
-            if be is not None:
-                be.set_filter(st.value("eq/enabled", False, type=bool), gains, st.value("eq/preamp", 0, type=int))
-                be.set_replaygain(st.value("eq/replaygain", "no"))
+        self.player.set_audio_filter(st.value("eq/enabled", False, type=bool), gains,
+                                     st.value("eq/preamp", 0, type=int), st.value("eq/replaygain", "no"))
+        self._prepare_next()
+
+    def apply_output_settings(self):
+        """Ausgabegerät, bitgenaue Wiedergabe und Überblenden aus den Einstellungen übernehmen."""
+        st = self.settings
+        bp = st.value("audio/bitperfect", False, type=bool)
+        self.player.set_output(st.value("audio/device", "auto") or "auto", bp)
+        self.player.set_crossfade(st.value("audio/crossfade", 0, type=int))
+        self.vol.setEnabled(not bp)
+        self.vol.setToolTip(tr_("Bitgenaue Wiedergabe: Lautstärke am Gerät bzw. DAC regeln") if bp else "")
+        self._update_speed_btn()
         self._prepare_next()
 
     def open_equalizer(self):
@@ -11265,7 +11568,8 @@ class MainWindow(QMainWindow):
     def _prepare_next(self):
         if not getattr(self, "player", None) or not self.player.on_mpv():
             return
-        if not self.settings.value("audio/gapless", True, type=bool) or self.cur is None \
+        xf = self.player.crossfade_ms > 0 and not self.player.bitperfect
+        if (not self.settings.value("audio/gapless", True, type=bool) and not xf) or self.cur is None \
                 or self.cur["t"].get("stream") or getattr(self, "_sleep_mode", None) in ("track", "album"):
             self.player.set_next(None); self._next_entry = None      # Einschlaf-Timer muss das Titelende sehen
             return
@@ -11274,7 +11578,12 @@ class MainWindow(QMainWindow):
         t = e["t"] if e else None
         nsrc = self.media_src(t) if t and not t.get("stream") else None
         if nsrc and (t.get("remote") or os.path.exists(nsrc)) and self.player.uses_mpv_for(nsrc):
-            self.player.set_next(nsrc)
+            # innerhalb eines Albums lückenlos statt überblenden (Live-Alben, Konzeptalben)
+            same_album = t.get("cover") and t.get("cover") == self.cur["t"].get("cover")
+            fade = xf and not (same_album and self.settings.value("audio/xf_album_gapless", True, type=bool))
+            if not fade and not self.settings.value("audio/gapless", True, type=bool):
+                nsrc = None
+            self.player.set_next(nsrc, fade=fade)
         else:
             self.player.set_next(None)
 
@@ -11772,6 +12081,40 @@ class MainWindow(QMainWindow):
 
     # ── Einschlaf-Timer ───────────────────────────────────────────────────
     SLEEP_FADE = 10.0                 # Sekunden Ausblenden am Ende
+
+    # ── Wiedergabegeschwindigkeit ─────────────────────────────────────────
+    SPEEDS = (0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0)
+
+    def build_speed_menu(self, parent):
+        m = QMenu(tr_("Wiedergabegeschwindigkeit"), parent)
+        g = QActionGroup(m)
+        acts = []
+        for x in self.SPEEDS:
+            a = m.addAction(tr_("Normal") if x == 1.0 else f"{x:g}×".replace(".", "," if LANG == "de" else "."))
+            a.setCheckable(True); g.addAction(a)
+            a.triggered.connect(lambda _=False, x=x: self.set_speed(x))
+            acts.append((x, a))
+
+        def sync():
+            bp = self.player.bitperfect
+            for x, a in acts:
+                a.setChecked(abs(x - self.player.speed) < 0.001)
+                a.setEnabled(not bp or x == 1.0)
+        m.aboutToShow.connect(sync)
+        return m
+
+    def set_speed(self, x):
+        self.player.set_speed(x)
+        self._update_speed_btn()
+        if x != 1.0:
+            self.flash(tr_("Wiedergabegeschwindigkeit: {0}").format(f"{x:g}×"), 2500)
+
+    def _update_speed_btn(self):
+        x = self.player.speed
+        on = abs(x - 1.0) > 0.001 and not self.player.bitperfect
+        self.btn_speed.setText(f"{x:g}×".replace(".", "," if LANG == "de" else "."))
+        self.btn_speed.setToolTip(tr_("Wiedergabegeschwindigkeit – klicken zum Ändern"))
+        self.btn_speed.setVisible(on)
 
     def build_sleep_menu(self, parent):
         m = QMenu(tr_("Einschlaf-Timer"), parent)
