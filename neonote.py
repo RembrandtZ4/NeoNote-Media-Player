@@ -1876,6 +1876,13 @@ def main_artist(name):
     return n.strip() or str(name or "")
 
 
+def cached_artist_info(name, lang="de"):
+    """Nur aus dem Zwischenspeicher, ohne Netz (für den Auto-DJ)."""
+    key = hashlib.sha1(f"{_norm(name)}|{lang}".encode()).hexdigest()[:20]
+    c = read_json_file(ARTIST_DIR / f"{key}.json")
+    return c if isinstance(c, dict) else None
+
+
 def fetch_artist_info(name, lang="de"):
     key = hashlib.sha1(f"{_norm(name)}|{lang}".encode()).hexdigest()[:20]
     cf = ARTIST_DIR / f"{key}.json"
@@ -2971,6 +2978,45 @@ class MpvBackend(QObject):
             return []
 
     VIS_AF = "@nnvis:lavfi=[astats=metadata=1:reset=1:measure_perchannel=none:measure_overall=RMS_level+Peak_level]"
+    VIS_BANDS = (55, 110, 220, 440, 880, 1760, 3500, 7000, 12000)
+
+    @classmethod
+    def vis_band_graph(cls):
+        """Stereo-Signal + je Frequenzband ein Mono-Messkanal → astats pro Kanal → wieder nur Stereo heraus.
+        Die Messwerte hängen als Metadaten am (unveränderten) Stereo-Signal."""
+        n = len(cls.VIS_BANDS)
+        g = ["aformat=channel_layouts=stereo,asplit=2[m][a]", f"[a]asplit={n}" + "".join(f"[s{i}]" for i in range(n))]
+        for i, f in enumerate(cls.VIS_BANDS):
+            g.append(f"[s{i}]bandpass=f={f}:width_type=q:w=1.4,pan=mono|c0=0.5*c0+0.5*c1[b{i}]")
+        g.append("[m]" + "".join(f"[b{i}]" for i in range(n)) + f"amerge=inputs={n + 1},"
+                 "astats=metadata=1:reset=1:measure_overall=none:measure_perchannel=RMS_level+Peak_level,"
+                 "pan=stereo|c0=c0|c1=c1")
+        return "@nnvis:lavfi=[" + ";".join(g) + "]"
+
+    def set_bands(self, on):
+        if bool(on) != getattr(self, "_bands_on", False):
+            self._bands_on = bool(on)
+            if hasattr(self, "_filter_args"):
+                self.set_filter(*self._filter_args, bitperfect=getattr(self, "_bitperfect", False))
+
+    def bands(self):
+        """Pegel je Frequenzband 0…1 (für die Visualisierung) oder None."""
+        if not getattr(self, "_bands_on", False) or not self._vis_ok:
+            return None
+        try:
+            md = self.m._get_property("af-metadata/nnvis") or {}
+        except Exception:
+            return None
+        n = len(self.VIS_BANDS)
+        vals = []
+        for i in range(n):
+            try:
+                db = float(md.get(f"lavfi.astats.{i + 3}.RMS_level", "-inf"))
+            except ValueError:
+                db = float("-inf")
+            db += i * 1.2                                   # Höhen haben weniger Energie – etwas anheben
+            vals.append(0.0 if db != db or db < -62 else max(0.0, min(1.0, (db + 58) / 46)))
+        return vals
 
     def level(self):
         """Aktueller Pegel 0…1 (für die Waveform unten links) oder None."""
@@ -2978,8 +3024,12 @@ class MpvBackend(QObject):
             return None
         try:
             md = self.m._get_property("af-metadata/nnvis") or {}
-            db = float(md.get("lavfi.astats.Overall.RMS_level", "-inf"))
-            pk = float(md.get("lavfi.astats.Overall.Peak_level", "-inf"))
+            if getattr(self, "_bands_on", False):           # Messung pro Kanal: Stereo-Kanäle 1 und 2
+                db = max(float(md.get("lavfi.astats.1.RMS_level", "-inf")), float(md.get("lavfi.astats.2.RMS_level", "-inf")))
+                pk = max(float(md.get("lavfi.astats.1.Peak_level", "-inf")), float(md.get("lavfi.astats.2.Peak_level", "-inf")))
+            else:
+                db = float(md.get("lavfi.astats.Overall.RMS_level", "-inf"))
+                pk = float(md.get("lavfi.astats.Overall.Peak_level", "-inf"))
         except Exception:
             return None
         db = max(db, pk - 6)
@@ -2987,6 +3037,7 @@ class MpvBackend(QObject):
 
     def set_filter(self, enabled, gains, preamp, bitperfect=False):
         self._filter_args = (enabled, gains, preamp)
+        self._bitperfect = bitperfect
         if bitperfect:                             # nichts darf die Samples anfassen
             try:
                 self.m.command("af", "clr", "")
@@ -2995,12 +3046,16 @@ class MpvBackend(QObject):
             return
         af = eq_filter(enabled, gains, preamp, self._limiter_level)
         if self._vis_ok:
-            af = f"{af},{self.VIS_AF}" if af else self.VIS_AF
+            vis = self.vis_band_graph() if getattr(self, "_bands_on", False) else self.VIS_AF
+            af = f"{af},{vis}" if af else vis
         try:
             self.m.command("af", "set", af) if af else self.m.command("af", "clr", "")
         except Exception:
             if self._limiter_level:                # ältere FFmpeg-Versionen kennen „level“ nicht
                 self._limiter_level = False
+                self.set_filter(enabled, gains, preamp)
+            elif getattr(self, "_bands_on", False):    # Bänder-Messung nicht möglich → nur Gesamtpegel
+                self._bands_on = False
                 self.set_filter(enabled, gains, preamp)
             elif self._vis_ok:                     # astats nicht verfügbar → ohne Waveform weiter
                 self._vis_ok = False
@@ -3167,6 +3222,14 @@ class Engine(QObject):
             self.qt.setPlaybackRate(self.speed)
         except Exception:
             pass
+
+    def set_vis_bands(self, on):
+        for be in (self.mp, self.mp2):
+            if be is not None:
+                be.set_bands(on and not self.bitperfect)
+
+    def bands(self):
+        return self.mp.bands() if self.on_mpv() else None
 
     def set_crossfade(self, seconds):
         self.crossfade_ms = max(0, int(seconds * 1000))
@@ -6370,6 +6433,9 @@ class VideoView(QWidget, LyricsPainter):
                 self._ly_area = QRect(r.left() + 24, r.top() + 40, r.width() - 48, r.height() - 70)
                 self._paint_lyrics(p, self._ly_area, True)
                 return
+        if self.win.vis_style != "off" and getattr(self, "_vis_vals", None) and not self.ended:
+            self._paint_vis(p, r, t)
+            return
         S = int(max(110, min(r.height() * 0.42, r.width() * 0.4 if r.width() == self.width() else r.width() * 0.62, 380)))
         cr = QRect(r.center().x() - S // 2, int(r.height() * 0.46) - S // 2, S, S)
         pm = self.win.covers.get(t["cover"] if t else "", S)
@@ -6409,6 +6475,13 @@ class VideoView(QWidget, LyricsPainter):
         if self.has_video or not self.win.cur:
             return
         m = QMenu(self)
+        vm = m.addMenu(tr_("Visualisierung"))
+        g = QActionGroup(vm)
+        for key, label in (("off", tr_("Aus (Cover)")), ("bars", tr_("Balken")), ("waves", tr_("Wellen"))):
+            va = vm.addAction(label); va.setCheckable(True); va.setChecked(self.win.vis_style == key); g.addAction(va)
+            va.triggered.connect(lambda _=False, key=key: self.win.set_vis_style(key))
+        if self.win.player.bitperfect:
+            vm.setEnabled(False); vm.setTitle(tr_("Visualisierung (im bitgenauen Modus aus)"))
         a = m.addAction(tr_("Songtext anzeigen")); a.setCheckable(True); a.setChecked(self.win.lyrics_on)
         a.triggered.connect(self.win.toggle_lyrics)
         if self.win.lyrics_on:
@@ -6421,6 +6494,97 @@ class VideoView(QWidget, LyricsPainter):
                         and os.path.isfile(self.win.cur["t"]["path"]):
                     m.addAction(tr_("Als .lrc-Datei neben dem Titel speichern"), self.win.save_lyrics_lrc)
         m.exec(e.globalPos())
+
+    # ── Visualisierung ───────────────────────────────────────────────────
+    def vis_push(self, bands):
+        """Neue Bandpegel (0…1) – schnell hoch, langsam runter; Spitzen fallen langsam nach."""
+        if bands is None:
+            self._vis_vals = None
+            return
+        n = 48
+        nb = len(bands)
+        tgt = []
+        for i in range(n):                                       # 9 Bänder weich auf 48 Balken verteilen
+            x = i / (n - 1) * (nb - 1)
+            k = min(nb - 2, int(x)); f = x - k
+            f = f * f * (3 - 2 * f)
+            v = bands[k] * (1 - f) + bands[k + 1] * f
+            v *= 0.88 + 0.12 * math.sin(i * 2.3 + time.monotonic() * 1.7)   # etwas Leben zwischen den Bändern
+            tgt.append(max(0.0, min(1.0, v)))
+        cur = getattr(self, "_vis_vals", None) or [0.0] * n
+        pk = getattr(self, "_vis_peaks", None) or [0.0] * n
+        cur = [c + (t - c) * (0.55 if t > c else 0.14) for c, t in zip(cur, tgt)]
+        pk = [max(c, p_ - 0.012) for c, p_ in zip(cur, pk)]
+        self._vis_vals, self._vis_peaks = cur, pk
+        self._vis_t = time.monotonic()
+        self.update()
+
+    def _paint_vis(self, p, r, t):
+        vals, peaks = self._vis_vals, self._vis_peaks
+        acc = QColor(T.accent)
+        V = QRectF(r.left() + 40, r.top() + r.height() * 0.12, r.width() - 80, r.height() * 0.5)
+        base = V.bottom()
+        n = len(vals)
+        if self.win.vis_style == "bars":
+            gap = max(2.0, V.width() / n * 0.22)
+            bw = (V.width() - gap * (n - 1)) / n
+            for i, v in enumerate(vals):
+                h = max(2.0, v * V.height())
+                x = V.left() + i * (bw + gap)
+                g = QLinearGradient(0, base - h, 0, base)
+                top = QColor(acc).lighter(165); top.setAlpha(250)
+                bot = QColor(acc); bot.setAlpha(200)
+                g.setColorAt(0, top); g.setColorAt(1, bot)
+                p.fillRect(QRectF(x, base - h, bw, h), g)
+                rg = QLinearGradient(0, base + 3, 0, base + 3 + h * 0.35)          # Spiegelung darunter
+                c1 = QColor(acc); c1.setAlpha(70); c2 = QColor(acc); c2.setAlpha(0)
+                rg.setColorAt(0, c1); rg.setColorAt(1, c2)
+                p.fillRect(QRectF(x, base + 3, bw, h * 0.35), rg)
+                ph = peaks[i] * V.height()
+                p.fillRect(QRectF(x, base - ph - 4, bw, 2.5), QColor(255, 255, 255, 200))
+        else:                                                    # Wellen: fließende, leuchtende Flächen
+            tt = time.monotonic()
+            mid = V.center().y() + V.height() * 0.15
+            for layer, (alpha, speed, amp) in enumerate(((60, 0.7, 1.0), (90, 1.1, 0.75), (170, 1.6, 0.5))):
+                path = QPainterPath()
+                pts = []
+                for i, v in enumerate(vals):
+                    x = V.left() + i / (n - 1) * V.width()
+                    wob = math.sin(i * 0.35 + tt * speed + layer) * 0.25 + 0.75
+                    pts.append(QPointF(x, mid - v * V.height() * 0.55 * amp * wob))
+                path.moveTo(V.left(), mid)
+                path.lineTo(pts[0])
+                for a, b in zip(pts, pts[1:]):
+                    cx = (a.x() + b.x()) / 2
+                    path.cubicTo(QPointF(cx, a.y()), QPointF(cx, b.y()), b)
+                path.lineTo(V.right(), mid)
+                for a, b in zip(reversed(pts), list(reversed(pts))[1:]):          # gespiegelt nach unten
+                    ma, mb = QPointF(a.x(), 2 * mid - a.y()), QPointF(b.x(), 2 * mid - b.y())
+                    cx = (ma.x() + mb.x()) / 2
+                    path.cubicTo(QPointF(cx, ma.y()), QPointF(cx, mb.y()), mb)
+                path.closeSubpath()
+                c = QColor(acc).lighter(100 + layer * 30); c.setAlpha(alpha)
+                g = QRadialGradient(QPointF(V.center().x(), mid), V.width() * 0.6)
+                g.setColorAt(0, c); c2 = QColor(c); c2.setAlpha(0); g.setColorAt(1, c2)
+                p.setPen(Qt.NoPen); p.setBrush(g); p.drawPath(path)
+        # Titel darunter, kleines Cover links daneben
+        f = QFont(self.font()); f.setPointSizeF(f.pointSizeF() + 5); f.setWeight(QFont.DemiBold)
+        fm = QFontMetrics(f)
+        ty = int(V.bottom() + V.height() * 0.38 + 10)
+        S = 56
+        title = t["title"] if t else tr_("Keine Wiedergabe")
+        sub = (self.win.stream_title if t and t.get("stream") and self.win.stream_title
+               else f"{disp(t['artist'])} – {disp(t['album'])}" if t else "")
+        f2 = QFont(self.font()); f2.setPointSizeF(f2.pointSizeF() + 1)
+        tw = min(r.width() - 120, max(fm.horizontalAdvance(title), QFontMetrics(f2).horizontalAdvance(sub)) + 12)
+        x0 = r.center().x() - (S + 16 + tw) // 2
+        p.drawPixmap(QRect(x0, ty, S, S), self.win.covers.get(t["cover"] if t else "", S))
+        p.setFont(f); p.setPen(QColor("white"))
+        p.drawText(QRect(x0 + S + 16, ty + 2, tw, fm.height()), Qt.AlignLeft | Qt.AlignVCenter,
+                   fm.elidedText(title, Qt.ElideRight, tw))
+        p.setFont(f2); p.setPen(QColor(255, 255, 255, 170))
+        p.drawText(QRect(x0 + S + 16, ty + fm.height() + 4, tw, QFontMetrics(f2).height()), Qt.AlignLeft | Qt.AlignVCenter,
+                   QFontMetrics(f2).elidedText(sub, Qt.ElideRight, tw))
 
     def _paint_subtitle(self, p, r):
         if not self.subtitle:
@@ -9290,6 +9454,7 @@ class MainWindow(QMainWindow):
         self._blur_timer.timeout.connect(lambda: self._apply_blur())
         self.np_mode = False
         self.lyrics_on = self.settings.value("ui/lyrics", False, type=bool)
+        self.vis_style = self.settings.value("ui/vis_style", "off") or "off"
         self.info_on = self.settings.value("ui/artistinfo", False, type=bool) and not self.lyrics_on
         self.artist_info, self.artist_info_state, self._info_name, self._info_tok = None, "", None, 0
         self.lyrics, self.lyrics_state, self._lyrics_path, self._lyrics_tok = None, "", None, 0
@@ -9514,6 +9679,7 @@ class MainWindow(QMainWindow):
         self.video.set_has_video(v)
         self.btn_lyrics.setVisible(not v)
         self.btn_info.setVisible(not v)
+        self._update_np_vis()
         self._update_lyrics_panel()
         if v:
             self._sub_margin = None
@@ -9537,6 +9703,7 @@ class MainWindow(QMainWindow):
         self.crumb.setText("")          # oben nur Zurück/Vor und die Fensterknöpfe
         self.stack.setCurrentWidget(self.video)
         self.video.set_np_mode(True)
+        self._update_np_vis()
         self._update_mode_btn()
         self._sync_overlay()
         self._fs_timer.start()
@@ -9556,6 +9723,7 @@ class MainWindow(QMainWindow):
         self.update_bar.setVisible(self._update_bar_wanted())
         self.video.unsetCursor()
         self.video.set_np_mode(False)
+        self._update_np_vis()
         self._update_mode_btn()
         self.render()
 
@@ -10924,6 +11092,9 @@ class MainWindow(QMainWindow):
         tm.addAction(tr_("Alle wiedergeben"), self.play_all_visible)
         tm.addMenu(self.build_sleep_menu(tm))
         tm.addMenu(self.build_speed_menu(tm))
+        self.act_autodj = tm.addAction(tr_("Auto-DJ (passende Musik ohne Ende)"))
+        self.act_autodj.setCheckable(True)
+        self.act_autodj.triggered.connect(lambda on: self.set_autodj(on))
         tm.addSeparator()
         tm.addActions(m.actions())
         self.act_cmdbar = QAction(tr_("Befehlsleiste anzeigen"), tm)
@@ -11113,7 +11284,7 @@ class MainWindow(QMainWindow):
         self.btn_queue.setChecked(self.queue_visible); self.top_queue.setChecked(self.queue_visible)
         self.qpanel.setVisible(self.queue_visible)
         for seq, slot in (("Ctrl+L", lambda: self.set_queue_visible(not self.queue_visible)),
-                          ("F11", self.toggle_fullscreen), ("Ctrl+O", self.open_dialog), ("Ctrl+M", self.show_mini), ("Ctrl+E", self.open_equalizer), ("Ctrl+T", self.toggle_lyrics), ("Ctrl+I", self.toggle_info),
+                          ("F11", self.toggle_fullscreen), ("Ctrl+O", self.open_dialog), ("Ctrl+M", self.show_mini), ("Ctrl+E", self.open_equalizer), ("Ctrl+T", self.toggle_lyrics), ("Ctrl+I", self.toggle_info), ("Ctrl+Shift+V", self.cycle_vis_style),
                           ("Ctrl+P", self.toggle_play), ("Ctrl+Right", self.next_track),
                           ("Ctrl+Left", self.prev_track), ("Ctrl+F", self.search.setFocus),
                           ("Alt+Left", self.go_back), ("Alt+Right", self.go_forward),
@@ -11177,6 +11348,7 @@ class MainWindow(QMainWindow):
         info.addWidget(self.np_cover); info.addWidget(self.np_wave); info.addLayout(tv)
         self._vis_mode = self.settings.value("ui/vis_mode", "auto")     # auto | cover | wave
         self._vis_timer = QTimer(self, interval=40); self._vis_timer.timeout.connect(self._vis_tick)
+        self._bvis_timer = QTimer(self, interval=33); self._bvis_timer.timeout.connect(self._bvis_tick)
         infow = QWidget(); infow.setLayout(info); infow.setFixedWidth(320); self._ctl_left = infow
         row.addWidget(infow); row.addStretch()
 
@@ -11993,6 +12165,7 @@ class MainWindow(QMainWindow):
             if idx.isValid() and self.track_model.flags(idx) & Qt.ItemIsEditable:
                 m.addAction(tr_("Bearbeiten\tF2"), lambda: self.tracks.edit(idx))
         if not tracks[0].get("remote") and not tracks[0].get("stream"):
+            m.addAction(tr_("Auto-DJ ab diesem Titel"), lambda: self.start_autodj(tracks[0]))
             m.addAction(tr_("Dateien umbenennen und einsortieren…"), lambda: self.organize_dialog(tracks))
         if view is self.tracks and self.state.startswith("playlist:"):
             name = self.state[9:]
@@ -12404,7 +12577,9 @@ class MainWindow(QMainWindow):
         self._rebuild_queue_view()
         self._show_now_playing(None)
 
-    def play_tracks(self, tracks, start=0):
+    def play_tracks(self, tracks, start=0, keep_dj=False):
+        if not keep_dj and getattr(self, "autodj", False):
+            self.set_autodj(False, quiet=True)                 # neue Auswahl von Hand beendet den Auto-DJ
         self._emap = {}
         self.queue = [self._new_entry(t) for t in tracks]
         self._rebuild_queue_view()
@@ -12421,6 +12596,85 @@ class MainWindow(QMainWindow):
         self._rebuild_queue_view()
         if self.cur is None and self.player.playbackState() != QMediaPlayer.PlayingState and new:
             self.play_entry(new[0])
+
+    # ── Auto-DJ: endlos passende Musik aus der eigenen Sammlung ───────────
+    def dj_pick(self, seed, n=10, exclude=()):
+        lang = "de" if LANG == "de" else "en"
+        seed_artist = main_artist(seed.get("artist", ""))
+        info = self.artist_info if (self.artist_info and _norm(self.artist_info.get("name", "")) == _norm(seed_artist)) \
+            else cached_artist_info(seed_artist, lang)
+        similar = {_norm(x) for x in (info or {}).get("similar", [])}
+        sg, sy = _norm(seed.get("genre", "")), seed.get("year") or ""
+        skip = set(exclude) | {e["t"]["path"] for e in self.queue} | getattr(self, "_dj_played", set())
+        scored = []
+        for t in self.local_lib.tracks:
+            p = t["path"]
+            if p in skip or t.get("remote") or t.get("stream") or Path(p).suffix.lower() in VIDEO_EXT \
+                    or (t.get("length") or 0) < 45:
+                continue
+            sc = random.random() * 2.0
+            if sg and _norm(t.get("genre", "")) == sg and sg not in ("", _norm("Unbekanntes Genre")):
+                sc += 3.0
+            ta = main_artist(t.get("artist", ""))
+            if _norm(ta) == _norm(seed_artist):
+                sc += 1.2
+            elif _norm(ta) in similar:
+                sc += 2.6
+            if sy[:4].isdigit() and str(t.get("year") or "")[:4].isdigit():
+                sc += 2.0 * max(0.0, 1 - abs(int(sy[:4]) - int(str(t["year"])[:4])) / 12)
+            sc += 0.5 * self.stats.rating(p) + 0.3 * math.log1p(self.stats.plays(p))
+            scored.append((sc, t))
+        scored.sort(key=lambda x: -x[0])
+        out, per_artist = [], defaultdict(int)
+        last = [_norm(seed_artist)]
+        for _sc, t in scored[:max(200, n * 20)]:
+            a = _norm(main_artist(t.get("artist", "")))
+            if a in last[-2:] or per_artist[a] >= 2:        # nicht zweimal hintereinander, höchstens 2 je Runde
+                continue
+            out.append(t); per_artist[a] += 1; last.append(a)
+            if len(out) >= n:
+                break
+        if len(out) < n:                                    # kleine Sammlung: Begrenzung je Interpret lockern
+            chosen = {id(t) for t in out}
+            for _sc, t in scored:
+                a = _norm(main_artist(t.get("artist", "")))
+                if id(t) in chosen or a == last[-1]:
+                    continue
+                out.append(t); chosen.add(id(t)); last.append(a)
+                if len(out) >= n:
+                    break
+        return out
+
+    def start_autodj(self, seed):
+        picks = self.dj_pick(seed, 15, exclude={seed["path"]})
+        self.play_tracks([seed] + picks, 0, keep_dj=True)
+        self.set_autodj(True, quiet=True)
+        self.flash(tr_("Auto-DJ: spielt passende Titel zu „{0}“").format(disp(seed.get("title", ""))), 5000)
+
+    def set_autodj(self, on, quiet=False):
+        self.autodj = bool(on)
+        if getattr(self, "act_autodj", None):
+            self.act_autodj.setChecked(self.autodj)
+        if on:
+            self._dj_fill()
+            if not quiet:
+                self.flash(tr_("Auto-DJ ist an – die Wiedergabeliste füllt sich mit passenden Titeln."), 5000)
+        elif not quiet:
+            self.flash(tr_("Auto-DJ ist aus."), 3000)
+        self._update_queue_foot()
+
+    def _dj_fill(self):
+        if not getattr(self, "autodj", False) or self.cur is None:
+            return
+        i = self._cur_index()
+        if i >= 0 and len(self.queue) - i - 1 < 5:
+            more = self.dj_pick(self.cur["t"], 10)
+            if more:
+                self.add_tracks(more)
+
+    def _update_queue_foot(self):
+        if getattr(self, "autodj", False) and hasattr(self, "qfoot"):
+            self.qfoot.setToolTip(tr_("Auto-DJ ist an"))
 
     # ── Lückenlose Wiedergabe ─────────────────────────────────────────────
     def apply_audio_settings(self):
@@ -12605,6 +12859,9 @@ class MainWindow(QMainWindow):
         self.load_lyrics(t)
         self.load_artist_info(t)
         self._scrobble_start(t)
+        if t:
+            self.__dict__.setdefault("_dj_played", set()).add(t.get("path"))
+            QTimer.singleShot(0, self._dj_fill)
 
     # ── Songtexte ─────────────────────────────────────────────────────────
     def lyrics_visible(self):
@@ -13547,6 +13804,7 @@ class MainWindow(QMainWindow):
         return bool(t) and not t.get("cover")
 
     def _update_vis(self):
+        self._update_np_vis()
         wave = self._show_wave()
         self.np_wave.setVisible(wave); self.np_cover.setVisible(not wave)
         playing = self.player.playbackState() == QMediaPlayer.PlayingState if hasattr(self, "player") else False
@@ -13556,6 +13814,37 @@ class MainWindow(QMainWindow):
             self._vis_timer.stop()
             if not playing:
                 self.np_wave.reset()
+
+    # ── Visualisierung in „Wird gespielt“ ─────────────────────────────────
+    def set_vis_style(self, style):
+        self.vis_style = style
+        self.settings.setValue("ui/vis_style", style)
+        if style == "off":
+            self.video.vis_push(None)
+        self._update_np_vis()
+        self.video.update()
+
+    def cycle_vis_style(self):
+        order = ["off", "bars", "waves"]
+        self.set_vis_style(order[(order.index(self.vis_style) + 1) % 3 if self.vis_style in order else 1])
+
+    def _update_np_vis(self):
+        if not getattr(self, "player", None):
+            return
+        playing = self.player.playbackState() == QMediaPlayer.PlayingState
+        want = (self.vis_style != "off" and self.np_mode and not self.video.has_video and self.cur is not None
+                and not self.player.bitperfect and self.player.on_mpv())
+        self.player.set_vis_bands(want)
+        if want and playing:
+            self._bvis_timer.start()
+        else:
+            self._bvis_timer.stop()
+            if not want:
+                self.video.vis_push(None)
+
+    def _bvis_tick(self):
+        b = self.player.bands()
+        self.video.vis_push(b if b is not None else [0.0] * 9)
 
     def _toggle_vis(self):
         self._vis_mode = "cover" if self._show_wave() else "wave"

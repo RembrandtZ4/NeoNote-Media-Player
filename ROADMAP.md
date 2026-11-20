@@ -18,16 +18,16 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [ ] **KDE Plasma polish** (Wayland, blur, Dolphin)
 
 ## Later
-- [ ] **Scrobbling** to Last.fm and ListenBrainz
+- [x] **Scrobbling** to Last.fm and ListenBrainz
 - [x] **Updater for Windows** – install new versions right from NeoNote *(since 1.1.8)*
-- [ ] **Crossfade** between tracks
-- [ ] **Folder view** – browse your music folders
-- [ ] **Playback speed** for audiobooks and videos
-- [ ] **Visualization** like in Windows Media Player
-- [ ] **Audio output selection** and bit-perfect playback (e.g. for external DACs)
-- [ ] **Auto DJ / track radio** – endless matching music from your own collection (genre, year, rating, “often played together”)
-- [ ] **Rename and organize files** using patterns like “Artist/Album/No. Title”
-- [ ] **Artist info** in “Now playing” – biography and similar artists
+- [x] **Crossfade** between tracks
+- [x] **Folder view** – browse your music folders
+- [x] **Playback speed** for audiobooks and videos
+- [x] **Visualization** like in Windows Media Player
+- [x] **Audio output selection** and bit-perfect playback (e.g. for external DACs)
+- [x] **Auto DJ / track radio** – endless matching music from your own collection (genre, year, rating, “often played together”)
+- [x] **Rename and organize files** using patterns like “Artist/Album/No. Title”
+- [x] **Artist info** in “Now playing” – biography and similar artists
 
 ---
 
@@ -49,13 +49,13 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [ ] **Feinschliff unter KDE Plasma** (Wayland, Weichzeichner, Dolphin)
 
 ## Später
-- [ ] **Scrobbeln** zu Last.fm und ListenBrainz
+- [x] **Scrobbeln** zu Last.fm und ListenBrainz
 - [x] **Updater für Windows** – neue Versionen direkt aus NeoNote installieren *(seit 1.1.8)*
-- [ ] **Überblenden** zwischen Titeln
-- [ ] **Ordneransicht** – durch die Musikordner stöbern
-- [ ] **Wiedergabegeschwindigkeit** für Hörbücher und Videos
-- [ ] **Visualisierung** wie im Windows Media Player
-- [ ] **Eigene Audioausgabe** und bitgenaue Wiedergabe (z. B. für externe DACs)
-- [ ] **Auto-DJ / Radio zu einem Titel** – endlos passende Musik aus der eigenen Sammlung (Genre, Jahr, Bewertung, „wird oft zusammen gehört“)
-- [ ] **Dateien umbenennen und einsortieren** nach Mustern wie „Interpret/Album/Nr. Titel“
-- [ ] **Infos zum Interpreten** in „Wird gespielt“ – Biografie und ähnliche Künstler
+- [x] **Überblenden** zwischen Titeln
+- [x] **Ordneransicht** – durch die Musikordner stöbern
+- [x] **Wiedergabegeschwindigkeit** für Hörbücher und Videos
+- [x] **Visualisierung** wie im Windows Media Player
+- [x] **Eigene Audioausgabe** und bitgenaue Wiedergabe (z. B. für externe DACs)
+- [x] **Auto-DJ / Radio zu einem Titel** – endlos passende Musik aus der eigenen Sammlung (Genre, Jahr, Bewertung, „wird oft zusammen gehört“)
+- [x] **Dateien umbenennen und einsortieren** nach Mustern wie „Interpret/Album/Nr. Titel“
+- [x] **Infos zum Interpreten** in „Wird gespielt“ – Biografie und ähnliche Künstler

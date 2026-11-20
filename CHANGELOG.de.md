@@ -5,6 +5,15 @@
 ## Nächste Version (in Arbeit)
 
 **Neu**
+- **Überblenden** zwischen Titeln (Einstellungen ▸ System ▸ Übergänge, 1–12 Sekunden): Der nächste Titel wird eingeblendet, während der laufende ausklingt. Innerhalb eines Albums bleibt es auf Wunsch lückenlos – Live- und Konzeptalben werden nicht zerhackt.
+- **Wiedergabegeschwindigkeit** 0,5× bis 2× mit Tonhöhenkorrektur (☰-Menü) – praktisch für Hörbücher und Podcasts; eine Anzeige in der Steuerleiste zeigt, wenn es nicht 1× ist.
+- **Ausgabegerät wählen und bitgenaue Wiedergabe** für externe DACs (Einstellungen ▸ System ▸ Audioausgabe): exklusiver Zugriff (unter Windows WASAPI exklusiv), die Musik geht unverändert in Abtastrate und Bittiefe der Datei ans Gerät – ohne Lautstärke, Equalizer, ReplayGain oder Umrechnung.
+- **Ordneransicht:** durch die Musikordner stöbern wie im Dateimanager – Ordner als Kacheln mit Coverstapeln, die Titel eines Ordners als Liste (neuer Eintrag „Ordner“ in der Navigation).
+- **Dateien umbenennen und einsortieren** nach Muster, z. B. `{albumartist}/{album}/{track} {title}` – mit Vorschau, bevor etwas verschoben wird. `.lrc`-Dateien wandern mit, Sterne, Wiedergabezähler und Wiedergabelisten werden nachgezogen, leere Ordner entfernt. Organisieren ▸ „Letztes Einsortieren rückgängig machen“ holt alles zurück.
+- **Scrobbeln** zu ListenBrainz (Benutzer-Token) und Last.fm (eigener, kostenloser API-Schlüssel, das Passwort wird nicht gespeichert): Ein Titel zählt, wenn er wirklich zur Hälfte (oder 4 Minuten) gehört wurde; ohne Verbindung wird nachgereicht.
+- **Infos zum Interpreten** in „Wird gespielt“ und rechts in der Bibliothek (Knopf neben dem Songtext, `Strg+I`): Biografie aus der Wikipedia, Lebensdaten, Herkunft und Genres von MusicBrainz, ähnliche Interpreten von ListenBrainz – die aus deiner Sammlung sind anklickbar.
+- **Visualisierung** in „Wird gespielt“ (Rechtsklick ▸ Visualisierung, `Strg+Umschalt+V`): Spektrum-Balken mit fallenden Spitzen oder fließende Wellen in der Akzentfarbe – aus echten Frequenzbändern der Musik.
+- **Auto-DJ:** Rechtsklick auf einen Titel ▸ „Auto-DJ ab diesem Titel“ oder ☰ ▸ Auto-DJ – passende Musik ohne Ende aus der eigenen Sammlung (gleiches Genre, ähnliche Interpreten, ähnliche Zeit, deine Bewertungen), nie zweimal derselbe Interpret hintereinander.
 - **Sternbewertungen stehen jetzt in den Musikdateien**, so wie es Windows Media Player macht: bei MP3 und WMA im Format von WMP (WMP12 zeigt sie also auch an), bei FLAC, Ogg und Opus als `FMPS_RATING` (lesen Strawberry, Clementine, Amarok). Damit überstehen die Sterne Abstürze, Neuinstallationen und den Wechsel zwischen Windows und Linux. Schon vergebene Sterne trägt NeoNote einmalig nach. Das Änderungsdatum der Datei bleibt gleich, Sicherungs- und Sync-Programme halten die Dateien also nicht für neu. Der gerade laufende Titel wird erst nach dem Ende beschrieben. Abschaltbar unter Einstellungen ▸ Online-Informationen.
 
 **Verbessert**
