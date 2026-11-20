@@ -8,6 +8,9 @@
 - **Kapitel:** Filme mit Kapiteln zeigen im Spuren-Menü eine Kapitelliste; `Strg+Bild↓` / `Strg+Bild↑` springt zum nächsten bzw. vorherigen Kapitel.
 - **Weiterschauen:** Lange Videos und Hörbücher (ab 20 Minuten) merken sich, wo du aufgehört hast, und setzen beim nächsten Mal dort fort. Wer bis kurz vor Schluss geschaut hat, beginnt wieder von vorn. Abschaltbar unter Einstellungen ▸ Video.
 
+**Fehlerbehebungen**
+- Bibliothek, Statistik (Bewertungen, Wiedergabezähler, „Zuletzt gespielt“), Bearbeitungen und Wiedergabelisten werden jetzt sicher gespeichert: erst in eine Hilfsdatei, dann getauscht, die vorige Fassung bleibt als `.bak`. Stürzt NeoNote mitten im Speichern ab, geht nichts mehr verloren – beim nächsten Start wird die Sicherung gelesen.
+
 ## 1.1.9 – 20.11.2026
 
 **Neu**

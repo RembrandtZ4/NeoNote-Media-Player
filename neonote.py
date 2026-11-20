@@ -75,6 +75,38 @@ else:
     DATA_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "neonote"
     COVER_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "neonote" / "covers"
     MPV_DIR = None
+def atomic_write_text(path, text, backup=True):
+    """Sicher speichern: erst in eine Hilfsdatei schreiben, dann tauschen; die vorige Fassung bleibt als .bak.
+    Ein Absturz mitten im Schreiben hinterlässt so nie eine halbe Datei."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+        f.flush()
+        try:
+            os.fsync(f.fileno())
+        except OSError:
+            pass
+    if backup and path.exists():
+        try:
+            os.replace(path, path.with_name(path.name + ".bak"))
+        except OSError:
+            pass
+    os.replace(tmp, path)
+
+
+def read_json_file(path, default=None):
+    """JSON laden; ist die Datei kaputt oder fehlt sie (Absturz beim Speichern), die Sicherung .bak nehmen."""
+    path = Path(path)
+    for f in (path, path.with_name(path.name + ".bak")):
+        try:
+            return json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+    return default
+
+
 LIB_FILE = DATA_DIR / "library.json"
 STATS_FILE = DATA_DIR / "stats.json"
 OVERRIDES_FILE = DATA_DIR / "overrides.json"
@@ -419,7 +451,7 @@ def write_m3u(path, tracks):
     for t in tracks:
         lines.append(f"#EXTINF:{int(t.get('length') or -1)},{t.get('artist', '')} - {t.get('title', '')}")
         lines.append(t["path"])
-    Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    atomic_write_text(path, "\n".join(lines) + "\n", backup=False)
 
 
 def read_playlist_file(path):
@@ -3610,28 +3642,24 @@ class Library:
     def __init__(self):
         self.tracks, self.albums = [], OrderedDict()
         self.outdated = False
-        try:
-            self.overrides = json.loads(OVERRIDES_FILE.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        self.overrides = read_json_file(OVERRIDES_FILE, {})
+        if not isinstance(self.overrides, dict):
             self.overrides = {}
         try:
-            self.hidden = set(json.loads(HIDDEN_FILE.read_text(encoding="utf-8")))
-        except (OSError, ValueError, TypeError):
+            self.hidden = set(read_json_file(HIDDEN_FILE, []))
+        except TypeError:
             self.hidden = set()
 
     def save_hidden(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        HIDDEN_FILE.write_text(json.dumps(sorted(self.hidden), ensure_ascii=False), encoding="utf-8")
+        atomic_write_text(HIDDEN_FILE, json.dumps(sorted(self.hidden), ensure_ascii=False))
 
     def save_overrides(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        OVERRIDES_FILE.write_text(json.dumps(self.overrides, ensure_ascii=False), encoding="utf-8")
+        atomic_write_text(OVERRIDES_FILE, json.dumps(self.overrides, ensure_ascii=False))
 
     def load(self):
-        try:
-            data = json.loads(LIB_FILE.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            data = {"version": LIB_VERSION, "tracks": []}
+        data = read_json_file(LIB_FILE, {"version": LIB_VERSION, "tracks": []})
         if isinstance(data, list) or data.get("version") != LIB_VERSION:
             self.outdated = True
             data = {"tracks": data if isinstance(data, list) else data.get("tracks", [])}
@@ -3639,8 +3667,7 @@ class Library:
 
     def save(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        LIB_FILE.write_text(json.dumps({"version": LIB_VERSION, "tracks": self.tracks}, ensure_ascii=False),
-                            encoding="utf-8")
+        atomic_write_text(LIB_FILE, json.dumps({"version": LIB_VERSION, "tracks": self.tracks}, ensure_ascii=False))
 
     def set_tracks(self, tracks):
         if self.hidden:                                  # in „Bibliothek prüfen“ ausgeblendete Doppelte
@@ -3752,9 +3779,8 @@ class JellyfinLibrary(Library):
         self.offline = {}
 
     def load(self):
-        try:
-            d = json.loads(JF_CACHE_FILE.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        d = read_json_file(JF_CACHE_FILE, {})
+        if not isinstance(d, dict):
             d = {}
         self.playlists = d.get("playlists", [])
         self.offline = d.get("offline", {})
@@ -3762,8 +3788,8 @@ class JellyfinLibrary(Library):
 
     def save(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        JF_CACHE_FILE.write_text(json.dumps({"tracks": self.tracks, "playlists": self.playlists,
-                                             "offline": self.offline}, ensure_ascii=False), encoding="utf-8")
+        atomic_write_text(JF_CACHE_FILE, json.dumps({"tracks": self.tracks, "playlists": self.playlists,
+                                                     "offline": self.offline}, ensure_ascii=False))
 
     def clear(self):
         self.set_tracks([]); self.playlists = []
@@ -3784,9 +3810,8 @@ class Stats:
     """Bewertungen und Wiedergabeanzahl, gespeichert pro Dateipfad."""
 
     def __init__(self):
-        try:
-            self.data = json.loads(STATS_FILE.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        self.data = read_json_file(STATS_FILE, {})
+        if not isinstance(self.data, dict):
             self.data = {}
         self._timer = QTimer(singleShot=True, interval=1500)
         self._timer.timeout.connect(self.save)
@@ -3826,7 +3851,7 @@ class Stats:
 
     def save(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        STATS_FILE.write_text(json.dumps(self.data), encoding="utf-8")
+        atomic_write_text(STATS_FILE, json.dumps(self.data))
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -4685,12 +4710,24 @@ class MpvVideoWidget(QOpenGLWidget):
             f.glClearColor(0, 0, 0, 1); f.glClear(0x00004000)      # GL_COLOR_BUFFER_BIT
             return
         r = self.devicePixelRatioF()
+        f = QOpenGLContext.currentContext().functions()
         try:
             self.ctx.render(flip_y=True, opengl_fbo={"w": max(1, round(self.width() * r)),
                                                      "h": max(1, round(self.height() * r)),
                                                      "fbo": self.defaultFramebufferObject()})
-        except Exception:
-            pass
+        except Exception as e:
+            if not getattr(self, "_render_err", False):
+                self._render_err = True
+                crash_note(f"mpv-Video: Zeichnen fehlgeschlagen: {e}")
+        # Alpha deckend setzen: Im transparenten Hauptfenster (Windows, KDE) würde Qt sonst die Videofläche
+        # durchsichtig zusammensetzen – man sähe den Desktop statt des Films.
+        f.glColorMask(False, False, False, True)
+        f.glClearColor(0, 0, 0, 1)
+        f.glClear(0x00004000)                      # GL_COLOR_BUFFER_BIT, wegen der Maske nur der Alphakanal
+        f.glColorMask(True, True, True, True)
+        if not getattr(self, "_render_ok", False):
+            self._render_ok = True
+            crash_note("mpv-Video: erstes Bild gezeichnet")
 
     def release(self):
         """Render-Kontext freigeben – muss vor dem Beenden von mpv passieren."""
