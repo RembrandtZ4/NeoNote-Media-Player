@@ -18,7 +18,10 @@ SilentInstall silent
 SetCompressor /SOLID lzma
 InstallDir "$PROGRAMFILES64\NeoNote"
 BrandingText "${TITLE} ${VERSION}"
-VIProductVersion "${VERSION}.0"
+!ifndef VIVERSION
+  !define VIVERSION "1.2.0.0"   ; Dateiversion braucht vier Stellen
+!endif
+VIProductVersion "${VIVERSION}"
 VIAddVersionKey "ProductName" "${TITLE}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
 VIAddVersionKey "FileVersion" "${VERSION}"
