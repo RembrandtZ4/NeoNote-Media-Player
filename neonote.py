@@ -9405,6 +9405,7 @@ class MainWindow(QMainWindow):
         self._counted = False
         self._end_handled = False
         self._end_watchdog.stop()
+        crash_note(f"Öffne {src}")
         self.player.setSource(QUrl(src) if src.startswith(("http://", "https://")) else QUrl.fromLocalFile(src))
         self.player.play()
         self._mark_current()
@@ -9662,7 +9663,8 @@ class MainWindow(QMainWindow):
             for i, md in enumerate(audio):
                 a = am.addAction(self._track_label(md, i)); a.setCheckable(True)
                 a.setChecked(i == self.player.activeAudioTrack()); g.addAction(a)
-                a.triggered.connect(lambda _=False, i=i: self.player.setActiveAudioTrack(i))
+                a.triggered.connect(lambda _=False, i=i, n=self._track_label(md, i): (
+                    crash_note(f"Tonspur {i}: {n}"), self.player.setActiveAudioTrack(i)))
         sm = m.addMenu(tr_("Untertitel"))
         g2 = QActionGroup(sm)
         off = sm.addAction(tr_("Aus")); off.setCheckable(True); off.setChecked(self.sub_mode == "off"); g2.addAction(off)
@@ -9725,6 +9727,10 @@ class MainWindow(QMainWindow):
         self._tracks_changed()
 
     def _subs_embedded(self, i):
+        try:
+            crash_note(f"Untertitel {i}: {self._track_label(self.player.subtitleTracks()[i], i)}")
+        except Exception:
+            crash_note(f"Untertitel {i}")
         self._srt = None; self._srt_file = None
         self.sub_mode = "embedded"
         self.player.setActiveSubtitleTrack(i)
@@ -10718,6 +10724,48 @@ def _selftest():
     (DATA_DIR / "selftest.txt").write_text("\n".join(out), encoding="utf-8")
 
 
+def setup_crash_log():
+    """Absturzprotokoll: Stürzt NeoNote hart ab (z. B. in Qt oder FFmpeg), schreibt faulthandler den Python-Stand
+    nach crash-current.log. Beim nächsten Start wird daraus crash.log – so bleibt der letzte Absturz erhalten."""
+    import faulthandler
+    import traceback
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        cur, last = DATA_DIR / "crash-current.log", DATA_DIR / "crash.log"
+        head = f"{APP_NAME} {APP_VERSION} – {platform.system()} {platform.release()}"
+        if cur.exists():
+            try:
+                old = cur.read_text(encoding="utf-8", errors="replace")
+                if "Fatal Python error" in old or "Traceback" in old or "Windows fatal exception" in old:
+                    cur.replace(last)
+            except OSError:
+                pass
+        fh = open(cur, "w", encoding="utf-8", buffering=1)
+        fh.write(f"{head}\nStart am {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        faulthandler.enable(fh, all_threads=True)
+        globals()["_CRASH_FH"] = fh               # offen halten, solange NeoNote läuft
+
+        def hook(t, v, tb):                       # nicht abgefangene Python-Fehler ebenfalls festhalten
+            try:
+                fh.write("\n" + "".join(traceback.format_exception(t, v, tb)))
+            except Exception:
+                pass
+            sys.__excepthook__(t, v, tb)
+        sys.excepthook = hook
+    except Exception:
+        pass
+
+
+def crash_note(text):
+    """Kurze Notiz ins Absturzprotokoll (z. B. welches Video, welche Spur) – nur sichtbar, wenn danach etwas abstürzt."""
+    fh = globals().get("_CRASH_FH")
+    if fh:
+        try:
+            fh.write(f"{time.strftime('%H:%M:%S')}  {text}\n")
+        except Exception:
+            pass
+
+
 def main():
     if "--setup" in sys.argv:
         sys.exit(run_setup())
@@ -10775,6 +10823,8 @@ def main():
         sock.flush(); sock.waitForBytesWritten(1500)
         sock.disconnectFromServer()
         return
+    setup_crash_log()                 # erst hier: eine zweite Instanz darf das Protokoll der ersten nicht anfassen
+    crash_note(f"Videodecoder: {os.environ.get('QT_FFMPEG_DECODING_HW_DEVICE_TYPES', 'automatisch')}")
     app.setStyle("Fusion")
     global _SPLASH
     if s.value("ui/splash", True, type=bool) and not os.environ.get("NEONOTE_NOSPLASH"):
