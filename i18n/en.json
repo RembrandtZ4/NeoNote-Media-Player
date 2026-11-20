@@ -87,6 +87,7 @@
  "Bei jedem Start": "At every start",
  "Beim Entfernen eines Ordners werden nur die Einträge aus der Bibliothek entfernt, deine Dateien bleiben erhalten.": "Removing a folder only removes its entries from the library; your files stay where they are.",
  "Beim Start automatisch nach neuen und geänderten Dateien suchen": "Look for new and changed files automatically at startup",
+ "Beim Start das zuletzt gespielte Video wieder öffnen (Standbild an der letzten Stelle)": "Reopen the last played video on startup (still frame at the last position)",
  "Beim letzten Video ist NeoNote abgestürzt. Videos laufen jetzt wieder über Qt Multimedia (Einstellungen ▸ Video).": "NeoNote crashed during the last video. Videos now play via Qt Multimedia again (Settings ▸ Video).",
  "Beim letzten Video ist NeoNote abgestürzt. Videos werden jetzt ohne Hardwarebeschleunigung decodiert (Einstellungen ▸ Video).": "NeoNote crashed during the last video. Videos are now decoded without hardware acceleration (Settings ▸ Video).",
  "Benutzer": "User",

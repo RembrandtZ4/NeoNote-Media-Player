@@ -6865,6 +6865,7 @@ class SettingsDialog(QDialog):
         w.settings.setValue("video/subs", self.v_subs.currentData())
         w.settings.setValue("video/srt_auto", self.v_srt.isChecked())
         w.settings.setValue("video/resume", self.v_resume.isChecked())
+        w.settings.setValue("video/restore_on_start", self.v_restore.isChecked())
         w.update_sleep_guard()
         w.apply_nav_layout(self._layout_from_list(), save=True)
         w._prepare_next()
@@ -6951,10 +6952,13 @@ class SettingsDialog(QDialog):
         v.addLayout(g2)
         self.v_resume = QCheckBox(tr_("Lange Videos und Hörbücher (ab 20 Minuten) an der letzten Stelle fortsetzen"))
         self.v_resume.setChecked(st.value("video/resume", True, type=bool))
+        self.v_restore = QCheckBox(tr_("Beim Start das zuletzt gespielte Video wieder öffnen (Standbild an der letzten Stelle)"))
+        self.v_restore.setChecked(st.value("video/restore_on_start", False, type=bool))
         self.v_srt = QCheckBox(tr_("Gleichnamige Untertiteldatei (.srt) neben dem Video automatisch laden"))
         self.v_srt.setChecked(st.value("video/srt_auto", True, type=bool))
         v.addWidget(self.v_srt)
         v.addWidget(self.v_resume)
+        v.addWidget(self.v_restore)
         sh = QLabel(tr_("Gilt für jedes neu geöffnete Video. Während der Wiedergabe kannst du Tonspur und Untertitel "
                         "jederzeit über den Knopf in der Steuerleiste wechseln."))
         sh.setObjectName("hint"); sh.setWordWrap(True); v.addWidget(sh)
@@ -8202,7 +8206,10 @@ class MainWindow(QMainWindow):
         self.cur = self.queue[idx]
         self._rebuild_queue_view()
         t = self.cur["t"]
-        if not t.get("stream"):
+        is_video = Path(t["path"]).suffix.lower() in VIDEO_EXT
+        # Ein Video beim Start nur dann gleich wieder öffnen (Standbild an der letzten Stelle), wenn gewünscht.
+        # Sonst steht es nur in der Warteschlange; „Abspielen“ setzt dank Weiterschauen trotzdem dort fort.
+        if not t.get("stream") and (not is_video or self.settings.value("video/restore_on_start", False, type=bool)):
             self._pending_pos = self.settings.value("session/position", 0, type=int)
             self.player.setSource(QUrl.fromLocalFile(t["path"]))
             self._resume_ready = True
