@@ -4215,7 +4215,7 @@ def write_startup_log():
     try:
         _start_mark("Fenster bereit")
         lines, prev = [f"{APP_NAME} {APP_VERSION} – Start am {time.strftime('%Y-%m-%d %H:%M:%S')}"], 0.0
-        if _START_AGE is not None:
+        if _START_AGE is not None and 0 <= _START_AGE < 600:
             lines.append(f"{-_START_AGE * 1000:7.0f} ms  Programmstart (Python, Qt und mpv laden)")
         for t, text in _START_LOG:
             lines.append(f"{t * 1000:7.0f} ms  (+{(t - prev) * 1000:5.0f})  {text}")
