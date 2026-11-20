@@ -13,6 +13,7 @@ import base64
 import bisect
 import glob as globmod
 import re
+import shutil
 import ctypes
 import ctypes.util
 import hashlib
@@ -1621,6 +1622,82 @@ def _find_lyrics_online(t, online):
     except Exception:
         pass
     return {**res, "src": "lrclib"} if res else None
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Dateien umbenennen und einsortieren
+ORGANIZE_LOG = DATA_DIR / "organize-last.json"
+ORGANIZE_PRESETS = ["{albumartist}/{album}/{track} {title}",
+                    "{albumartist}/{year} - {album}/{track} - {title}",
+                    "{albumartist}/{album}/{disc}-{track} {title}",
+                    "{genre}/{albumartist}/{album}/{track} {title}",
+                    "{artist} - {title}"]
+_BAD_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def _clean_component(x, limit=120):
+    x = _BAD_CHARS.sub("_", str(x)).strip().rstrip(". ")
+    if x.upper().split(".")[0] in ("CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "LPT1", "LPT2"):
+        x = "_" + x
+    return x[:limit] or "_"
+
+
+def organize_name(t, pattern):
+    """Relativer Zielpfad (ohne Endung) für einen Titel nach Muster, Teile durch „/“ getrennt."""
+    vals = {"artist": disp(t.get("artist", "")), "albumartist": disp(t.get("albumartist") or t.get("artist", "")),
+            "album": disp(t.get("album", "")), "title": t.get("title", "") or Path(t["path"]).stem,
+            "genre": disp(t.get("genre", "")), "year": str(t.get("year") or ""),
+            "track": f"{int(t.get('track') or 0):02d}" if t.get("track") else "",
+            "disc": str(int(t.get("disc") or 1))}
+    out = []
+    for part in pattern.replace("\\", "/").split("/"):
+        txt = re.sub(r"\{(\w+)\}", lambda m: vals.get(m.group(1).lower(), m.group(0)), part)
+        txt = re.sub(r"\s{2,}", " ", txt).strip(" -_")
+        if txt:
+            out.append(_clean_component(txt))
+    return out
+
+
+def organize_plan(tracks, pattern, root=None):
+    """[(titel, neuer_pfad)] – root None = jeder Titel bleibt in seinem Musikordner bzw. nur Dateiname ändert sich."""
+    plan, taken = [], set()
+    for t in tracks:
+        old = t["path"]
+        parts = organize_name(t, pattern)
+        if not parts:
+            continue
+        ext = Path(old).suffix
+        if root is None and len(parts) == 1:
+            base = os.path.dirname(old)
+        else:
+            base = root if root else os.path.dirname(old)
+        new = os.path.join(base, *parts[:-1], parts[-1] + ext)
+        n = 2
+        stem = new[:-len(ext)] if ext else new
+        while (os.path.normcase(new) in taken or (os.path.exists(new) and os.path.normcase(os.path.abspath(new))
+                                                     != os.path.normcase(os.path.abspath(old)))):
+            new = f"{stem} ({n}){ext}"; n += 1
+        taken.add(os.path.normcase(new))
+        plan.append((t, new))
+    return plan
+
+
+def move_with_sidecars(old, new):
+    """Datei verschieben, gleichnamige .lrc mitnehmen. Gibt die verschobenen Paare zurück."""
+    moved = []
+    os.makedirs(os.path.dirname(new) or ".", exist_ok=True)
+    shutil.move(old, new)
+    moved.append((old, new))
+    for ext in (".lrc", ".LRC"):
+        so = os.path.splitext(old)[0] + ext
+        if os.path.isfile(so):
+            sn = os.path.splitext(new)[0] + ".lrc"
+            try:
+                if not os.path.exists(sn):
+                    shutil.move(so, sn)
+            except OSError:
+                pass
+    return moved
 
 
 class Job(QThread):
@@ -4873,6 +4950,12 @@ def make_icon(name, size=20, color=None):
     elif name == "smart":                              # Blitz: intelligente Wiedergabeliste
         p.setPen(Qt.NoPen); p.setBrush(c)
         p.drawPolygon(QPolygonF([P(.58, .1), P(.24, .56), P(.47, .56), P(.4, .9), P(.76, .42), P(.53, .42)]))
+    elif name == "folder":                             # Ordner
+        p.setPen(Qt.NoPen); p.setBrush(c)
+        pp = QPainterPath(P(.12, .3)); pp.lineTo(P(.12, .24)); pp.lineTo(P(.38, .24)); pp.lineTo(P(.46, .32))
+        pp.lineTo(P(.88, .32)); pp.lineTo(P(.88, .38)); pp.lineTo(P(.12, .38)); pp.closeSubpath()
+        p.drawPath(pp)
+        p.drawRoundedRect(QRectF(.12 * s, .4 * s, .76 * s, .4 * s), .05 * s, .05 * s)
     elif name == "lyrics":                             # Textzeilen mit Note: Songtext
         lp = QPen(c, 1.5); lp.setCapStyle(Qt.RoundCap); p.setPen(lp)
         for y, x2 in ((.26, .66), (.44, .56), (.62, .44), (.8, .4)):
@@ -6129,6 +6212,7 @@ NAV_DEF = OrderedDict([
     ("albums", (tr_("Album"), "disc", "item")),
     ("genres", (tr_("Genre"), "tag", "item")),
     ("songs", (tr_("Titel@nav"), "note", "item")),
+    ("folders", (tr_("Ordner"), "folder", "item")),
     ("autohead", (tr_("Automatische Listen"), "auto", "header")),
     ("auto:favs", (tr_("Lieblingstitel"), "auto", "item")),
     ("auto:top", (tr_("Meistgespielt"), "auto", "item")),
@@ -6140,7 +6224,7 @@ NAV_DEF = OrderedDict([
     ("playing", (tr_("Wird gespielt"), "nowplaying", "item")),
     ("queue", (tr_("Wiedergabeliste"), "queue", "item")),
 ])
-DEFAULT_NAV = ["auto:recent", "artists", "albums", "genres", "songs", "sep", "autohead", "auto:favs", "auto:top",
+DEFAULT_NAV = ["auto:recent", "artists", "albums", "genres", "songs", "folders", "sep", "autohead", "auto:favs", "auto:top",
                "auto:new", "sep", "playlists", "sep", "jellyfin", "sep", "radio", "playing", "check", "sep", "queue"]
 
 
@@ -6506,7 +6590,7 @@ class TileDelegate(QStyledItemDelegate):
 
     def _stack(self, kind, keys, dpr):
         """Coverstapel als Bild aus dem Cache; None, solange noch Cover im Hintergrund laden."""
-        keys = tuple(keys[:5]) if kind in ("artist", "genre") else tuple(keys[:1])
+        keys = tuple(keys[:5]) if kind in ("artist", "genre", "folder", "folderfiles") else tuple(keys[:1])
         ck = (keys, round(dpr * 100), T.accent.name(), self.covers.gen)
         pm = self._stacks.get(ck)
         if pm is not None:
@@ -7588,6 +7672,110 @@ def smart_tracks(pl, tracks, stats):
     return out
 
 
+class OrganizeDialog(QDialog):
+    """Dateien nach einem Muster umbenennen und in Ordner einsortieren – mit Vorschau."""
+
+    def __init__(self, win, tracks):
+        super().__init__(win)
+        self.win = win
+        self.tracks = [t for t in tracks if not t.get("remote") and not t.get("stream") and os.path.isfile(t["path"])]
+        self.setWindowTitle(tr_("Dateien umbenennen und einsortieren"))
+        self.resize(860, 560)
+        v = QVBoxLayout(self); v.setContentsMargins(16, 16, 16, 16); v.setSpacing(8)
+        g = QGridLayout(); g.setHorizontalSpacing(10)
+        g.addWidget(QLabel(tr_("Muster:")), 0, 0)
+        self.pat = QComboBox(); self.pat.setEditable(True)
+        self.pat.addItems(ORGANIZE_PRESETS)
+        self.pat.setCurrentText(win.settings.value("organize/pattern", ORGANIZE_PRESETS[0]) or ORGANIZE_PRESETS[0])
+        g.addWidget(self.pat, 0, 1)
+        g.addWidget(QLabel(tr_("Ziel:")), 1, 0)
+        self.dest = QComboBox()
+        self.dest.addItem(tr_("Im jeweiligen Musikordner einsortieren"), "")
+        for f in win.folders():
+            self.dest.addItem(tr_("In „{0}“").format(f), f)
+        self.dest.addItem(tr_("Anderer Ordner…"), "?")
+        g.addWidget(self.dest, 1, 1)
+        g.setColumnStretch(1, 1)
+        v.addLayout(g)
+        hint = QLabel(tr_("Platzhalter: {artist} {albumartist} {album} {title} {track} {disc} {year} {genre} – "
+                          "„/“ trennt Ordner. Gleichnamige .lrc-Dateien wandern mit; Sterne, Wiedergabezähler und "
+                          "Wiedergabelisten bleiben erhalten."))
+        hint.setObjectName("hint"); hint.setWordWrap(True); v.addWidget(hint)
+        self.view = QTreeWidget(); self.view.setColumnCount(2); self.view.setRootIsDecorated(False)
+        self.view.setHeaderLabels([tr_("Bisher"), tr_("Neu")]); self.view.setUniformRowHeights(True)
+        self.view.header().setStretchLastSection(True); self.view.setColumnWidth(0, 380)
+        v.addWidget(self.view, 1)
+        self.summary = QLabel(); self.summary.setObjectName("hint"); v.addWidget(self.summary)
+        self.rm_empty = QCheckBox(tr_("Leer gewordene Ordner danach entfernen"))
+        self.rm_empty.setChecked(True); v.addWidget(self.rm_empty)
+        bb = QDialogButtonBox()
+        self.go = bb.addButton(tr_("Umbenennen und einsortieren"), QDialogButtonBox.AcceptRole)
+        bb.addButton(QDialogButtonBox.Cancel)
+        bb.accepted.connect(self._run); bb.rejected.connect(self.reject)
+        v.addWidget(bb)
+        self.pat.editTextChanged.connect(lambda _t: self._timer.start())
+        self.dest.currentIndexChanged.connect(self._dest_changed)
+        self._timer = QTimer(self, singleShot=True, interval=250); self._timer.timeout.connect(self._preview)
+        self._root = ""
+        self._preview()
+
+    def _dest_changed(self, _i):
+        if self.dest.currentData() == "?":
+            d = QFileDialog.getExistingDirectory(self, tr_("Zielordner wählen"))
+            if d:
+                self.dest.insertItem(self.dest.count() - 1, tr_("In „{0}“").format(d), d)
+                self.dest.setCurrentIndex(self.dest.count() - 2)
+            else:
+                self.dest.setCurrentIndex(0)
+            return
+        self._preview()
+
+    def _root_for(self, t):
+        d = self.dest.currentData()
+        if d:
+            return d
+        for f in sorted(self.win.folders(), key=len, reverse=True):     # Musikordner, in dem der Titel liegt
+            if os.path.normcase(t["path"]).startswith(os.path.normcase(os.path.join(f, ""))):
+                return f
+        return None
+
+    def plan(self):
+        pattern = self.pat.currentText().strip()
+        if not pattern:
+            return []
+        out, by_root = [], defaultdict(list)
+        for t in self.tracks:
+            by_root[self._root_for(t)].append(t)
+        for root, tl in by_root.items():
+            out += organize_plan(tl, pattern, root)
+        return [(t, n) for t, n in out if os.path.normcase(os.path.abspath(n)) != os.path.normcase(os.path.abspath(t["path"]))]
+
+    def _preview(self):
+        self.view.clear()
+        pl = self.plan()
+        cur = self.win.cur["t"]["path"] if self.win.cur else None
+        for t, new in pl[:500]:
+            it = QTreeWidgetItem([t["path"], new]); it.setToolTip(0, t["path"]); it.setToolTip(1, new)
+            if t["path"] == cur:
+                it.setText(1, new + "   " + tr_("(läuft gerade – wird übersprungen)"))
+            self.view.addTopLevelItem(it)
+        unchanged = len(self.tracks) - len(pl)
+        self.summary.setText(tr_("{0} Dateien werden umbenannt oder verschoben, {1} bleiben unverändert.").format(len(pl), unchanged)
+                             + (" " + tr_("(Vorschau zeigt die ersten 500.)") if len(pl) > 500 else ""))
+        self.go.setEnabled(bool(pl))
+
+    def _run(self):
+        pl = self.plan()
+        if not pl:
+            return
+        if QMessageBox.question(self, self.windowTitle(),
+                                tr_("{0} Dateien jetzt umbenennen bzw. verschieben?").format(len(pl))) != QMessageBox.Yes:
+            return
+        self.win.settings.setValue("organize/pattern", self.pat.currentText().strip())
+        self.win.organize_files([(t["path"], n) for t, n in pl], self.rm_empty.isChecked())
+        self.accept()
+
+
 class SmartPlaylistDialog(QDialog):
     """Editor für intelligente Wiedergabelisten, mit Live-Vorschau der Trefferzahl."""
 
@@ -8631,7 +8819,8 @@ class LookupDialog(QDialog):
 # ════════════════════════════════════════════════════════════════════════════
 #  Hauptfenster
 # ════════════════════════════════════════════════════════════════════════════
-VIEW_NAMES = {"artists": tr_("Interpret"), "albums": tr_("Album"), "genres": tr_("Genre"), "songs": tr_("Titel@nav")}
+VIEW_NAMES = {"artists": tr_("Interpret"), "albums": tr_("Album"), "genres": tr_("Genre"), "songs": tr_("Titel@nav"),
+              "folders": tr_("Ordner")}
 
 
 class MainWindow(QMainWindow):
@@ -9477,9 +9666,17 @@ class MainWindow(QMainWindow):
             return default_nav_layout()
         lay = [e for e in lay if isinstance(e, dict) and (e.get("id") == "sep" or e.get("id") in NAV_DEF)]
         known = {e["id"] for e in lay}
-        for i in NAV_DEF:                      # neue Einträge späterer Versionen ergänzen
+        for i in NAV_DEF:                      # neue Einträge späterer Versionen ergänzen – an der Standardstelle
             if i not in known:
-                lay.append({"id": i, "show": True})
+                pos = len(lay)
+                if i in DEFAULT_NAV:
+                    for prev in reversed(DEFAULT_NAV[:DEFAULT_NAV.index(i)]):
+                        j = next((k for k, e in enumerate(lay) if e["id"] == prev and prev != "sep"), None)
+                        if j is not None:
+                            pos = j + 1
+                            break
+                lay.insert(pos, {"id": i, "show": True})
+                known.add(i)
         return lay
 
     def build_nav(self, layout=None):
@@ -10287,6 +10484,7 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         m.addAction(tr_("Musikordner hinzufügen…"), self.add_folder)
         m.addAction(tr_("Bibliothek neu einlesen"), self.rescan)
+        m.addAction(tr_("Letztes Einsortieren rückgängig machen"), self.undo_organize)
         m.addSeparator()
         m.addAction(tr_("Fehlende Albuminfos und Cover suchen"), self.start_batch)
         m.addAction(tr_("Bibliothek prüfen…"), lambda: self.navigate("check"))
@@ -10873,6 +11071,15 @@ class MainWindow(QMainWindow):
         elif st.startswith("album:"):
             a = self.lib.albums.get(st[6:])
             parts += [(tr_("Album"), "albums"), (a["title"] if a else "?", None)]
+        elif st.startswith(("folder:", "folderfiles:")):
+            path = st.split(":", 1)[1]
+            parts.append((tr_("Ordner"), "folders"))
+            chain = self.folder_chain(path)
+            for i, d in enumerate(chain):
+                last = i == len(chain) - 1 and st.startswith("folder:")
+                parts.append((self.folder_name(d), None if last else "folder:" + d))
+            if st.startswith("folderfiles:"):
+                parts.append((tr_("Titel in diesem Ordner"), None))
         out = []
         for text, link in parts:
             t = html.escape(text)
@@ -10895,7 +11102,8 @@ class MainWindow(QMainWindow):
         if pre:
             st = st[3:]
         base = st.split(":")[0]
-        nk = {"artist": "artists", "genre": "genres", "album": "albums", "year": "albums"}.get(base, base)
+        nk = {"artist": "artists", "genre": "genres", "album": "albums", "year": "albums",
+              "folder": "folders", "folderfiles": "folders"}.get(base, base)
         if st.startswith(("playlist:", "auto:", "smart:")):
             nk = st
         nk = pre + nk
@@ -11002,7 +11210,12 @@ class MainWindow(QMainWindow):
             self.count_label.setText("")
             return
 
-        if st == "songs":
+        if st == "folders" or st.startswith("folder:"):
+            self._render_folders(st, q)
+            return
+        if st.startswith("folderfiles:"):
+            albums = self.folder_albums(self.folder_index()["direct"].get(st[12:], []))
+        elif st == "songs":
             albums = list(self.lib.albums.values())
         elif st.startswith("artist:"):
             albums = sorted((a for a in self.lib.albums.values() if a["artist"] == st[7:]),
@@ -11039,6 +11252,9 @@ class MainWindow(QMainWindow):
             tl = self.track_model.tracks
             self.count_label.setText(tr_("{0} Titel  ·  {1}").format(len(tl), fmt_time(sum(t['length'] for t in tl))))
         elif self.stack.currentWidget() is self.grid:
+            if self.state == "folders" or self.state.startswith("folder:"):
+                self.count_label.setText(tr_("{0} Ordner").format(getattr(self, "_grid_count", 0)))
+                return
             noun = {"artists": tr_("Interpreten@n"), "genres": tr_("Genres@n")}.get(self.state.replace("jf:", "", 1), tr_("Alben@n"))
             self.count_label.setText(f"{getattr(self, '_grid_count', 0)} {noun}")
 
@@ -11053,6 +11269,147 @@ class MainWindow(QMainWindow):
         rs = [self.stats.rating(t["path"]) for t in tracks]
         rs = [r for r in rs if r]
         return sum(rs) / len(rs) if rs else 0
+
+    # ── Ordneransicht ─────────────────────────────────────────────────────
+    def folder_index(self):
+        """Ordnerbaum aus den Pfaden der Bibliothek (zwischengespeichert, bis sich die Bibliothek ändert)."""
+        tracks = self.local_lib.tracks
+        key = (id(tracks), len(tracks))
+        cache = getattr(self, "_folder_cache", None)
+        if cache and cache["key"] == key:
+            return cache
+        roots = [r for r in self.folders() if r]
+        rootset = {os.path.normcase(os.path.normpath(r)) for r in roots}
+        direct, children, agg = defaultdict(list), defaultdict(set), {}
+        top = []
+        for t in tracks:
+            if t.get("remote") or t.get("stream"):
+                continue
+            d = os.path.dirname(t["path"])
+            direct[d].append(t)
+            cur = d
+            while True:
+                a = agg.get(cur)
+                if a is None:
+                    a = agg[cur] = {"n": 0, "len": 0.0, "covers": []}
+                a["n"] += 1; a["len"] += t.get("length") or 0
+                if len(a["covers"]) < 5 and t.get("cover") and t["cover"] not in a["covers"]:
+                    a["covers"].append(t["cover"])
+                parent = os.path.dirname(cur)
+                if os.path.normcase(os.path.normpath(cur)) in rootset or not parent or parent == cur:
+                    if cur not in top:
+                        top.append(cur)
+                    break
+                children[parent].add(cur)
+                cur = parent
+        self._folder_cache = {"key": key, "direct": direct, "children": children, "agg": agg, "top": top}
+        return self._folder_cache
+
+    @staticmethod
+    def folder_name(d):
+        n = os.path.basename(d.rstrip("/\\"))
+        return n or d
+
+    def folder_chain(self, path):
+        """Ordner von der Wurzel (Musikordner) bis path – für die Brotkrumen."""
+        top = set(self.folder_index()["top"])
+        chain, cur = [path], path
+        while cur not in top:
+            parent = os.path.dirname(cur)
+            if not parent or parent == cur:
+                break
+            chain.append(parent); cur = parent
+        return list(reversed(chain))
+
+    def folder_tracks(self, path):
+        idx = self.folder_index()
+        out, stack = [], [path]
+        while stack:
+            d = stack.pop()
+            out += sorted(idx["direct"].get(d, []), key=lambda t: (t.get("disc") or 1, t.get("track") or 0, t["path"]))
+            stack += sorted(idx["children"].get(d, ()), reverse=True)
+        return out
+
+    def folder_albums(self, tracks):
+        """Titel eines Ordners als Albumgruppen (für die Titelliste mit Albumcover-Blöcken)."""
+        groups = OrderedDict()
+        for t in sorted(tracks, key=lambda t: (t.get("album", ""), t.get("disc") or 1, t.get("track") or 0, t["path"])):
+            groups.setdefault(t.get("cover") or t.get("album", ""), []).append(t)
+        out = []
+        for key, tl in groups.items():
+            a = self.lib.albums.get(key)
+            if a is not None:
+                out.append({**a, "tracks": tl})
+            else:
+                t0 = tl[0]
+                out.append({"key": key, "title": t0.get("album", ""), "artist": t0.get("albumartist") or t0["artist"],
+                            "year": t0.get("year", ""), "genre": t0.get("genre", ""), "tracks": tl})
+        return out
+
+    def _render_folders(self, st, q):
+        idx = self.folder_index()
+        path = st[7:] if st.startswith("folder:") else None
+        subs = sorted(idx["top"] if path is None else idx["children"].get(path, ()), key=lambda d: self.folder_name(d).lower())
+        files = idx["direct"].get(path, []) if path else []
+        if path is not None and not subs:                      # unterster Ordner: gleich die Titelliste
+            self.state = st                                    # (Zustand bleibt „folder:“ für Zurück/Vor)
+            albums = self.folder_albums(files)
+            groups = [(a, [t for t in a["tracks"] if not q or q in t["title"].lower() or q in t["artist"].lower()])
+                      for a in albums]
+            groups = [(a, tl) for a, tl in groups if tl]
+            if self.sort_col is not None:
+                self.track_model.set_flat(self._sorted([t for _a, tl in groups for t in tl]))
+            else:
+                ci = next(i for i, c in enumerate(COLUMNS) if c[0] == "cover")
+                self.track_model.block_h = album_block(self.tracks.header().sectionSize(ci))[2]
+                self.track_model.set_groups(groups)
+                self.tracks.apply_spans()
+            self._update_sort_indicator()
+            self.stack.setCurrentWidget(self.tracks)
+            self._update_count()
+            return
+        self.grid_model.clear()
+        seps, tile_size = [], QSize(TILE_W, TILE_H)
+        sep_w = max(TILE_W, self.grid.viewport().width() - 2)
+        self._grid_seps, self._grid_sep_w = seps, sep_w
+        n = 0
+
+        def section(head, items):
+            nonlocal n
+            items = [x for x in items if not q or q in x[1].lower()]
+            if not items:
+                return
+            sep = QStandardItem(head); sep.setEditable(False)
+            sep.setFlags(Qt.ItemIsEnabled); sep.setData("sep", ROLE_KIND)
+            sep.setData(QSize(sep_w, 36), Qt.SizeHintRole)
+            self.grid_model.appendRow(sep); seps.append(sep)
+            for kind, title, lines, covers, key in items:
+                it = QStandardItem(title); it.setEditable(False)
+                it.setData(tile_size, Qt.SizeHintRole)
+                it.setData(kind, ROLE_KIND); it.setData(covers, ROLE_COVERS); it.setData(lines, ROLE_SUB)
+                it.setData(key, ROLE_KEY); it.setData(0, ROLE_RATING)
+                it.setToolTip(key)
+                self.grid_model.appendRow(it)
+                n += 1
+
+        def lines_for(a):
+            k = a["n"]
+            return [tr_("{0} Song").format(k) if k == 1 else tr_("{0} Songs").format(k), self._fmt_duration(a["len"])]
+        tiles = []
+        for d in subs:
+            a = idx["agg"].get(d)
+            if a:
+                tiles.append(("folder", self.folder_name(d), lines_for(a), a["covers"], d))
+        section(tr_("Ordner") if path else tr_("Musikordner"), tiles)
+        if files:
+            a = {"n": len(files), "len": sum(t.get("length") or 0 for t in files),
+                 "covers": list(dict.fromkeys(t["cover"] for t in files if t.get("cover")))[:5]}
+            section(tr_("Titel in diesem Ordner"), [("folderfiles", self.folder_name(path), lines_for(a), a["covers"], path)])
+        self._grid_count = n
+        self.covers.prefetch([k for r in range(self.grid_model.rowCount())
+                              for k in (self.grid_model.item(r).data(ROLE_COVERS) or [])[:5]], ART)
+        self.stack.setCurrentWidget(self.grid)
+        self.count_label.setText(tr_("{0} Ordner").format(len(tiles)) if tiles else "")
 
     def _render_grid(self, st, q):
         self.grid_model.clear()
@@ -11152,6 +11509,10 @@ class MainWindow(QMainWindow):
         self.flash(tr_("{0} mit „{1}“ zusammengeführt.").format(names, disp(target)))
 
     def tracks_for_item(self, kind, key):
+        if kind == "folder":
+            return self.folder_tracks(key)
+        if kind == "folderfiles":
+            return [t for a in self.folder_albums(self.folder_index()["direct"].get(key, [])) for t in a["tracks"]]
         if kind == "album":
             a = self.lib.albums.get(key)
             return list(a["tracks"]) if a else []
@@ -11163,6 +11524,9 @@ class MainWindow(QMainWindow):
     def _grid_activated(self, idx):
         kind, key = idx.data(ROLE_KIND), idx.data(ROLE_KEY)
         if kind == "sep":
+            return
+        if kind in ("folder", "folderfiles"):
+            self.navigate(kind + ":" + key)
             return
         self.navigate(("jf:" if self._src == "jf" else "") + {"artist": "artist:", "genre": "genre:"}.get(kind, "album:") + key)
 
@@ -11198,6 +11562,8 @@ class MainWindow(QMainWindow):
             idx = self.tracks.currentIndex()
             if idx.isValid() and self.track_model.flags(idx) & Qt.ItemIsEditable:
                 m.addAction(tr_("Bearbeiten\tF2"), lambda: self.tracks.edit(idx))
+        if not tracks[0].get("remote") and not tracks[0].get("stream"):
+            m.addAction(tr_("Dateien umbenennen und einsortieren…"), lambda: self.organize_dialog(tracks))
         if view is self.tracks and self.state.startswith("playlist:"):
             name = self.state[9:]
             rows = sorted({i.row() for i in self.tracks.selectionModel().selectedIndexes()})
@@ -11249,6 +11615,116 @@ class MainWindow(QMainWindow):
         remote = [t for t in tracks if t.get("remote")]
         if remote:                               # 4–5 Sterne = Favorit auf dem Jellyfin-Server
             self.jf_set_favorite(remote, n >= 4)
+
+    # ── Dateien umbenennen und einsortieren ──────────────────────────────
+    def organize_dialog(self, tracks):
+        if not tracks:
+            return
+        OrganizeDialog(self, tracks).exec()
+
+    def organize_files(self, pairs, remove_empty=True, undo=False):
+        """pairs: [(alter Pfad, neuer Pfad)] – im Hintergrund verschieben, danach alle Verweise nachziehen."""
+        playing = self.cur["t"]["path"] if self.cur else None
+        pairs = [(o, n) for o, n in pairs if o != playing]
+
+        def work():
+            done, failed, dirs = [], [], set()
+            for old, new in pairs:
+                try:
+                    move_with_sidecars(old, new)
+                    done.append((old, new)); dirs.add(os.path.dirname(old))
+                except Exception as e:
+                    failed.append((old, str(e)))
+            removed = 0
+            if remove_empty:
+                roots = {os.path.normcase(os.path.normpath(f)) for f in self.folders()}
+                for d in sorted(dirs, key=len, reverse=True):
+                    cur = d
+                    while cur and os.path.normcase(os.path.normpath(cur)) not in roots:
+                        try:
+                            left = [x for x in os.listdir(cur) if x.lower() not in ("thumbs.db", "desktop.ini", ".directory")]
+                            if left:
+                                break
+                            for x in os.listdir(cur):
+                                os.remove(os.path.join(cur, x))
+                            os.rmdir(cur); removed += 1
+                        except OSError:
+                            break
+                        cur = os.path.dirname(cur)
+            return done, failed, removed
+
+        def finished(res):
+            done, failed, _removed = res
+            self.remap_paths(dict(done))
+            if done and not undo:
+                try:
+                    atomic_write_text(ORGANIZE_LOG, json.dumps(done, ensure_ascii=False), backup=False)
+                except Exception:
+                    pass
+            msg = (tr_("{0} Dateien zurückverschoben.") if undo else tr_("{0} Dateien umbenannt bzw. einsortiert.")).format(len(done))
+            if failed:
+                msg += " " + tr_("{0} fehlgeschlagen (z. B. gerade geöffnet oder schreibgeschützt).").format(len(failed))
+            self.flash(msg, 9000)
+        self.flash(tr_("Verschiebe Dateien …"))
+        self.run_job(work, finished)
+
+    def undo_organize(self):
+        try:
+            done = json.loads(ORGANIZE_LOG.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            self.flash(tr_("Es gibt nichts rückgängig zu machen.")); return
+        back = [(n, o) for o, n in done if os.path.exists(n) and not os.path.exists(o)]
+        if not back:
+            self.flash(tr_("Es gibt nichts rückgängig zu machen.")); return
+        if QMessageBox.question(self, tr_("Einsortieren rückgängig machen"),
+                                tr_("{0} Dateien an ihren vorherigen Ort zurückverschieben?").format(len(back))) != QMessageBox.Yes:
+            return
+        try:
+            ORGANIZE_LOG.unlink()
+        except OSError:
+            pass
+        self.organize_files(back, remove_empty=True, undo=True)
+
+    def remap_paths(self, mapping):
+        """Nach dem Verschieben: Bibliothek, Statistik, Bearbeitungen, Wiedergabelisten … auf die neuen Pfade umstellen."""
+        if not mapping:
+            return
+        # Wiedergabelisten zuerst lesen (sie verweisen noch auf die alten Pfade)
+        lists = {}
+        for name in self.playlist_names():
+            try:
+                items = read_playlist_file(self._pl_path(name))
+            except OSError:
+                continue
+            if any(p in mapping for p, _t in items):
+                lists[name] = [(mapping.get(p, p), title) for p, title in items]
+        for t in self.local_lib.tracks:
+            n = mapping.get(t["path"])
+            if n:
+                t["path"] = n
+                try:
+                    st = os.stat(n); t["mtime"], t["size"] = st.st_mtime, st.st_size
+                except OSError:
+                    pass
+        for d in (self.stats.data, self.local_lib.overrides):
+            for o, n in mapping.items():
+                if o in d:
+                    d[n] = d.pop(o)
+        hid = {mapping.get(p, p) for p in self.local_lib.hidden}
+        if hid != self.local_lib.hidden:
+            self.local_lib.hidden = hid; self.local_lib.save_hidden()
+        rq = getattr(self, "_rating_queue", None)
+        if rq:
+            for o, n in mapping.items():
+                if o in rq:
+                    rq[n] = rq.pop(o)
+            self._save_rating_queue()
+        self.stats.save(); self.local_lib.save_overrides(); self.local_lib.set_tracks(self.local_lib.tracks)
+        self.local_lib.save()
+        for name, items in lists.items():
+            self.save_playlist(name, self.tracks_from_paths(items))
+        self._folder_cache = None
+        self._refresh_library()
 
     # ── Sterne in die Dateien schreiben (wie Windows Media Player) ───────────
     def ratings_to_files(self):
