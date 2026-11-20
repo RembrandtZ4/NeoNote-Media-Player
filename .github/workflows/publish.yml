@@ -1,0 +1,34 @@
+# Veröffentlicht eine Release-Seite aus fertigen Dateien – es wird hier nichts gebaut.
+# Inhalt dieses Zweigs: version.txt, commit.txt (Quellstand auf main), notes.md, files/*
+name: Release veröffentlichen
+on:
+  push:
+    branches: [release]
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release
+      - name: Release anlegen oder aktualisieren
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          VER=$(tr -d '[:space:]' < version.txt)
+          TAG="v$VER"
+          TITLE="NeoNote Media Player $VER"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TITLE" --notes-file notes.md --latest
+            gh release upload "$TAG" files/* --repo "$GITHUB_REPOSITORY" --clobber
+            # Anhänge, die nicht mehr zu dieser Release gehören, entfernen
+            for a in $(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'); do
+              [ -e "files/$a" ] || gh release delete-asset "$TAG" "$a" --repo "$GITHUB_REPOSITORY" --yes
+            done
+          else
+            gh release create "$TAG" files/* --repo "$GITHUB_REPOSITORY" \
+              --target "$(tr -d '[:space:]' < commit.txt)" --title "$TITLE" --notes-file notes.md --latest
+          fi
