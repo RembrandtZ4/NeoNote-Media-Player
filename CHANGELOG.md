@@ -4,6 +4,7 @@
 
 **Neu**
 - **Videos über mpv:** Videos laufen jetzt über mpv, das direkt auf der Grafikkarte zeichnet – flüssiges 4K, HDR-Videos mit richtigen Farben auf normalen Bildschirmen, Hardware-Decodierung über D3D11VA, VA-API oder NVDEC. Bild-Untertitel von Blu-rays und DVDs (PGS, VobSub) funktionieren jetzt, ebenso .ass- und .vtt-Untertitel. Untertitel weichen nach oben aus, solange die Steuerleiste eingeblendet ist. Abschaltbar unter Einstellungen ▸ Video; ohne mpv laufen Videos wie bisher über Qt Multimedia.
+- **Absturzschutz für Videos:** Stürzt NeoNote beim Start eines Videos ab, decodiert es beim nächsten Mal ohne Hardwarebeschleunigung; passiert es dann wieder, laufen Videos über Qt Multimedia. Ein Hinweis sagt, was umgestellt wurde. Unter Windows nutzt mpv die stabilen Kopier-Modi (z. B. `d3d11va-copy`) – decodiert wird weiter auf der Grafikkarte.
 - **Kapitel:** Filme mit Kapiteln zeigen im Spuren-Menü eine Kapitelliste; `Strg+Bild↓` / `Strg+Bild↑` springt zum nächsten bzw. vorherigen Kapitel.
 - **Weiterschauen:** Lange Videos und Hörbücher (ab 20 Minuten) merken sich, wo du aufgehört hast, und setzen beim nächsten Mal dort fort. Wer bis kurz vor Schluss geschaut hat, beginnt wieder von vorn. Abschaltbar unter Einstellungen ▸ Video.
 

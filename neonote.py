@@ -1806,10 +1806,25 @@ def mpv_lang_to_qlocale(code):
 
 
 def mpv_hwdec(setting):
-    """Einstellung „Videos decodieren mit“ → mpv-Option hwdec (mit Kopier-Variante als Rückfall)."""
-    return {"auto": "auto-safe", "off": "no", "d3d11va": "d3d11va,d3d11va-copy", "d3d12va": "d3d12va,d3d12va-copy",
-            "dxva2": "dxva2,dxva2-copy", "cuda": "nvdec,nvdec-copy", "qsv": "auto-copy",
-            "vaapi": "vaapi,vaapi-copy", "vdpau": "vdpau,vdpau-copy", "vulkan": "vulkan,vulkan-copy"}.get(setting, "auto-safe")
+    """Einstellung „Videos decodieren mit“ → mpv-Option hwdec.
+    Windows: nur Kopier-Modi. Die direkte Übergabe von D3D11-Bildern an OpenGL (WGL_NV_DX_interop) ist je nach
+    Grafiktreiber instabil und hat bei 4K-HDR zu Abstürzen geführt; kopiert decodiert trotzdem die Grafikkarte."""
+    if IS_WIN:
+        return {"auto": "auto-copy-safe", "off": "no", "d3d11va": "d3d11va-copy", "d3d12va": "d3d12va-copy",
+                "dxva2": "dxva2-copy", "cuda": "nvdec-copy", "qsv": "auto-copy-safe"}.get(setting, "auto-copy-safe")
+    return {"auto": "auto-safe", "off": "no", "vaapi": "vaapi,vaapi-copy", "vdpau": "vdpau,vdpau-copy",
+            "cuda": "nvdec,nvdec-copy", "vulkan": "vulkan,vulkan-copy"}.get(setting, "auto-safe")
+
+
+# Eingebaute Lua-Skripte von mpv (Statistik, Konsole, Menüs …) – braucht NeoNote nicht. Neuere mpv-Versionen kennen
+# mehr dieser Schalter; ältere lehnen unbekannte Optionen ab, deshalb in Stufen versuchen.
+_MPV_NO_SCRIPTS = [
+    dict(load_stats_overlay="no", load_osd_console="no", load_auto_profiles="no", load_select="no",
+         load_positioning="no", load_commands="no", load_context_menu="no"),
+    dict(load_stats_overlay="no", load_osd_console="no", load_auto_profiles="no", load_select="no"),
+    dict(load_stats_overlay="no", load_osd_console="no", load_auto_profiles="no"),
+    {},
+]
 
 
 class MpvBackend(QObject):
@@ -1843,7 +1858,13 @@ class MpvBackend(QObject):
             if os.environ.get("NEONOTE_PCM"):
                 opts["ao_pcm_file"] = os.environ["NEONOTE_PCM"]
                 opts["audio_format"] = "s16"
-        self.m = mpv.MPV(**opts)
+        for extra in _MPV_NO_SCRIPTS:
+            try:
+                self.m = mpv.MPV(**opts, **extra)
+                break
+            except Exception:
+                if not extra:
+                    raise
         self._state = QMediaPlayer.StoppedState
         self._status = QMediaPlayer.NoMedia
         self._pos = self._dur = 0
@@ -7315,6 +7336,10 @@ class MainWindow(QMainWindow):
     # ── Video & Vollbild ──────────────────────────────────────────────────
     def _video_needed(self):
         """Ein Video läuft gleich über mpv: Videofläche zeigen, damit OpenGL startet und mpv zeichnen kann."""
+        # Absturzschutz: bis das Video ein paar Sekunden läuft, steht hier, womit es versucht wurde
+        self.settings.setValue("video/guard", "sw" if self.player.video_hwdec == "no" else "hw")
+        self.settings.sync()
+        self._guard_set = True
         self.enter_np_mode()
         self.video.show_gl(True)
         self.apply_audio_settings()
@@ -7997,6 +8022,7 @@ class MainWindow(QMainWindow):
     # ── Sitzung speichern / wiederherstellen ──────────────────────────────
     def save_session(self):
         self._save_resume()
+        self._clear_video_guard()
         st = self.settings
         st.setValue("session/queue", json.dumps([[e["t"]["path"], e["t"]["title"]] for e in self.queue]))
         st.setValue("session/index", self._cur_index())
@@ -8943,7 +8969,27 @@ class MainWindow(QMainWindow):
         if self._ctl_left.width() != side:
             self._ctl_left.setFixedWidth(side); self._ctl_right.setFixedWidth(side)
 
+    def _video_crash_guard(self):
+        """Ist NeoNote beim letzten Start eines Videos über mpv abgestürzt? Dann eine Stufe sicherer:
+        erst ohne Hardware-Decodierung, beim nächsten Mal über Qt Multimedia."""
+        st = self.settings
+        guard = st.value("video/guard", "")
+        if not guard:
+            return
+        st.remove("video/guard")
+        if guard == "hw":
+            st.setValue("video/hwdec", "off")
+            msg = tr_("Beim letzten Video ist NeoNote abgestürzt. Videos werden jetzt ohne Hardwarebeschleunigung "
+                      "decodiert (Einstellungen ▸ Video).")
+        else:
+            st.setValue("video/mpv", False)
+            msg = tr_("Beim letzten Video ist NeoNote abgestürzt. Videos laufen jetzt wieder über Qt Multimedia "
+                      "(Einstellungen ▸ Video).")
+        crash_note(f"Absturzschutz: {guard} → zurückgeschaltet")
+        QTimer.singleShot(2500, lambda: self.flash(msg, 15000))
+
     def _build_player(self):
+        self._video_crash_guard()
         use_mpv = self.settings.value("audio/mpv", True, type=bool) and mpv_available()
         self.player = Engine(self, use_mpv)
         self.audio = self.player.audio
@@ -9804,9 +9850,15 @@ class MainWindow(QMainWindow):
             return
         self.stats.set_resume(self.cur["t"]["path"], pos if 60_000 < pos < d - 90_000 else 0)
 
+    def _clear_video_guard(self):
+        if getattr(self, "_guard_set", False):
+            self._guard_set = False
+            self.settings.remove("video/guard")
+
     def play_entry(self, e):
         if e is None:
             return
+        self._clear_video_guard()             # das vorige Video hat nicht zum Absturz geführt
         if e is not self.cur:
             self._save_resume()
         self._resume_ready = False
@@ -9944,6 +9996,8 @@ class MainWindow(QMainWindow):
         self._mpris_update()
 
     def _pos_changed(self, pos):
+        if pos > 3000 and getattr(self, "_guard_set", False) and self.player.on_mpv_video():
+            self._clear_video_guard()                # Video läuft stabil
         self._update_srt(pos)
         if self.mini.isVisible():
             self.mini.set_pos(pos)
