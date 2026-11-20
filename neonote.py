@@ -1569,20 +1569,38 @@ def find_lyrics(t, online=True):
     """Songtext zu einem Titel suchen – läuft im Hintergrund. Ergebnis mit "src": lrc / tag / lrclib."""
     path = t.get("path") or ""
     local = bool(path) and not t.get("stream") and not t.get("remote") and "://" not in path
+    plain = None                                      # einfacher Text ohne Zeitstempel: nur, wenn es nichts Besseres gibt
     if local:
         try:
             f = lrc_file_for(path)
             if f:
                 res = parse_lyrics(_read_text_file(f))
-                if res:
+                if res and res.get("synced"):
                     return {**res, "src": "lrc", "file": str(f)}
+                if res:
+                    plain = {**res, "src": "lrc", "file": str(f)}
         except OSError:
             pass
         res = embedded_lyrics(path)
-        if res:
+        if res and res.get("synced"):
             return {**res, "src": "tag"}
+        if res and not plain:
+            plain = {**res, "src": "tag"}
     if t.get("stream"):
-        return None
+        return plain
+    try:
+        online_res = _find_lyrics_online(t, online)
+    except OnlineError:
+        if plain:
+            return plain                              # offline: der Text aus der Datei reicht
+        raise
+    if online_res and (online_res.get("synced") or not plain):
+        return online_res                             # zeitgesteuert von LRCLIB schlägt einfachen Text aus der Datei
+    return plain or online_res
+
+
+def _find_lyrics_online(t, online):
+    """Zwischenspeicher bzw. LRCLIB."""
     cf = LYRICS_DIR / f"{_lyrics_key(t)}.json"
     cached = read_json_file(cf) if cf.exists() else None
     if isinstance(cached, dict):
@@ -5348,7 +5366,13 @@ class LyricsPainter:
     def lyrics_pos(self, pos):
         """Abspielposition für zeitgesteuerte Texte – neu gezeichnet wird nur, wenn die Zeile wechselt."""
         ly = self.win.lyrics
-        if not ly or not ly.get("synced"):
+        if not ly or ly.get("instrumental"):
+            return
+        if not ly.get("synced"):                      # einfacher Text: im Halbsekundentakt dem Fortschritt folgen
+            step = int(pos // 500)
+            if step != self._ly_idx:
+                self._ly_idx = step
+                self.update()
             return
         idx = bisect.bisect_right(ly["_times"], pos + 200) - 1
         if idx != self._ly_idx:
@@ -5428,6 +5452,15 @@ class LyricsPainter:
                      (-a.height() * 0.06, total - a.height() * 0.85)
             if self._ly_snap:
                 self._ly_scroll = self._ly_target = lo
+            # ohne Zeitstempel langsam mitwandern: Anfang und Ende des Lieds (je 10 %) bleiben stehen
+            dur = self.win.player.duration() if hasattr(self.win, "player") else 0
+            if hi > lo and dur > 0 and time.monotonic() - self._ly_user > 4.0:
+                frac = min(1.0, max(0.0, (self.win.player.position() - dur * 0.1) / (dur * 0.8)))
+                want = lo + frac * (hi - lo)
+                if abs(want - self._ly_target) > 0.5:
+                    self._ly_target = want
+                    if not self._ly_anim.isActive():
+                        self._ly_anim.start()
         self._ly_snap = False
         self._ly_lo, self._ly_hi = lo, hi
         # in ein eigenes Bild zeichnen, damit oben und unten weich ausgeblendet werden kann
@@ -11369,9 +11402,9 @@ class MainWindow(QMainWindow):
         self.btn_lyrics.setChecked(self.lyrics_on)
         if self.lyrics_on:
             self.load_lyrics(self.cur["t"] if self.cur else None)
-            # in der Bibliothek unter der Wiedergabeliste, sonst (Liste ausgeblendet) in „Wird gespielt“
-            if self.cur and not self.np_mode and not self.queue_visible:
-                self.enter_np_mode()
+            # in der Bibliothek unter der Wiedergabeliste – ist die Liste ausgeblendet, kommt sie mit
+            if not self.np_mode and not self.queue_visible:
+                self.set_queue_visible(True)
         self.lyrics_reset()
         self._update_lyrics_panel()
 

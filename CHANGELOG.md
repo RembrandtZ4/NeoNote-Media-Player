@@ -11,6 +11,8 @@
 - Installer: instead of the gray “Preparing setup …” box, a start window in NeoNote's look appears while the files are unpacked – with the neon note, version and a running progress bar; it fades out as soon as the setup window opens.
 
 **Fixes**
+- Lyrics: if a file only contains plain lyrics without timestamps (common in ripped MP3s), NeoNote now also looks for synced lyrics on LRCLIB and prefers them – so the lyrics scroll along. Plain lyrics now also move along slowly with the song.
+- With the playlist hidden, the lyrics button no longer jumps to “Now playing”; it shows the playlist together with the lyrics below it.
 - Clearing a track's stars in NeoNote now stays cleared – a full rescan no longer brings back an old rating from the file.
 
 ## 1.2 – 2026-11-20

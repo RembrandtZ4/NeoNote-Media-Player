@@ -11,6 +11,8 @@
 - Installer: Statt des grauen Kastens „Setup wird vorbereitet …“ erscheint beim Entpacken ein Startfenster im NeoNote-Look – mit Neon-Note, Version und laufendem Fortschrittsbalken; es blendet sich aus, sobald das Setup-Fenster da ist.
 
 **Fehlerbehebungen**
+- Songtexte: Steht in der Datei nur ein einfacher Text ohne Zeitstempel (häufig bei gerippten MP3s), sucht NeoNote jetzt zusätzlich bei LRCLIB nach einem zeitgesteuerten Text und nimmt diesen – so läuft der Text mit. Einfache Texte wandern außerdem langsam mit dem Lied mit.
+- Bei ausgeblendeter Wiedergabeliste springt der Songtext-Knopf nicht mehr nach „Wird gespielt“, sondern blendet die Wiedergabeliste mit dem Songtext darunter ein.
 - In NeoNote gelöschte Sterne bleiben gelöscht – „Komplett neu einlesen“ holt keine alte Bewertung aus der Datei mehr zurück.
 
 ## 1.2 – 20.11.2026
