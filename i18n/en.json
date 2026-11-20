@@ -384,6 +384,7 @@
  "Lange Videos und Hörbücher (ab 20 Minuten) an der letzten Stelle fortsetzen": "Resume long videos and audiobooks (20 minutes or more) where you left off",
  "Last.fm verlangt einen eigenen, kostenlosen API-Schlüssel: <a href=\"https://www.last.fm/api/account/create\">last.fm/api/account/create</a> (Name z. B. „NeoNote“, Rückruf-Adresse leer lassen). Das Passwort wird nicht gespeichert – NeoNote merkt sich nur die Sitzung, die Last.fm dafür ausstellt.": "Last.fm requires your own free API key: <a href=\"https://www.last.fm/api/account/create\">last.fm/api/account/create</a> (name e.g. “NeoNote”, leave the callback URL empty). Your password is not stored – NeoNote only keeps the session Last.fm issues for it.",
  "Lautstärke angleichen (ReplayGain)": "Normalize volume (ReplayGain)",
+ "Lautstärke trotzdem in NeoNote regeln (dann nicht mehr ganz bitgenau)": "Still control the volume in NeoNote (then no longer strictly bit-perfect)",
  "Leer gewordene Ordner danach entfernen": "Remove folders that become empty",
  "Lege Verknüpfungen an …": "Creating shortcuts …",
  "Leiste anpassen…": "Customize bar…",

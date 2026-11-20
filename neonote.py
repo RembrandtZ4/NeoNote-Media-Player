@@ -3082,7 +3082,7 @@ class EngineAudio:
 
     def apply(self, be):
         if be is not None:
-            be.set_volume(1.0 if self.e.bitperfect else self.gain, self.muted)
+            be.set_volume(1.0 if self.e.bitperfect and not self.e.bp_volume else self.gain, self.muted)
 
     def apply_all(self):
         for be in self.e.mpv_backends():
@@ -3133,6 +3133,7 @@ class Engine(QObject):
         self.crossfade_ms = 0
         self.speed = 1.0
         self.device, self.bitperfect = "auto", False
+        self.bp_volume = False          # im exklusiven Modus trotzdem in NeoNote regeln
         self._filter = (False, [0] * 10, 0)
         self._rg = "no"
         self._xf_next = None            # nächster Titel zum Überblenden (statt lückenlos)
@@ -3178,8 +3179,8 @@ class Engine(QObject):
             be.set_filter(*self._filter, bitperfect=self.bitperfect)
             be.set_replaygain("no" if self.bitperfect else replaygain)
 
-    def set_output(self, device, bitperfect):
-        self.device, self.bitperfect = device or "auto", bool(bitperfect)
+    def set_output(self, device, bitperfect, bp_volume=False):
+        self.device, self.bitperfect, self.bp_volume = device or "auto", bool(bitperfect), bool(bp_volume)
         for be in self.mpv_backends():
             self._setup_backend(be)
         if self.bitperfect:
@@ -8849,6 +8850,11 @@ class SettingsDialog(QDialog):
         self.s_bp = QCheckBox(tr_("Bitgenaue Wiedergabe (exklusiver Zugriff, z. B. für externe DACs)"))
         self.s_bp.setChecked(win.settings.value("audio/bitperfect", False, type=bool))
         sv.addWidget(self.s_bp)
+        self.s_bpv = QCheckBox(tr_("Lautstärke trotzdem in NeoNote regeln (dann nicht mehr ganz bitgenau)"))
+        self.s_bpv.setChecked(win.settings.value("audio/bp_volume", False, type=bool))
+        self.s_bpv.setEnabled(self.s_bp.isChecked())
+        self.s_bp.toggled.connect(self.s_bpv.setEnabled)
+        bpvl = QHBoxLayout(); bpvl.setContentsMargins(24, 0, 0, 0); bpvl.addWidget(self.s_bpv); sv.addLayout(bpvl)
         bph = QLabel(tr_("NeoNote gibt die Musik dann unverändert an das Gerät weiter – in der Abtastrate und "
                          "Bittiefe der Datei. Lautstärke, Equalizer, ReplayGain, Tempo und Überblenden sind dabei aus; "
                          "die Lautstärke regelst du am Gerät. Andere Programme können das Gerät währenddessen nicht nutzen. "
@@ -8982,10 +8988,13 @@ class SettingsDialog(QDialog):
             w.settings.setValue("update/mode", self.s_umode.currentData())
         w.settings.setValue("audio/mpv", self.s_mpv.isChecked())
         w.settings.setValue("audio/gapless", self.s_gapless.isChecked())
-        out = (self.s_dev.currentData() or "auto", self.s_bp.isChecked(), self.s_xf.value(), self.s_xf_album.isChecked())
+        out = (self.s_dev.currentData() or "auto", self.s_bp.isChecked(), self.s_xf.value(), self.s_xf_album.isChecked(),
+               self.s_bpv.isChecked())
         old = (w.settings.value("audio/device", "auto") or "auto", w.settings.value("audio/bitperfect", False, type=bool),
-               w.settings.value("audio/crossfade", 0, type=int), w.settings.value("audio/xf_album_gapless", True, type=bool))
+               w.settings.value("audio/crossfade", 0, type=int), w.settings.value("audio/xf_album_gapless", True, type=bool),
+               w.settings.value("audio/bp_volume", False, type=bool))
         if out != old:
+            w.settings.setValue("audio/bp_volume", out[4])
             w.settings.setValue("audio/device", out[0]); w.settings.setValue("audio/bitperfect", out[1])
             w.settings.setValue("audio/crossfade", out[2]); w.settings.setValue("audio/xf_album_gapless", out[3])
             w.apply_output_settings()
@@ -12693,10 +12702,13 @@ class MainWindow(QMainWindow):
         """Ausgabegerät, bitgenaue Wiedergabe und Überblenden aus den Einstellungen übernehmen."""
         st = self.settings
         bp = st.value("audio/bitperfect", False, type=bool)
-        self.player.set_output(st.value("audio/device", "auto") or "auto", bp)
+        bpv = st.value("audio/bp_volume", False, type=bool)
+        self.player.set_output(st.value("audio/device", "auto") or "auto", bp, bpv)
         self.player.set_crossfade(st.value("audio/crossfade", 0, type=int))
-        self.vol.setEnabled(not bp)
-        self.vol.setToolTip(tr_("Bitgenaue Wiedergabe: Lautstärke am Gerät bzw. DAC regeln") if bp else "")
+        locked = bp and not bpv
+        self.vol.setEnabled(not locked)
+        self.btn_mute.setEnabled(True)
+        self.vol.setToolTip(tr_("Bitgenaue Wiedergabe: Lautstärke am Gerät bzw. DAC regeln") if locked else "")
         self._update_speed_btn()
         self._prepare_next()
 

@@ -7,7 +7,7 @@
 **New**
 - **Crossfade** between tracks (Settings ▸ System ▸ Transitions, 1–12 seconds): the next track fades in while the current one fades out. Within an album NeoNote stays gapless if you like, so live and concept albums aren't cut up.
 - **Playback speed** 0.5× to 2× with pitch correction (☰ menu) – great for audiobooks and podcasts; a badge in the control bar shows when it's not 1×.
-- **Choose the output device and bit-perfect playback** for external DACs (Settings ▸ System ▸ Audio output): exclusive access (WASAPI exclusive on Windows), music goes to the device unchanged at the file's sample rate and bit depth – without volume, equalizer, ReplayGain or resampling.
+- **Choose the output device and bit-perfect playback** for external DACs (Settings ▸ System ▸ Audio output): exclusive access (WASAPI exclusive on Windows), music goes to the device unchanged at the file's sample rate and bit depth – without volume, equalizer, ReplayGain or resampling. If you'd still rather use NeoNote's volume slider, there's an option for that (exclusive, but no longer strictly bit-perfect).
 - **Folder view:** browse your music folders like in a file manager – folders as tiles with cover stacks, the tracks of a folder as a list (new “Folders” entry in the navigation).
 - **Rename and organize files** by pattern, e.g. `{albumartist}/{album}/{track} {title}` – with a preview before anything moves. `.lrc` files move along; stars, play counts and playlists are updated; empty folders are removed. Organize ▸ “Undo last organize” moves everything back.
 - **Scrobbling** to ListenBrainz (user token) and Last.fm (your own free API key, the password isn't stored): tracks count once you've actually listened to half (or 4 minutes); without a connection they're sent later.
