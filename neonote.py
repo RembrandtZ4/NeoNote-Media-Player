@@ -989,6 +989,38 @@ def set_win_blur(widget, on, radius=0):
         return False
 
 
+def x11_normal_window(widget):
+    """Qt kennzeichnet rahmenlose Fenster unter X11 zusätzlich als _KDE_NET_WM_WINDOW_TYPE_OVERRIDE.
+    KWin zeigt solche Fenster nicht in der Fensterleiste. Vor dem Anzeigen nur „normales Fenster“ eintragen."""
+    if IS_WIN or QGuiApplication.platformName() != "xcb":
+        return False
+    try:
+        lib = ctypes.util.find_library("X11")
+        if not lib:
+            return False
+        x = ctypes.cdll.LoadLibrary(lib)
+        x.XOpenDisplay.restype = ctypes.c_void_p
+        x.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        x.XInternAtom.restype = ctypes.c_ulong
+        x.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+        x.XChangeProperty.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong,
+                                      ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_int]
+        x.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        x.XCloseDisplay.argtypes = [ctypes.c_void_p]
+        dpy = x.XOpenDisplay(None)
+        if not dpy:
+            return False
+        prop = x.XInternAtom(dpy, b"_NET_WM_WINDOW_TYPE", 0)
+        normal = x.XInternAtom(dpy, b"_NET_WM_WINDOW_TYPE_NORMAL", 0)
+        data = (ctypes.c_long * 1)(normal)
+        x.XChangeProperty(dpy, int(widget.winId()), prop, 4, 32, 0, data, 1)     # 4 = XA_ATOM, 0 = Replace
+        x.XSync(dpy, 0)
+        x.XCloseDisplay(dpy)
+        return True
+    except Exception:
+        return False
+
+
 def set_kde_blur(widget, on, radius=0):
     """Weichzeichner hinter dem Fenster (KWin). Funktioniert für X11/XWayland-Fenster."""
     if QGuiApplication.platformName() != "xcb":
@@ -10813,6 +10845,8 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, ev)
 
     def showEvent(self, e):
+        if self.frameless and not e.spontaneous():
+            x11_normal_window(self)        # vor dem Einblenden, sonst fehlt NeoNote in der KDE-Fensterleiste
         super().showEvent(e)
         QTimer.singleShot(0, self._update_corners)
         if IS_WIN:
