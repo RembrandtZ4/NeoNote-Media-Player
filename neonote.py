@@ -11472,6 +11472,8 @@ class MainWindow(QMainWindow):
         self.player.video_widget = self.video.gl
         self.player.video_mpv = use_mpv and self.settings.value("video/mpv", True, type=bool)
         self.player.video_hwdec = mpv_hwdec(self.settings.value("video/hwdec", "auto"))
+        crash_note(f"mpv: Musik {'ja' if self.player.mp else 'nein'}, Videos "
+                   f"{'ja' if self.player.video_mpv else 'nein (Einstellungen ▸ Video)'}, hwdec={self.player.video_hwdec}")
         self.player.video_needed.connect(self._video_needed)
         self.player.advanced.connect(self._gapless_advanced)
         self._next_entry = None
