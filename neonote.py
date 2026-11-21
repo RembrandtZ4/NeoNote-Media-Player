@@ -2657,7 +2657,10 @@ class MpvBackend(QObject):
             # Videos: mpv zeichnet über seine Render-Schnittstelle in eine unsichtbare OpenGL-Fläche (MpvVideoRenderer).
             # Untertitel (auch Bild-Untertitel von Blu-rays) und HDR-Umrechnung erledigt mpv selbst.
             opts.update(vid="auto", vo="libmpv", hwdec=hwdec, gapless_audio="no", prefetch_playlist="no",
-                        sub_auto="no", hr_seek="yes", keep_open="no", audio_client_name=APP_NAME + " Video")
+                        sub_auto="no", hr_seek="yes", keep_open="no", audio_client_name=APP_NAME + " Video",
+                        # Mehrkanal-Ton (5.1/7.1) selbst auf Stereo mischen – sonst fehlt an Stereo-Lautsprechern oder
+                        # Kopfhörern oft der Mittenkanal und damit die Stimmen
+                        audio_channels="stereo")
         if os.environ.get("NEONOTE_AO"):
             opts["ao"] = os.environ["NEONOTE_AO"]
             if os.environ.get("NEONOTE_PCM"):
@@ -2976,6 +2979,13 @@ class MpvBackend(QObject):
                 self.m.command("ao-reload")
             except Exception:
                 pass
+
+    def set_surround(self, on):
+        """Videos: Mehrkanal-Ton unverändert ans Gerät (Surround-Anlage) statt auf Stereo zu mischen."""
+        try:
+            self.m.audio_channels = "auto-safe" if on else "stereo"
+        except Exception:
+            pass
 
     def set_speed(self, x):
         try:
@@ -3338,6 +3348,7 @@ class Engine(QObject):
                 self.mv = MpvBackend(self, video=True, hwdec=self.video_hwdec)
                 self._connect(self.mv)
                 self._setup_backend(self.mv, video=True)
+                self.mv.set_surround(getattr(self, "surround", False))
                 if self.video_widget is not None:
                     self.video_widget.attach(self.mv)
             except Exception as e:
@@ -9017,6 +9028,10 @@ class SettingsDialog(QDialog):
         w.settings.setValue("system/no_sleep", self.s_nosleep.isChecked())
         w.settings.setValue("video/hwdec", self.v_hw.currentData())
         w.settings.setValue("video/mpv", self.v_mpv.isChecked())
+        w.settings.setValue("video/surround", self.v_surround.isChecked())
+        w.player.surround = self.v_surround.isChecked()
+        if w.player.mv is not None:
+            w.player.mv.set_surround(w.player.surround)
         w.player.video_mpv = bool(w.player.mp) and self.v_mpv.isChecked()
         w.player.video_hwdec = mpv_hwdec(self.v_hw.currentData())
         if w.player.mv is not None:
@@ -9058,6 +9073,11 @@ class SettingsDialog(QDialog):
         self.v_mpv.setChecked(st.value("video/mpv", True, type=bool))
         self.v_mpv.setEnabled(bool(getattr(win.player, "mp", None)))
         v.addWidget(self.v_mpv)
+        self.v_surround = QCheckBox(tr_("Mehrkanal-Ton (5.1/7.1) unverändert ausgeben – nur mit Surround-Anlage"))
+        self.v_surround.setToolTip(tr_("Ohne Häkchen mischt NeoNote Filmton auf Stereo herunter, damit an Lautsprechern "
+                                       "und Kopfhörern die Stimmen aus dem Mittenkanal nicht fehlen."))
+        self.v_surround.setChecked(st.value("video/surround", False, type=bool))
+        v.addWidget(self.v_surround)
         mh = QLabel(tr_("mpv zeichnet das Bild direkt auf der Grafikkarte: flüssiges 4K, HDR-Videos mit richtigen Farben "
                         "auf normalen Bildschirmen, Bild-Untertitel von Blu-rays und DVDs sowie Kapitel. Ohne Häkchen "
                         "spielt NeoNote Videos wie bisher über Qt Multimedia ab. Wirkt ab dem nächsten Video."))
@@ -11480,6 +11500,7 @@ class MainWindow(QMainWindow):
         self.player.video_widget = self.video.gl
         self.player.video_mpv = use_mpv and self.settings.value("video/mpv", True, type=bool)
         self.player.video_hwdec = mpv_hwdec(self.settings.value("video/hwdec", "auto"))
+        self.player.surround = self.settings.value("video/surround", False, type=bool)
         crash_note(f"mpv: Musik {'ja' if self.player.mp else 'nein'}, Videos "
                    f"{'ja' if self.player.video_mpv else 'nein (Einstellungen ▸ Video)'}, hwdec={self.player.video_hwdec}")
         self.player.video_needed.connect(self._video_needed)

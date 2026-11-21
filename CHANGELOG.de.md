@@ -20,6 +20,8 @@
 - Installer: Statt des grauen Kastens „Setup wird vorbereitet …“ erscheint beim Entpacken ein Startfenster im NeoNote-Look – mit Neon-Note, Version und laufendem Fortschrittsbalken; es blendet sich aus, sobald das Setup-Fenster da ist.
 
 **Fehlerbehebungen**
+- Filme mit 5.1/7.1-Ton (z. B. DTS) hatten an Stereo-Lautsprechern und Kopfhörern keine Stimmen, weil der Mittenkanal verloren ging. NeoNote mischt Filmton jetzt selbst auf Stereo; mit Surround-Anlage lässt sich unveränderte Mehrkanal-Ausgabe einschalten (Einstellungen ▸ Video).
+- Flatpak: mpv startete nicht (fehlende Lua-Optionen), dadurch lief alles über den schwächeren Ersatzweg Qt Multimedia – keine Bild-Untertitel, kein DTS-Ton, Hänger. Behoben; der Ersatzweg stürzt unter Linux außerdem nicht mehr ab.
 - Songtexte: Steht in der Datei nur ein einfacher Text ohne Zeitstempel (häufig bei gerippten MP3s), sucht NeoNote jetzt zusätzlich bei LRCLIB nach einem zeitgesteuerten Text und nimmt diesen – so läuft der Text mit. Einfache Texte wandern außerdem langsam mit dem Lied mit.
 - Bei ausgeblendeter Wiedergabeliste springt der Songtext-Knopf nicht mehr nach „Wird gespielt“, sondern blendet die Wiedergabeliste mit dem Songtext darunter ein.
 - In NeoNote gelöschte Sterne bleiben gelöscht – „Komplett neu einlesen“ holt keine alte Bewertung aus der Datei mehr zurück.

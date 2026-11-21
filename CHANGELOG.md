@@ -20,6 +20,8 @@
 - Installer: instead of the gray “Preparing setup …” box, a start window in NeoNote's look appears while the files are unpacked – with the neon note, version and a running progress bar; it fades out as soon as the setup window opens.
 
 **Fixes**
+- Movies with 5.1/7.1 audio (e.g. DTS) had no voices on stereo speakers and headphones because the center channel got lost. NeoNote now downmixes movie audio to stereo itself; with a surround system you can switch to unchanged multichannel output (Settings ▸ Video).
+- Flatpak: mpv didn't start (missing Lua options), so everything ran through the less capable Qt Multimedia fallback – no image subtitles, no DTS audio, freezes. Fixed; the fallback itself no longer crashes on Linux either.
 - Lyrics: if a file only contains plain lyrics without timestamps (common in ripped MP3s), NeoNote now also looks for synced lyrics on LRCLIB and prefers them – so the lyrics scroll along. Plain lyrics now also move along slowly with the song.
 - With the playlist hidden, the lyrics button no longer jumps to “Now playing”; it shows the playlist together with the lyrics below it.
 - Clearing a track's stars in NeoNote now stays cleared – a full rescan no longer brings back an old rating from the file.
