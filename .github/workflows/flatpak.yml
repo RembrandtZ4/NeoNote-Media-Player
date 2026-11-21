@@ -12,6 +12,8 @@ on:
       - neonote.png
       - flatpak/**
       - .github/workflows/flatpak.yml
+permissions:
+  contents: write
 jobs:
   flatpak:
     runs-on: ubuntu-latest
@@ -35,3 +37,18 @@ jobs:
           QT_QPA_PLATFORM=offscreen NEONOTE_NOSPLASH=1 timeout 25 flatpak run --env=QT_QPA_PLATFORM=offscreen --env=NEONOTE_NOSPLASH=1 io.github.RembrandtZ4.NeoNote || true
           cat ~/.var/app/io.github.RembrandtZ4.NeoNote/data/neonote/startup.log || true
           cat ~/.var/app/io.github.RembrandtZ4.NeoNote/data/neonote/crash.log || true
+      - name: Als Testversion zum Herunterladen bereitstellen (Vorabversion „test“)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          command -v gh >/dev/null || dnf install -y gh
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          cp NeoNote-x86_64.flatpak NeoNote-test-x86_64.flatpak
+          NOTES="Automatisch gebaute Testversion vom aktuellen Stand ($GITHUB_SHA). Keine offizielle Version – NeoNote bietet sie nicht als Update an. Installieren: flatpak install --user NeoNote-test-x86_64.flatpak"
+          if ! gh release view test --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create test --repo "$GITHUB_REPOSITORY" --prerelease --target main \
+              --title "Testversion (Flatpak, aktueller Stand)" --notes "$NOTES"
+          else
+            gh release edit test --repo "$GITHUB_REPOSITORY" --prerelease --notes "$NOTES"
+          fi
+          gh release upload test NeoNote-test-x86_64.flatpak --repo "$GITHUB_REPOSITORY" --clobber
