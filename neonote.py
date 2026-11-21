@@ -980,6 +980,9 @@ def set_win_blur(widget, on, radius=0):
 def set_kde_blur(widget, on, radius=0):
     """Weichzeichner hinter dem Fenster (KWin). Funktioniert für X11/XWayland-Fenster."""
     if QGuiApplication.platformName() != "xcb":
+        if on and not getattr(set_kde_blur, "_noted", False):
+            set_kde_blur._noted = True
+            crash_note(f"Weichzeichner nicht möglich: Anzeige läuft über {QGuiApplication.platformName()} statt xcb")
         return False
     try:
         lib = ctypes.util.find_library("X11")
@@ -2555,8 +2558,10 @@ def mpv_available():
     try:
         import mpv  # noqa: F401  (lädt libmpv)
         ok = True
-    except Exception:
+    except Exception as e:
         ok = False
+        if first and "crash_note" in globals():
+            crash_note(f"libmpv nicht ladbar: {type(e).__name__}: {e}")
     if first and "_start_mark" in globals():
         _start_mark("libmpv geladen" if ok else "libmpv nicht gefunden")
     return ok
@@ -3329,6 +3334,7 @@ class Engine(QObject):
                     self.video_widget.attach(self.mv)
             except Exception as e:
                 self.mv, self._mv_failed, self.mpv_error = None, True, str(e)
+                crash_note(f"mpv-Video: Einrichten fehlgeschlagen → Qt Multimedia: {type(e).__name__}: {e}")
         return self.mv
 
     def video_failed(self):
@@ -8421,7 +8427,9 @@ def apply_video_env(settings):
     hw = settings.value("video/hwdec", "auto")
     if hw != "auto" and "QT_FFMPEG_DECODING_HW_DEVICE_TYPES" not in os.environ:
         os.environ["QT_FFMPEG_DECODING_HW_DEVICE_TYPES"] = "," if hw == "off" else hw
-    if not settings.value("video/hwtex", True, type=bool):
+    # Linux: Qt Multimedia (nur Ersatzweg ohne mpv) soll Hardware-Bilder in den Arbeitsspeicher holen statt sie als
+    # Grafikkarten-Textur weiterzureichen – deren Umwandlung (QVideoFrame.toImage) stürzte unter Wayland/Flatpak ab.
+    if not settings.value("video/hwtex", IS_WIN, type=bool):
         os.environ.setdefault("QT_DISABLE_HW_TEXTURES_CONVERSION", "1")
 
 
@@ -9059,7 +9067,7 @@ class SettingsDialog(QDialog):
         g.addWidget(self.v_hw, 0, 1); g.setColumnStretch(2, 1)
         v.addLayout(g)
         self.v_tex = QCheckBox(tr_("Bilder direkt auf der Grafikkarte umwandeln (weniger Prozessorlast)"))
-        self.v_tex.setChecked(st.value("video/hwtex", True, type=bool))
+        self.v_tex.setChecked(st.value("video/hwtex", IS_WIN, type=bool))
         v.addWidget(self.v_tex)
         hh = QLabel(tr_("Die Grafikkarte entlastet den Prozessor und spart bei 4K- und HEVC-Videos viel Strom. "
                         "Ruckelt ein Video, bleibt das Bild schwarz oder stimmen die Farben nicht, stell hier "
@@ -14728,6 +14736,10 @@ def main():
         return
     setup_crash_log()                 # erst hier: eine zweite Instanz darf das Protokoll der ersten nicht anfassen
     crash_note(f"Videodecoder: {os.environ.get('QT_FFMPEG_DECODING_HW_DEVICE_TYPES', 'automatisch')}")
+    if not IS_WIN:
+        crash_note(f"Anzeige: {QGuiApplication.platformName()}, Sitzung {os.environ.get('XDG_SESSION_TYPE', '?')}, "
+                   f"Desktop {os.environ.get('XDG_CURRENT_DESKTOP', '?')}, DISPLAY={'ja' if os.environ.get('DISPLAY') else 'nein'}"
+                   f"{', Flatpak' if FLATPAK_ID else ''}")
     app.setStyle("Fusion")
     global _SPLASH
     if s.value("ui/splash", True, type=bool) and not os.environ.get("NEONOTE_NOSPLASH"):
