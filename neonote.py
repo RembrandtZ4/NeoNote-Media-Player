@@ -13834,7 +13834,7 @@ class MainWindow(QMainWindow):
         if getattr(sys, "frozen", False):
             QProcess.startDetached(sys.executable, ["--restart"])
         else:
-            QProcess.startDetached(sys.executable, [os.path.abspath(sys.argv[0]), "--restart"])
+            QProcess.startDetached(sys.executable, [os.path.abspath(__file__), "--restart"])
         self.quit_app()
         QApplication.instance().quit()
 
@@ -14774,6 +14774,8 @@ def main():
             pass
     QApplication.setApplicationName(APP_NAME)
     QApplication.setDesktopFileName(FLATPAK_ID or "neonote")     # Flatpak: Desktop-Datei heißt wie die App-ID
+    if FLATPAK_ID and sys.argv:       # X11-Fensterklasse = App-ID, damit die Taskleiste Fenster und Starter zusammenführt
+        sys.argv[0] = FLATPAK_ID
     _start_mark("Module geladen")
     app = QApplication(sys.argv)
     _start_mark("QApplication erstellt")

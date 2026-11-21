@@ -118,7 +118,7 @@ modules:
       - install -Dm644 i18n/en.json ${FLATPAK_DEST}/share/neonote/i18n/en.json
       - install -Dm755 flatpak/neonote.sh ${FLATPAK_DEST}/bin/neonote
       - install -Dm644 neonote.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - desktop-file-edit --set-icon=${FLATPAK_ID} --remove-key=StartupWMClass ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} --set-key=StartupWMClass --set-value=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 neonote.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
       - install -Dm644 flatpak/${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
       - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/LICENSE
