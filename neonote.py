@@ -49,7 +49,7 @@ from PySide6.QtGui import (QOpenGLContext, QOffscreenSurface, QSurfaceFormat, QR
 from PySide6.QtMultimedia import QAudioOutput, QMediaMetaData, QMediaPlayer, QVideoSink
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtOpenGL import QOpenGLFramebufferObject
-from PySide6.QtWidgets import (QScrollArea, QTextBrowser, QAbstractButton, QAbstractItemView, QGraphicsOpacityEffect,
+from PySide6.QtWidgets import (QProxyStyle, QStyleFactory, QScrollArea, QTextBrowser, QAbstractButton, QAbstractItemView, QGraphicsOpacityEffect,
                                QApplication, QButtonGroup, QCheckBox,
                                QColorDialog, QComboBox, QDialog,
                                QDialogButtonBox, QFileDialog, QFormLayout,
@@ -786,6 +786,18 @@ class GlassTitle(QFrame):
             self.dlg.windowHandle().startSystemMove()
             return
         super().mousePressEvent(e)
+
+
+
+class NeoStyle(QProxyStyle):
+    """Fusion ohne Symbole auf Dialogknöpfen (KDE setzt sie sonst im Flatpak)."""
+    def __init__(self):
+        super().__init__(QStyleFactory.create("Fusion"))
+
+    def styleHint(self, hint, opt=None, widget=None, ret=None):
+        if hint == QStyle.StyleHint.SH_DialogButtonBox_ButtonsHaveIcons:
+            return 0
+        return super().styleHint(hint, opt, widget, ret)
 
 
 class GlassDialogs(QObject):
@@ -4195,6 +4207,32 @@ def version_tuple(v):
 
 def is_newer(v):
     return version_tuple(v) > version_tuple(APP_VERSION)
+
+
+def real_folder(d):
+    """Pfad aus dem Dokumentenportal (/run/user/…/doc/…) auf den echten Ordner zurückführen."""
+    if d and "/doc/" in d and d.startswith("/run/"):
+        try:
+            host = os.getxattr(d, "user.document-portal.host-path").decode().rstrip("\0")
+            if host and os.path.isdir(host):
+                return host
+        except (OSError, AttributeError):
+            pass
+    return d
+
+
+def pick_folder(parent, title, start=""):
+    d = QFileDialog.getExistingDirectory(parent, title, start)
+    if not d:
+        return ""
+    d = real_folder(d)
+    if not os.access(d, os.R_OK | os.X_OK):
+        crash_note(f"Ordner nicht lesbar: {d}")
+        QMessageBox.warning(parent, title, tr_(
+            "Auf den Ordner „{0}“ hat NeoNote keinen Zugriff.\n\n"
+            "Ist das Laufwerk eingehängt? Öffne es sonst einmal im Dateimanager und versuche es erneut.").format(d))
+        return ""
+    return d
 
 
 def installed_by_package():
@@ -8251,7 +8289,7 @@ class OrganizeDialog(QDialog):
 
     def _dest_changed(self, _i):
         if self.dest.currentData() == "?":
-            d = QFileDialog.getExistingDirectory(self, tr_("Zielordner wählen"))
+            d = pick_folder(self, tr_("Zielordner wählen"))
             if d:
                 self.dest.insertItem(self.dest.count() - 1, tr_("In „{0}“").format(d), d)
                 self.dest.setCurrentIndex(self.dest.count() - 2)
@@ -8969,7 +9007,7 @@ class SettingsDialog(QDialog):
         return [self.flist.item(i).text() for i in range(self.flist.count())]
 
     def _add_folder(self):
-        d = QFileDialog.getExistingDirectory(self, tr_("Musikordner wählen"), str(Path.home()))
+        d = pick_folder(self, tr_("Musikordner wählen"), str(Path.home()))
         if d and d not in self._folders():
             self.flist.addItem(d)
 
@@ -12472,7 +12510,7 @@ class MainWindow(QMainWindow):
         return [f for f in (v or []) if f]
 
     def add_folder(self):
-        d = QFileDialog.getExistingDirectory(self, tr_("Musikordner wählen"), str(Path.home()))
+        d = pick_folder(self, tr_("Musikordner wählen"), str(Path.home()))
         if d:
             fl = self.folders()
             if d not in fl:
@@ -14617,7 +14655,7 @@ def run_setup():
     if "--src" in args:
         src = Path(args[args.index("--src") + 1])
     app = QApplication(sys.argv)
-    app.setStyle("Fusion")
+    app.setStyle(NeoStyle())
     st = QSettings(APP_NAME, APP_NAME)        # Farben des Benutzers übernehmen, falls schon eingestellt
     T.update({k: st.value(f"theme/{k}", v, type=type(v)) for k, v in DEFAULT_THEME.items()})
     w = SetupWindow(src, version)
@@ -14771,7 +14809,7 @@ def main():
         crash_note(f"Anzeige: {QGuiApplication.platformName()}, Sitzung {os.environ.get('XDG_SESSION_TYPE', '?')}, "
                    f"Desktop {os.environ.get('XDG_CURRENT_DESKTOP', '?')}, DISPLAY={'ja' if os.environ.get('DISPLAY') else 'nein'}"
                    f"{', Flatpak' if FLATPAK_ID else ''}")
-    app.setStyle("Fusion")
+    app.setStyle(NeoStyle())
     global _SPLASH
     if s.value("ui/splash", True, type=bool) and not os.environ.get("NEONOTE_NOSPLASH"):
         T.update({k: s.value(f"theme/{k}", v, type=type(v)) for k, v in DEFAULT_THEME.items()})

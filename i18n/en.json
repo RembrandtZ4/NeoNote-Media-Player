@@ -795,5 +795,6 @@
  "▼  Nach unten": "▼  Move down",
  "✓  Nichts gefunden – alles in Ordnung.": "✓  Nothing found – all good.",
  "✓ Verbunden als {0} mit {1} · {2} Titel": "✓ Connected as {0} to {1} · {2} tracks",
- "✓ Verbunden mit {0} (Jellyfin {1}). Die Bibliothek wird geladen …": "✓ Connected to {0} (Jellyfin {1}). Loading the library …"
+ "✓ Verbunden mit {0} (Jellyfin {1}). Die Bibliothek wird geladen …": "✓ Connected to {0} (Jellyfin {1}). Loading the library …",
+ "Auf den Ordner „{0}“ hat NeoNote keinen Zugriff.\n\nIst das Laufwerk eingehängt? Öffne es sonst einmal im Dateimanager und versuche es erneut.": "NeoNote can't access the folder “{0}”.\n\nIs the drive mounted? If not, open it once in your file manager and try again."
 }
