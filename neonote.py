@@ -890,8 +890,8 @@ class GlassDialogs(QObject):
         p = QPainter(d)
         p.setRenderHint(QPainter.Antialiasing)
         bg = QColor(T.solid)
-        # etwas deckender als das Hauptfenster: Dialoge bestehen fast nur aus Text und Eingabefeldern
-        bg.setAlphaF(min(1.0, T.alpha + 0.12) if self.win.theme_dict.get("blur") else max(T.alpha, 0.94))
+        # nur wenig deckender als das Hauptfenster, damit der Glas-Look sichtbar bleibt; ohne Weichzeichner gut lesbar
+        bg.setAlphaF(min(1.0, T.alpha + 0.03) if self.win.theme_dict.get("blur") else max(T.alpha, 0.94))
         r = self.radius()
         rect = QRectF(d.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         p.setPen(QPen(T.ov(0.16), 1)); p.setBrush(bg)
