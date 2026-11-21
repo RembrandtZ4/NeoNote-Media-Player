@@ -2666,13 +2666,20 @@ class MpvBackend(QObject):
         if video and os.environ.get("NEONOTE_MPV_LOG"):          # Fehlersuche: mpv-Meldungen auf die Konsole
             opts.update(log_handler=lambda lvl, comp, msg: print(f"[mpv {lvl} {comp}] {msg.rstrip()}"),
                         loglevel=os.environ["NEONOTE_MPV_LOG"])
-        for extra in _MPV_NO_SCRIPTS:
-            try:
-                self.m = mpv.MPV(**opts, **extra)
+        self.m = None
+        for attempt in range(2):
+            for extra in _MPV_NO_SCRIPTS:
+                try:
+                    self.m = mpv.MPV(**opts, **extra)
+                    break
+                except Exception:
+                    if not extra and attempt:
+                        raise
+            if self.m is not None:
                 break
-            except Exception:
-                if not extra:
-                    raise
+            # mpv ohne Lua (z. B. im Flatpak) kennt „ytdl“ und „osc“ nicht – ohne diese Optionen erneut versuchen
+            for k in ("ytdl", "osc"):
+                opts.pop(k, None)
         self._state = QMediaPlayer.StoppedState
         self._status = QMediaPlayer.NoMedia
         self._pos = self._dur = 0
@@ -3153,6 +3160,7 @@ class Engine(QObject):
                 self.mp = MpvBackend(self)
             except Exception as e:
                 self.mp, self.mpv_error = None, str(e)
+                crash_note(f"mpv startet nicht → Qt Multimedia: {type(e).__name__}: {e}")
         self.b = self.qt
         for be in (self.qt, self.mp):
             if be is not None:

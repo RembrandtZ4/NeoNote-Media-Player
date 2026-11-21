@@ -37,6 +37,18 @@ jobs:
           QT_QPA_PLATFORM=offscreen NEONOTE_NOSPLASH=1 timeout 25 flatpak run --env=QT_QPA_PLATFORM=offscreen --env=NEONOTE_NOSPLASH=1 io.github.RembrandtZ4.NeoNote || true
           cat ~/.var/app/io.github.RembrandtZ4.NeoNote/data/neonote/startup.log || true
           cat ~/.var/app/io.github.RembrandtZ4.NeoNote/data/neonote/crash.log || true
+      - name: mpv im Flatpak wirklich starten (nicht nur laden)
+        run: |
+          flatpak install -y --user --noninteractive NeoNote-x86_64.flatpak || true
+          flatpak run --env=QT_QPA_PLATFORM=offscreen --command=python3 io.github.RembrandtZ4.NeoNote -c "
+          import sys; sys.path.insert(0, '/app/share/neonote')
+          import neonote as N
+          from PySide6.QtCore import QCoreApplication
+          app = QCoreApplication([])
+          b = N.MpvBackend(None)
+          v = N.MpvBackend(None, video=True)
+          print('mpv OK:', b.m.mpv_version, '| Video-Instanz OK')
+          "
       - name: Als Testversion zum Herunterladen bereitstellen (Vorabversion „test“)
         env:
           GH_TOKEN: ${{ github.token }}
