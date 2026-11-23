@@ -2,6 +2,11 @@
 
 🇬🇧 **English** | 🇩🇪 [Deutsch](CHANGELOG.de.md)
 
+## Next version (in progress)
+
+**Improved**
+- Tooltips and right-click menus now match the window: translucent, rounded corners and blur. Can be turned off under Settings ▸ Appearance.
+
 ## 1.3 – 2026-11-23
 
 **New**

@@ -798,5 +798,6 @@
  "✓ Verbunden mit {0} (Jellyfin {1}). Die Bibliothek wird geladen …": "✓ Connected to {0} (Jellyfin {1}). Loading the library …",
  "Auf den Ordner „{0}“ hat NeoNote keinen Zugriff.\n\nIst das Laufwerk eingehängt? Öffne es sonst einmal im Dateimanager und versuche es erneut.": "NeoNote can't access the folder “{0}”.\n\nIs the drive mounted? If not, open it once in your file manager and try again.",
  "OK": "OK",
- "Einstellungen übernehmen, Fenster bleibt offen": "Apply settings and keep this window open"
+ "Einstellungen übernehmen, Fenster bleibt offen": "Apply settings and keep this window open",
+ "Kurzinfos und Menüs im selben Look (durchscheinend, runde Ecken)": "Tooltips and menus in the same look (translucent, rounded corners)"
 }

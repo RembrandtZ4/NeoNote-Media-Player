@@ -814,13 +814,17 @@ class GlassDialogs(QObject):
         return (bool(getattr(self.win, "frameless", False)) and os.environ.get("NEONOTE_PLAIN_DIALOGS") != "1"
                 and self.win.settings.value("ui/glass_dialogs", True, type=bool))
 
+    def tips_active(self):
+        return (bool(getattr(self.win, "frameless", False))
+                and self.win.settings.value("ui/glass_tooltips", True, type=bool))
+
     @staticmethod
     def radius():
         return 0 if IS_WIN else GlassDialogs.RADIUS        # Windows 11 rundet selbst
 
     def eventFilter(self, obj, ev):
         t = ev.type()
-        if t in (QEvent.Polish, QEvent.Show) and obj.isWidgetType() and obj.inherits("QTipLabel"):
+        if t in (QEvent.Polish, QEvent.Show) and obj.isWidgetType() and (obj.inherits("QTipLabel") or isinstance(obj, QMenu)):
             self.tooltip(obj, t)
             return False
         if t == QEvent.Polish:
@@ -858,9 +862,9 @@ class GlassDialogs(QObject):
         return False
 
     def tooltip(self, tip, t):
-        """Kurzinfos (Tooltips) im Glas-Look: durchscheinend, runde Ecken, Weichzeichner."""
+        """Kurzinfos (Tooltips) und Menüs im Glas-Look: durchscheinend, runde Ecken, Weichzeichner."""
         if t == QEvent.Polish:
-            if tip.property("nnTip") is not None or not self.active():
+            if tip.property("nnTip") is not None or not self.tips_active():
                 return
             tip.setProperty("nnTip", True)
             created = tip.testAttribute(Qt.WA_WState_Created)
@@ -870,11 +874,19 @@ class GlassDialogs(QObject):
             return
         if tip.property("nnTip") is not True:
             return
+        if not self.tips_active():                 # abgeschaltet: wieder der schlichte, deckende Kasten
+            tip.setStyleSheet("")
+            return
         blur = bool(self.win.theme_dict.get("blur"))
         bg = QColor(T.solid); bg.setAlphaF(T.alpha if blur else max(T.alpha, 0.9))
         r = max(self.radius() - 4, 0) if not IS_WIN else 0
-        tip.setStyleSheet(f"QToolTip {{ background: {css(bg)}; color: {css(T.fg)}; border: 1px solid {css(T.ov(0.16))};"
-                          f" border-radius: {r}px; padding: 5px 8px; }}")
+        if isinstance(tip, QMenu):
+            r = self.radius() if not IS_WIN else 0
+            tip.setStyleSheet(f"QMenu {{ background: {css(bg)}; color: {css(T.fg)}; border: 1px solid {css(T.ov(0.16))};"
+                              f" border-radius: {r}px; padding: 5px; }}")
+        else:
+            tip.setStyleSheet(f"QToolTip {{ background: {css(bg)}; color: {css(T.fg)}; border: 1px solid {css(T.ov(0.16))};"
+                              f" border-radius: {r}px; padding: 5px 8px; }}")
         QTimer.singleShot(0, lambda: tip.isVisible() and set_window_blur(tip, blur, r))
 
     @staticmethod
@@ -8047,6 +8059,12 @@ class ThemePage(QWidget):
         gh.setObjectName("hint"); gh.setWordWrap(True)
         form.addRow("", self.glassdlg)
         form.addRow("", gh)
+        self.glasstip = QCheckBox(tr_("Kurzinfos und Menüs im selben Look (durchscheinend, runde Ecken)"))
+        self.glasstip.setChecked(win.settings.value("ui/glass_tooltips", True, type=bool))
+        self.glasstip.setEnabled(win.frameless)
+        self.frameless.toggled.connect(self.glasstip.setEnabled)
+        self.glasstip.toggled.connect(lambda v: win.settings.setValue("ui/glass_tooltips", v))
+        form.addRow("", self.glasstip)
         # Sprache (wirkt nach einem Neustart)
         self.lang = QComboBox()
         for code, name in LANGUAGES:

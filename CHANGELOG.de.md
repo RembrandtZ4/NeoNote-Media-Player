@@ -2,6 +2,11 @@
 
 🇬🇧 [English](CHANGELOG.md) | 🇩🇪 **Deutsch**
 
+## Nächste Version (in Arbeit)
+
+**Verbessert**
+- Kurzinfos (Tooltips) und Rechtsklick-Menüs passen jetzt zum Fenster: durchscheinend, mit runden Ecken und Weichzeichner. Abschaltbar unter Einstellungen ▸ Darstellung.
+
 ## 1.3 – 23.11.2026
 
 **Neu**
