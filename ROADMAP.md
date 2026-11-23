@@ -31,6 +31,7 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [ ] **Flathub** listing
 
 ## Later
+- [ ] **Faster start** – find and speed up slow startup steps; optionally preload at login (starts hidden in the tray, the window then appears instantly)
 - [ ] **Remote control** – control NeoNote on the PC from your phone via a simple web page on the home network (no app needed)
 
 ## Earlier
@@ -69,6 +70,7 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [ ] **Aufnahme in Flathub**
 
 ## Später
+- [ ] **Schnellerer Start** – langsame Startschritte finden und beschleunigen; auf Wunsch beim Anmelden vorladen (startet unsichtbar im Infobereich, das Fenster erscheint dann sofort)
 - [ ] **Fernbedienung** – NeoNote am PC vom Handy aus steuern, über eine einfache Webseite im Heimnetz (ohne App)
 
 ## Früher
