@@ -8064,15 +8064,7 @@ class ThemePage(QWidget):
     def _opacity(self, v):
         self.op_lbl.setText(f"{v} %")
         self.t["opacity"] = v
-        T.update(self.t)                         # sofort: nur den Fensterhintergrund neu zeichnen
-        self.win.theme_dict = dict(self.t)
-        self.win.central.update()
-        if not hasattr(self, "_op_timer"):
-            self._op_timer = QTimer(self, singleShot=True, interval=350)
-            self._op_timer.timeout.connect(lambda: self._set("opacity", self.t["opacity"]))
-            self.op.sliderReleased.connect(self._op_timer.start)
-        if not self.op.isSliderDown():
-            self._op_timer.start()
+        self.win.apply_theme(self.t)             # nur Deckkraft geändert → nur neu zeichnen (schnell)
 
     def _set(self, key, val):
         self.t[key] = val
@@ -9754,9 +9746,15 @@ class MainWindow(QMainWindow):
         cur = getattr(self, "theme_dict", None)
         if cur is not None and hasattr(self, "top_menu"):
             diff = {k for k in set(d) | set(cur) if d.get(k) != cur.get(k)}
-            if diff and diff <= {"cmdbar"}:
+            if diff and diff <= {"cmdbar", "opacity"}:
+                # Deckkraft steckt nur im Fensterhintergrund (paintEvent), nicht in den Stylesheets:
+                # neu zeichnen genügt, kein teurer Neuaufbau der Darstellung
                 self.theme_dict = dict(d); T.update(d)
-                self._apply_cmdbar()
+                if "cmdbar" in diff:
+                    self._apply_cmdbar()
+                for w in QApplication.topLevelWidgets():
+                    if w.isVisible():
+                        w.update()
                 return
         old_cover = T.cover
         self.theme_dict = dict(d)
