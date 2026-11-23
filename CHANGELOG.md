@@ -2,7 +2,7 @@
 
 🇬🇧 **English** | 🇩🇪 [Deutsch](CHANGELOG.de.md)
 
-## Next version (in progress)
+## 1.3 – 2026-11-23
 
 **New**
 - **Crossfade** between tracks (Settings ▸ System ▸ Transitions, 1–12 seconds): the next track fades in while the current one fades out. Within an album NeoNote stays gapless if you like, so live and concept albums aren't cut up.
@@ -18,6 +18,8 @@
 
 **Improved**
 - Installer: instead of the gray “Preparing setup …” box, a start window in NeoNote's look appears while the files are unpacked – with the neon note, version and a running progress bar; it fades out as soon as the setup window opens.
+- Settings now have **OK**, **Apply** and **Cancel**: “Apply” saves without closing the window. The window is wide enough for all tabs.
+- Dialogs have exactly the same opacity as the main window, and the opacity slider reacts instantly (only repaints instead of rebuilding the whole look).
 
 **Fixes**
 - Movies with 5.1/7.1 audio (e.g. DTS) had no voices on stereo speakers and headphones because the center channel got lost. NeoNote now downmixes movie audio to stereo itself; with a surround system you can switch to unchanged multichannel output (Settings ▸ Video).
@@ -25,6 +27,9 @@
 - Lyrics: if a file only contains plain lyrics without timestamps (common in ripped MP3s), NeoNote now also looks for synced lyrics on LRCLIB and prefers them – so the lyrics scroll along. Plain lyrics now also move along slowly with the song.
 - With the playlist hidden, the lyrics button no longer jumps to “Now playing”; it shows the playlist together with the lyrics below it.
 - Clearing a track's stars in NeoNote now stays cleared – a full rescan no longer brings back an old rating from the file.
+- Linux: dialogs were opaque with black corners instead of translucent with rounded corners. Fixed.
+- Linux/KDE: NeoNote's window was missing from the task manager (and pinned launchers weren't marked as running); the app icon now has a margin so the “running” line underneath is visible.
+- Flatpak: music folders on other drives (e.g. `/media/…` or internal NTFS disks) can now be added; if a folder isn't readable, NeoNote says so clearly. Dialog buttons no longer show KDE icons.
 
 ## 1.2 – 2026-11-20
 
