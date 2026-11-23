@@ -30,6 +30,9 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [ ] **Native Wayland** with KDE's own blur (sharper with fractional scaling)
 - [ ] **Flathub** listing
 
+## Later
+- [ ] **Remote control** – control NeoNote on the PC from your phone via a simple web page on the home network (no app needed)
+
 ## Earlier
 - [x] **Updater for Windows** – install new versions right from NeoNote *(since 1.1.8)*
 
@@ -64,6 +67,9 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [ ] **AUR-Paket** – Installation mit `yay -S neonote`
 - [ ] **Natives Wayland** mit dem Weichzeichner von KDE (schärfer bei krummer Skalierung)
 - [ ] **Aufnahme in Flathub**
+
+## Später
+- [ ] **Fernbedienung** – NeoNote am PC vom Handy aus steuern, über eine einfache Webseite im Heimnetz (ohne App)
 
 ## Früher
 - [x] **Updater für Windows** – neue Versionen direkt aus NeoNote installieren *(seit 1.1.8)*
