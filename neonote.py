@@ -820,6 +820,9 @@ class GlassDialogs(QObject):
 
     def eventFilter(self, obj, ev):
         t = ev.type()
+        if t in (QEvent.Polish, QEvent.Show) and obj.isWidgetType() and obj.inherits("QTipLabel"):
+            self.tooltip(obj, t)
+            return False
         if t == QEvent.Polish:
             if (isinstance(obj, QDialog) and obj.isWindow() and obj.property("nnGlass") is None
                     and not isinstance(obj, (QFileDialog, QColorDialog)) and self.active()):
@@ -853,6 +856,26 @@ class GlassDialogs(QObject):
                 obj.windowHandle().startSystemResize(e)
                 return True
         return False
+
+    def tooltip(self, tip, t):
+        """Kurzinfos (Tooltips) im Glas-Look: durchscheinend, runde Ecken, Weichzeichner."""
+        if t == QEvent.Polish:
+            if tip.property("nnTip") is not None or not self.active():
+                return
+            tip.setProperty("nnTip", True)
+            created = tip.testAttribute(Qt.WA_WState_Created)
+            tip.setAttribute(Qt.WA_TranslucentBackground)
+            if created and not IS_WIN:
+                tip.windowHandle().destroy()      # X11: neu anlegen, damit das Fenster einen Alphakanal bekommt
+            return
+        if tip.property("nnTip") is not True:
+            return
+        blur = bool(self.win.theme_dict.get("blur"))
+        bg = QColor(T.solid); bg.setAlphaF(T.alpha if blur else max(T.alpha, 0.9))
+        r = max(self.radius() - 4, 0) if not IS_WIN else 0
+        tip.setStyleSheet(f"QToolTip {{ background: {css(bg)}; color: {css(T.fg)}; border: 1px solid {css(T.ov(0.16))};"
+                          f" border-radius: {r}px; padding: 5px 8px; }}")
+        QTimer.singleShot(0, lambda: tip.isVisible() and set_window_blur(tip, blur, r))
 
     @staticmethod
     def resizable(d):
