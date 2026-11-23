@@ -868,9 +868,14 @@ class GlassDialogs(QObject):
 
     def convert(self, d):
         d.setProperty("nnGlass", True)
+        created = d.testAttribute(Qt.WA_WState_Created)
         d.setAttribute(Qt.WA_TranslucentBackground)
         d.setAttribute(Qt.WA_Hover)
         d.setWindowFlags(d.windowFlags() | Qt.FramelessWindowHint)
+        if created and not IS_WIN:
+            # X11 wählt die Farbtiefe (mit/ohne Alphakanal) nur beim Anlegen des Fensters: schon angelegte
+            # Dialoge neu anlegen, sonst bleiben sie deckend und die runden Ecken schwarz
+            d.windowHandle().destroy()
         d.style().unpolish(d); d.style().polish(d)
         tb = GlassTitle(d)
         d._nn_title = tb
@@ -890,8 +895,7 @@ class GlassDialogs(QObject):
         p = QPainter(d)
         p.setRenderHint(QPainter.Antialiasing)
         bg = QColor(T.solid)
-        # nur wenig deckender als das Hauptfenster, damit der Glas-Look sichtbar bleibt (ohne Weichzeichner etwas mehr)
-        bg.setAlphaF(min(1.0, T.alpha + (0.03 if self.win.theme_dict.get("blur") else 0.08)))
+        bg.setAlphaF(T.alpha)              # gleiche Deckkraft wie das Hauptfenster (Regler in den Einstellungen)
         r = self.radius()
         rect = QRectF(d.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         p.setPen(QPen(T.ov(0.16), 1)); p.setBrush(bg)
