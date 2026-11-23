@@ -890,8 +890,8 @@ class GlassDialogs(QObject):
         p = QPainter(d)
         p.setRenderHint(QPainter.Antialiasing)
         bg = QColor(T.solid)
-        # nur wenig deckender als das Hauptfenster, damit der Glas-Look sichtbar bleibt; ohne Weichzeichner gut lesbar
-        bg.setAlphaF(min(1.0, T.alpha + 0.03) if self.win.theme_dict.get("blur") else max(T.alpha, 0.94))
+        # nur wenig deckender als das Hauptfenster, damit der Glas-Look sichtbar bleibt (ohne Weichzeichner etwas mehr)
+        bg.setAlphaF(min(1.0, T.alpha + (0.03 if self.win.theme_dict.get("blur") else 0.08)))
         r = self.radius()
         rect = QRectF(d.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         p.setPen(QPen(T.ov(0.16), 1)); p.setBrush(bg)
@@ -9028,12 +9028,28 @@ class SettingsDialog(QDialog):
         ap = AboutPage(win); ab.setWidget(ap); ab.viewport().setAutoFillBackground(False); ap.setAutoFillBackground(False)
         self.tabs.addTab(ab, tr_("Über"))
 
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        bb.button(QDialogButtonBox.Ok).setText(tr_("Übernehmen"))
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Apply | QDialogButtonBox.Cancel)
+        bb.button(QDialogButtonBox.Ok).setText(tr_("OK"))
+        bb.button(QDialogButtonBox.Apply).setText(tr_("Übernehmen"))
+        bb.button(QDialogButtonBox.Apply).setToolTip(tr_("Einstellungen übernehmen, Fenster bleibt offen"))
         bb.button(QDialogButtonBox.Cancel).setText(tr_("Abbrechen"))
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
+        bb.button(QDialogButtonBox.Apply).clicked.connect(self.apply)
         lay.addWidget(bb)
         self.tabs.setCurrentIndex(tab)
+        self._fit_tabs()
+
+    def _fit_tabs(self):
+        """Breit genug, dass alle Reiter (bis „Über“) ohne Pfeile sichtbar sind."""
+        m = self.layout().contentsMargins()
+        need = self.tabs.tabBar().sizeHint().width() + m.left() + m.right() + 24
+        self.setMinimumWidth(max(760, need))
+        if self.width() < need:
+            self.resize(need, self.height())
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._fit_tabs()           # nach dem Polieren (Schrift/Stil) noch einmal messen
 
     def _folders(self):
         return [self.flist.item(i).text() for i in range(self.flist.count())]
@@ -9319,6 +9335,11 @@ class SettingsDialog(QDialog):
         self._jf_update()
 
     def accept(self):
+        self.apply(close=True)
+
+    def apply(self, close=False):
+        """Übernehmen: speichern und anwenden. Ohne close bleibt das Fenster offen, Abbrechen nimmt danach
+        nur noch spätere Änderungen zurück."""
         if win_q := getattr(self, "jf_q", None):
             q = win_q.currentData()
             if q != self.win.settings.value("jf/quality", "orig"):
@@ -9328,7 +9349,10 @@ class SettingsDialog(QDialog):
         newly_writing = self.o_tags.isChecked() and not self.win.online_opts()["write_tags"]
         if self._save():
             QTimer.singleShot(0, self.win.rescan)
-        super().accept()
+        self.orig_theme = dict(self.win.theme_dict)
+        self.orig_nav = self._layout_from_list()
+        if close:
+            super().accept()
         pending = {p: c for p, c in self.win.local_lib.overrides.items() if c}
         if newly_writing and pending:
             if QMessageBox.question(self.win, APP_NAME,
