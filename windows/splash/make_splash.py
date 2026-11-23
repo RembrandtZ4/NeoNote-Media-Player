@@ -1,5 +1,5 @@
 """Zeichnet das Bild des Installer-Startfensters (NeoNote-Look) als Rohdaten für neonote-splash.exe.
-Aufruf: python3 make_splash.py <version> <neonote.png>  →  splash_<lang>_<scale>.bin + splash.rc"""
+Aufruf: python3 make_splash.py <version> <logo.png>  →  splash_<lang>_<scale>.bin + splash.rc"""
 import struct, sys, os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import Qt, QRectF, QPointF
