@@ -26,6 +26,7 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [x] **Star ratings in the music files** (WMP-compatible)
 
 ## Next
+- [ ] **Jellyfin security:** store the access token in the system's password store (Windows Credential Manager, KWallet) and warn before signing in over unencrypted `http://` outside the home network
 - [ ] **AUR package** – install with `yay -S neonote`
 - [ ] **Native Wayland** with KDE's own blur (sharper with fractional scaling)
 - [ ] **Flathub** listing
@@ -66,6 +67,7 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [x] **Sternbewertungen in den Musikdateien** (kompatibel mit WMP)
 
 ## Als Nächstes
+- [ ] **Jellyfin-Sicherheit:** den Zugangsschlüssel im Passwortspeicher des Systems ablegen (Windows-Anmeldeinformationsverwaltung, KWallet) und vor einer Anmeldung über unverschlüsseltes `http://` außerhalb des Heimnetzes warnen
 - [ ] **AUR-Paket** – Installation mit `yay -S neonote`
 - [ ] **Natives Wayland** mit dem Weichzeichner von KDE (schärfer bei krummer Skalierung)
 - [ ] **Aufnahme in Flathub**

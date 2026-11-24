@@ -8893,6 +8893,7 @@ class SettingsDialog(QDialog):
 
     def __init__(self, win, tab=0):
         super().__init__(win)
+        self._after_show = []                  # Langsames (Geräte, Registry) erst nach dem Öffnen laden
         self.win = win
         self.setWindowTitle(tr_("Einstellungen"))
         self.setMinimumSize(760, 600)
@@ -9106,11 +9107,19 @@ class SettingsDialog(QDialog):
         if IS_WIN:
             sv.addWidget(QLabel(tr_("<b>Standardplayer</b>")))
             sv.addWidget(QLabel(tr_("Diese Formate mit NeoNote öffnen:")))
-            try:
-                cur = win_claimed_types()
-            except Exception:
-                cur = set()
-            fmt = FormatPicker(cur or None)
+            fmt = FormatPicker()
+
+            def fill_formats():                       # Registry erst nach dem Öffnen lesen
+                try:
+                    cur = win_claimed_types()
+                except Exception:
+                    cur = set()
+                if cur:
+                    for _cb, chips, _box, _l in fmt.groups.values():
+                        for e, b in chips.items():
+                            b.blockSignals(True); b.setChecked(e in cur); b.blockSignals(False)
+                    fmt._sync()
+            self._after_show.append(fill_formats)
             fmt.layout().setContentsMargins(0, 0, 0, 0)
             sv.addWidget(fmt)
             db = QPushButton(tr_("Zuordnung übernehmen"))
@@ -9231,12 +9240,23 @@ class SettingsDialog(QDialog):
         self.s_dev = QComboBox(); self.s_dev.setMinimumWidth(320)
         self.s_dev.addItem(tr_("Systemstandard"), "auto")
         cur_dev = win.settings.value("audio/device", "auto") or "auto"
-        for name, desc in win.player.audio_devices():
-            if name and name != "auto":
-                self.s_dev.addItem(desc, name)
-        if self.s_dev.findData(cur_dev) < 0:              # gerade nicht angeschlossen: trotzdem anzeigen
-            self.s_dev.addItem(tr_("{0} (nicht verbunden)").format(cur_dev), cur_dev)
-        self.s_dev.setCurrentIndex(max(0, self.s_dev.findData(cur_dev)))
+        if cur_dev != "auto":                             # vorläufig, bis die Geräteliste da ist
+            self.s_dev.addItem(cur_dev, cur_dev); self.s_dev.setCurrentIndex(1)
+
+        def fill_devices():
+            # Die Geräteliste abzufragen kann (v. a. unter Windows) dauern – erst nach dem Öffnen des Fensters
+            keep = self.s_dev.currentData() or "auto"
+            self.s_dev.blockSignals(True)
+            while self.s_dev.count() > 1:
+                self.s_dev.removeItem(1)
+            for name, desc in win.player.audio_devices():
+                if name and name != "auto":
+                    self.s_dev.addItem(desc, name)
+            if self.s_dev.findData(keep) < 0:                 # gerade nicht angeschlossen: trotzdem anzeigen
+                self.s_dev.addItem(tr_("{0} (nicht verbunden)").format(keep), keep)
+            self.s_dev.setCurrentIndex(max(0, self.s_dev.findData(keep)))
+            self.s_dev.blockSignals(False)
+        self._after_show.append(fill_devices)
         drow.addWidget(self.s_dev, 1)
         sv.addLayout(drow)
         self.s_bp = QCheckBox(tr_("Bitgenaue Wiedergabe (exklusiver Zugriff, z. B. für externe DACs)"))
@@ -9354,6 +9374,9 @@ class SettingsDialog(QDialog):
     def showEvent(self, e):
         super().showEvent(e)
         self._fit_tabs()           # nach dem Polieren (Schrift/Stil) noch einmal messen
+        jobs, self._after_show = self._after_show, []
+        for job in jobs:
+            QTimer.singleShot(60, job)
 
     def done(self, r):
         gd = getattr(self.win, "_glass", None)
@@ -11284,7 +11307,12 @@ class MainWindow(QMainWindow):
         return super().nativeEvent(etype, message)
 
     def open_settings(self, tab=0):
-        SettingsDialog(self, tab).exec()
+        t0 = time.perf_counter()
+        d = SettingsDialog(self, tab)
+        ms = (time.perf_counter() - t0) * 1000
+        if ms > 250:                                   # zum Nachsehen, falls sich das Öffnen träge anfühlt
+            crash_note(f"Einstellungen aufgebaut in {ms:.0f} ms")
+        d.exec()
 
     # ── Online-Informationen ──────────────────────────────────────────────
     def online_opts(self):
