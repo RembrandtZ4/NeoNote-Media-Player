@@ -4407,12 +4407,38 @@ class UpdateCheck(QThread):
     result = Signal(dict)
     failed = Signal(str)
 
+    def __init__(self, parent=None, beta=False):
+        super().__init__(parent)
+        self.beta = beta
+
+    @staticmethod
+    def _api(url):
+        req = urllib.request.Request(url, headers={"User-Agent": f"{APP_NAME}/{APP_VERSION}",
+                                                  "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read().decode("utf-8"))
+
+    def _newest(self):
+        """Stabil: die als „neueste“ markierte Release. Beta: die höchste Version unter allen Releases
+        einschließlich Vorabversionen (Testversionen) – nur solche mit Versionsnummer im Tag."""
+        if not self.beta:
+            return self._api(UPDATE_API)
+        best = None
+        for d in self._api(UPDATE_API.rsplit("/", 1)[0] + "?per_page=20"):
+            if d.get("draft"):
+                continue
+            ver = (d.get("tag_name") or "").lstrip("vV")
+            if not re.match(r"^\d+(\.\d+)*$", ver):
+                continue                                      # z. B. die Vorabversion „test“ (Linux-Testpaket)
+            if best is None or version_tuple(ver) > version_tuple(best["tag_name"].lstrip("vV")):
+                best = d
+        if best is None:
+            raise ValueError("no release")
+        return best
+
     def run(self):
         try:
-            req = urllib.request.Request(UPDATE_API, headers={"User-Agent": f"{APP_NAME}/{APP_VERSION}",
-                                                             "Accept": "application/vnd.github+json"})
-            with urllib.request.urlopen(req, timeout=15) as r:
-                d = json.loads(r.read().decode("utf-8"))
+            d = self._newest()
             assets = {}
             for a in d.get("assets") or []:
                 assets[a.get("name", "")] = {"url": a.get("browser_download_url", ""), "size": int(a.get("size") or 0),
@@ -4421,7 +4447,7 @@ class UpdateCheck(QThread):
             if not ver:
                 raise ValueError("no version")
             self.result.emit({"version": ver, "notes": d.get("body") or "", "url": d.get("html_url") or RELEASES_URL,
-                              "assets": assets})
+                              "assets": assets, "beta": bool(d.get("prerelease"))})
         except Exception as e:
             crash_note(f"Update-Prüfung über die GitHub-API fehlgeschlagen: {e!r}")
             try:                                          # z. B. API-Limit (403) oder gesperrte API: Release-Seite
@@ -8976,10 +9002,22 @@ class SettingsDialog(QDialog):
         if IS_WIN:
             sv.addWidget(QLabel(tr_("<b>Standardplayer</b>")))
             db = QPushButton(tr_("NeoNote als Standardplayer festlegen …"))
-            db.clicked.connect(win_open_default_apps)
+            dstat = QLabel(""); dstat.setObjectName("hint"); dstat.setWordWrap(True)
+
+            def make_default():
+                took, mine, other = win_claim_free_types()
+                if other:
+                    dstat.setText(tr_("NeoNote öffnet jetzt {0} Formate. Für {1} weitere hat Windows schon ein Programm "
+                                      "festgelegt – die stellst du in den Windows-Einstellungen, die sich gerade öffnen, "
+                                      "bei NeoNote einzeln um.").format(took + mine, other))
+                    win_open_default_apps()
+                else:
+                    dstat.setText(tr_("NeoNote öffnet jetzt alle Musik- und Videodateien."))
+            db.clicked.connect(make_default)
             sv.addWidget(db, 0, Qt.AlignLeft)
-            dh = QLabel(tr_("Öffnet die Windows-Einstellungen bei NeoNote. Dort oben auf „Als Standard festlegen“ "
-                        "klicken – dann öffnen sich alle Musik- und Videodateien mit NeoNote."))
+            sv.addWidget(dstat)
+            dh = QLabel(tr_("NeoNote übernimmt alle Formate, für die noch kein Programm festgelegt ist. Wo du oder "
+                        "Windows schon eins gewählt habt, lässt Windows nur eine Änderung von Hand in den Einstellungen zu."))
             dh.setObjectName("hint"); dh.setWordWrap(True); sv.addWidget(dh)
         sv.addWidget(QLabel(tr_("<b>Start</b>")))
         self.s_splash = QCheckBox(tr_("Ladebildschirm beim Start anzeigen"))
@@ -9005,6 +9043,13 @@ class SettingsDialog(QDialog):
             ug.addWidget(self.s_umode, 1, 1)
         ug.setColumnStretch(2, 1)
         sv.addLayout(ug)
+        self.s_ubeta = QCheckBox(tr_("Auch Testversionen (Beta) anbieten"))
+        self.s_ubeta.setChecked(win.settings.value("update/beta", False, type=bool))
+        self.s_ubeta.setToolTip(tr_("Testversionen enthalten die neuesten Funktionen und Korrekturen, bevor sie offiziell "
+                                    "erscheinen – können aber noch Fehler haben."))
+        # sofort speichern, damit „Jetzt nach Updates suchen“ den Kanal schon berücksichtigt
+        self.s_ubeta.toggled.connect(lambda v: win.settings.setValue("update/beta", v))
+        sv.addWidget(self.s_ubeta)
         urow = QHBoxLayout()
         ubtn = QPushButton(tr_("Jetzt nach Updates suchen"))
         ulbl = QLabel(""); ulbl.setObjectName("hint"); ulbl.setWordWrap(True)
@@ -13962,7 +14007,7 @@ class MainWindow(QMainWindow):
             return
         if report:
             report(tr_("Suche nach Updates …"))
-        th = UpdateCheck(self)
+        th = UpdateCheck(self, beta=self.settings.value("update/beta", False, type=bool))
         self._update_checker = th
 
         def ok(info):
@@ -13972,7 +14017,8 @@ class MainWindow(QMainWindow):
                     report(tr_("NeoNote ist auf dem neuesten Stand ({0}).").format(APP_VERSION))
                 return
             if report:
-                report(tr_("Version {0} ist verfügbar.").format(info["version"]))
+                report((tr_("Testversion {0} ist verfügbar.") if info.get("beta") else
+                        tr_("Version {0} ist verfügbar.")).format(info["version"]))
             self._update_found(info, manual)
 
         def bad(e):
@@ -14527,6 +14573,49 @@ def win_make_shortcut(lnk, target, workdir, desc=""):
 DEFAULT_APPS_URI = "ms-settings:defaultapps?registeredAppMachine=NeoNote"
 
 
+def win_user_choice(ext):
+    """ProgId, die der Nutzer (oder Windows) für eine Dateiendung festgelegt hat – geschützt, darf kein Programm ändern."""
+    import winreg
+    for sub in ("UserChoiceLatest", "UserChoice"):
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                rf"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext}\{sub}") as k:
+                v = winreg.QueryValueEx(k, "ProgId")[0]
+                if v:
+                    return v
+        except OSError:
+            pass
+    return ""
+
+
+def win_claim_free_types():
+    """Wie VLC: NeoNote als Standard für alle Musik-/Videoformate eintragen, für die noch keine Auswahl
+    getroffen wurde (offizieller Weg). Eine bestehende Auswahl bleibt unangetastet.
+    Rückgabe: (übernommen, schon NeoNote, anderweitig festgelegt)."""
+    import winreg
+    took = mine = other = 0
+    for e in sorted(AUDIO_EXT | VIDEO_EXT):
+        prog = f"NeoNote.{e[1:]}"
+        uc = win_user_choice(e)
+        if uc:
+            if uc.startswith("NeoNote.") or uc.lower().startswith("applications\\neonote.exe"):
+                mine += 1
+            else:
+                other += 1
+            continue
+        try:
+            with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{e}", 0, winreg.KEY_WRITE) as k:
+                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, prog)
+            took += 1
+        except OSError:
+            other += 1
+    try:
+        ctypes.windll.shell32.SHChangeNotify(0x08000000, 0, None, None)
+    except Exception:
+        pass
+    return took, mine, other
+
+
 def win_open_default_apps():
     """Windows-Einstellungen direkt bei „Standard-Apps ▸ NeoNote“ öffnen (Windows 11; sonst die Übersicht).
     Direkt über ShellExecute – der Explorer versteht Links mit „?…“ nicht und öffnet sonst nur ein Ordnerfenster."""
@@ -14864,11 +14953,15 @@ class SetupWindow(QWidget):
         self.bar.setValue(100)
         self.status.setText(tr_("NeoNote ist installiert. Viel Spaß mit deiner Musik!"))
         if self.cb_default.isChecked() and self.cb_assoc.isChecked() and self.isVisible():
-            # Windows lässt Programme den Standard nicht selbst setzen – wir öffnen die passende Seite
-            win_open_default_apps()
-            self.status.setText(tr_("NeoNote ist installiert. In den Windows-Einstellungen, die sich gerade öffnen, "
-                                "oben bei NeoNote auf <b>„Als Standard festlegen“</b> klicken – fertig."))
-            self.status.setTextFormat(Qt.RichText)
+            took, mine, other = win_claim_free_types()
+            if other:
+                # für schon festgelegte Formate lässt Windows nur die Einstellungen zu
+                win_open_default_apps()
+                self.status.setText(tr_("NeoNote ist installiert und öffnet jetzt {0} Formate. Für {1} weitere hat "
+                                        "Windows schon ein Programm festgelegt – die kannst du in den Einstellungen, "
+                                        "die sich gerade öffnen, bei NeoNote einzeln umstellen.").format(took + mine, other))
+            else:
+                self.status.setText(tr_("NeoNote ist installiert und öffnet jetzt alle Musik- und Videodateien."))
         self.cb_desk.hide(); self.cb_assoc.hide(); self.cb_default.hide()
         self.btn_go.setText(tr_("NeoNote starten")); self.btn_go.setEnabled(True)
         self.btn_go.clicked.disconnect(); self.btn_go.clicked.connect(self._launch)

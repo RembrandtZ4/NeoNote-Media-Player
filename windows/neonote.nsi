@@ -121,6 +121,136 @@ Section "Uninstall"
   Delete "$INSTDIR\NeoNote.exe"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
+  ; NeoNote als Standard für Formate ohne Nutzerauswahl (HKCU) wieder austragen
+  ReadRegStr $0 HKCU "Software\Classes\.3gp" ""
+  StrCmp $0 "NeoNote.3gp" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.3gp" ""
+  ReadRegStr $0 HKCU "Software\Classes\.aac" ""
+  StrCmp $0 "NeoNote.aac" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.aac" ""
+  ReadRegStr $0 HKCU "Software\Classes\.ac3" ""
+  StrCmp $0 "NeoNote.ac3" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.ac3" ""
+  ReadRegStr $0 HKCU "Software\Classes\.aif" ""
+  StrCmp $0 "NeoNote.aif" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.aif" ""
+  ReadRegStr $0 HKCU "Software\Classes\.aiff" ""
+  StrCmp $0 "NeoNote.aiff" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.aiff" ""
+  ReadRegStr $0 HKCU "Software\Classes\.amr" ""
+  StrCmp $0 "NeoNote.amr" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.amr" ""
+  ReadRegStr $0 HKCU "Software\Classes\.ape" ""
+  StrCmp $0 "NeoNote.ape" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.ape" ""
+  ReadRegStr $0 HKCU "Software\Classes\.asf" ""
+  StrCmp $0 "NeoNote.asf" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.asf" ""
+  ReadRegStr $0 HKCU "Software\Classes\.au" ""
+  StrCmp $0 "NeoNote.au" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.au" ""
+  ReadRegStr $0 HKCU "Software\Classes\.avi" ""
+  StrCmp $0 "NeoNote.avi" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.avi" ""
+  ReadRegStr $0 HKCU "Software\Classes\.dff" ""
+  StrCmp $0 "NeoNote.dff" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.dff" ""
+  ReadRegStr $0 HKCU "Software\Classes\.divx" ""
+  StrCmp $0 "NeoNote.divx" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.divx" ""
+  ReadRegStr $0 HKCU "Software\Classes\.dsf" ""
+  StrCmp $0 "NeoNote.dsf" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.dsf" ""
+  ReadRegStr $0 HKCU "Software\Classes\.dts" ""
+  StrCmp $0 "NeoNote.dts" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.dts" ""
+  ReadRegStr $0 HKCU "Software\Classes\.flac" ""
+  StrCmp $0 "NeoNote.flac" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.flac" ""
+  ReadRegStr $0 HKCU "Software\Classes\.flv" ""
+  StrCmp $0 "NeoNote.flv" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.flv" ""
+  ReadRegStr $0 HKCU "Software\Classes\.m2ts" ""
+  StrCmp $0 "NeoNote.m2ts" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.m2ts" ""
+  ReadRegStr $0 HKCU "Software\Classes\.m4a" ""
+  StrCmp $0 "NeoNote.m4a" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.m4a" ""
+  ReadRegStr $0 HKCU "Software\Classes\.m4b" ""
+  StrCmp $0 "NeoNote.m4b" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.m4b" ""
+  ReadRegStr $0 HKCU "Software\Classes\.m4v" ""
+  StrCmp $0 "NeoNote.m4v" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.m4v" ""
+  ReadRegStr $0 HKCU "Software\Classes\.mka" ""
+  StrCmp $0 "NeoNote.mka" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.mka" ""
+  ReadRegStr $0 HKCU "Software\Classes\.mkv" ""
+  StrCmp $0 "NeoNote.mkv" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.mkv" ""
+  ReadRegStr $0 HKCU "Software\Classes\.mov" ""
+  StrCmp $0 "NeoNote.mov" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.mov" ""
+  ReadRegStr $0 HKCU "Software\Classes\.mp2" ""
+  StrCmp $0 "NeoNote.mp2" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.mp2" ""
+  ReadRegStr $0 HKCU "Software\Classes\.mp3" ""
+  StrCmp $0 "NeoNote.mp3" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.mp3" ""
+  ReadRegStr $0 HKCU "Software\Classes\.mp4" ""
+  StrCmp $0 "NeoNote.mp4" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.mp4" ""
+  ReadRegStr $0 HKCU "Software\Classes\.mpc" ""
+  StrCmp $0 "NeoNote.mpc" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.mpc" ""
+  ReadRegStr $0 HKCU "Software\Classes\.mpeg" ""
+  StrCmp $0 "NeoNote.mpeg" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.mpeg" ""
+  ReadRegStr $0 HKCU "Software\Classes\.mpg" ""
+  StrCmp $0 "NeoNote.mpg" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.mpg" ""
+  ReadRegStr $0 HKCU "Software\Classes\.mts" ""
+  StrCmp $0 "NeoNote.mts" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.mts" ""
+  ReadRegStr $0 HKCU "Software\Classes\.oga" ""
+  StrCmp $0 "NeoNote.oga" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.oga" ""
+  ReadRegStr $0 HKCU "Software\Classes\.ogg" ""
+  StrCmp $0 "NeoNote.ogg" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.ogg" ""
+  ReadRegStr $0 HKCU "Software\Classes\.ogv" ""
+  StrCmp $0 "NeoNote.ogv" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.ogv" ""
+  ReadRegStr $0 HKCU "Software\Classes\.opus" ""
+  StrCmp $0 "NeoNote.opus" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.opus" ""
+  ReadRegStr $0 HKCU "Software\Classes\.spx" ""
+  StrCmp $0 "NeoNote.spx" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.spx" ""
+  ReadRegStr $0 HKCU "Software\Classes\.ts" ""
+  StrCmp $0 "NeoNote.ts" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.ts" ""
+  ReadRegStr $0 HKCU "Software\Classes\.tta" ""
+  StrCmp $0 "NeoNote.tta" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.tta" ""
+  ReadRegStr $0 HKCU "Software\Classes\.vob" ""
+  StrCmp $0 "NeoNote.vob" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.vob" ""
+  ReadRegStr $0 HKCU "Software\Classes\.wav" ""
+  StrCmp $0 "NeoNote.wav" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.wav" ""
+  ReadRegStr $0 HKCU "Software\Classes\.webm" ""
+  StrCmp $0 "NeoNote.webm" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.webm" ""
+  ReadRegStr $0 HKCU "Software\Classes\.wma" ""
+  StrCmp $0 "NeoNote.wma" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.wma" ""
+  ReadRegStr $0 HKCU "Software\Classes\.wmv" ""
+  StrCmp $0 "NeoNote.wmv" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.wmv" ""
+  ReadRegStr $0 HKCU "Software\Classes\.wv" ""
+  StrCmp $0 "NeoNote.wv" 0 +2
+  DeleteRegValue HKCU "Software\Classes\.wv" ""
   DeleteRegValue HKLM "Software\Classes\.3gp\OpenWithProgids" "NeoNote.Media"
   DeleteRegValue HKLM "Software\Classes\.aac\OpenWithProgids" "NeoNote.Media"
   DeleteRegValue HKLM "Software\Classes\.ac3\OpenWithProgids" "NeoNote.Media"
