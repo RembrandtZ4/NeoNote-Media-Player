@@ -10856,11 +10856,17 @@ class MainWindow(QMainWindow):
         self.on_top = on
         if IS_WIN and self.isVisible():
             try:                                          # ohne Neuanlegen des Fensters (kein Flackern)
-                import ctypes.wintypes
-                ctypes.windll.user32.SetWindowPos(int(self.winId()), -1 if on else -2, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010)
-                return
-            except Exception:
-                pass
+                import ctypes.wintypes as wt
+                swp = ctypes.windll.user32.SetWindowPos
+                swp.argtypes = [wt.HWND, wt.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wt.UINT]
+                swp.restype = wt.BOOL
+                # HWND_TOPMOST = -1, HWND_NOTOPMOST = -2 – als 64-Bit-Zeiger, sonst kommt nur 0xFFFFFFFF an
+                after = ctypes.c_void_p(-1 if on else -2)
+                if swp(wt.HWND(int(self.winId())), after, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010):   # NOSIZE|NOMOVE|NOACTIVATE
+                    return
+                crash_note(f"Immer im Vordergrund: SetWindowPos fehlgeschlagen ({ctypes.GetLastError()})")
+            except Exception as e:
+                crash_note(f"Immer im Vordergrund: {e!r}")
         if not self.isVisible():
             if QGuiApplication.platformName() == "xcb":
                 QTimer.singleShot(400, lambda: self.on_top and x11_keep_above(self, True))   # nach dem ersten Anzeigen
