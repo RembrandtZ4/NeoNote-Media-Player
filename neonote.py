@@ -183,6 +183,8 @@ AUDIO_EXT = {".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".m4b", ".mp4", "
 VIDEO_EXT = {".mkv", ".mp4", ".m4v", ".avi", ".webm", ".mov", ".wmv", ".flv", ".mpg", ".mpeg", ".ts",
              ".m2ts", ".mts", ".3gp", ".ogv", ".vob", ".divx", ".asf"}
 MEDIA_EXT = AUDIO_EXT | VIDEO_EXT
+ASSOC_AUDIO = sorted(AUDIO_EXT - VIDEO_EXT)        # für die Formatauswahl (Dateizuordnung)
+ASSOC_VIDEO = sorted(VIDEO_EXT)
 if IS_WIN:
     import getpass
     SERVER_NAME = "neonote-" + re.sub(r"[^A-Za-z0-9_.-]", "_", getpass.getuser() or "user")
@@ -9080,18 +9082,26 @@ class SettingsDialog(QDialog):
         th.setObjectName("hint"); th.setWordWrap(True); sv.addWidget(th)
         if IS_WIN:
             sv.addWidget(QLabel(tr_("<b>Standardplayer</b>")))
-            db = QPushButton(tr_("NeoNote als Standardplayer festlegen …"))
+            sv.addWidget(QLabel(tr_("Diese Formate mit NeoNote öffnen:")))
+            try:
+                cur = win_claimed_types()
+            except Exception:
+                cur = set()
+            fmt = FormatPicker(cur or None)
+            fmt.layout().setContentsMargins(0, 0, 0, 0)
+            sv.addWidget(fmt)
+            db = QPushButton(tr_("Zuordnung übernehmen"))
             dstat = QLabel(""); dstat.setObjectName("hint"); dstat.setWordWrap(True)
 
             def make_default():
-                took, mine, other = win_claim_free_types()
+                took, mine, other = win_claim_free_types(fmt.selected())
                 if other:
                     dstat.setText(tr_("NeoNote öffnet jetzt {0} Formate. Für {1} weitere hat Windows schon ein Programm "
                                       "festgelegt – die stellst du in den Windows-Einstellungen, die sich gerade öffnen, "
                                       "bei NeoNote einzeln um.").format(took + mine, other))
                     win_open_default_apps()
                 else:
-                    dstat.setText(tr_("NeoNote öffnet jetzt alle Musik- und Videodateien."))
+                    dstat.setText(tr_("NeoNote öffnet jetzt alle gewählten Formate."))
             db.clicked.connect(make_default)
             sv.addWidget(db, 0, Qt.AlignLeft)
             sv.addWidget(dstat)
@@ -14674,13 +14684,47 @@ def win_user_choice(ext):
     return ""
 
 
-def win_claim_free_types():
-    """Wie VLC: NeoNote als Standard für alle Musik-/Videoformate eintragen, für die noch keine Auswahl
+def win_claimed_types():
+    """Formate, die NeoNote gerade öffnet (eigener Standard-Eintrag oder Auswahl des Nutzers)."""
+    import winreg
+    out = set()
+    for e in AUDIO_EXT | VIDEO_EXT:
+        uc = win_user_choice(e)
+        if uc:
+            if uc.startswith("NeoNote."):
+                out.add(e)
+            continue
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{e}") as k:
+                if str(winreg.QueryValueEx(k, "")[0]).startswith("NeoNote."):
+                    out.add(e)
+        except OSError:
+            pass
+    return out
+
+
+def win_release_types(exts):
+    """Abgewählte Formate wieder freigeben – nur NeoNotes eigenen Standard-Eintrag, nie eine Nutzerauswahl."""
+    import winreg
+    for e in exts:
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{e}", 0,
+                                winreg.KEY_READ | winreg.KEY_WRITE) as k:
+                if str(winreg.QueryValueEx(k, "")[0]) == f"NeoNote.{e[1:]}":
+                    winreg.DeleteValue(k, "")
+        except OSError:
+            pass
+
+
+def win_claim_free_types(exts=None):
+    """Wie VLC: NeoNote als Standard für die gewählten Musik-/Videoformate eintragen, für die noch keine Auswahl
     getroffen wurde (offizieller Weg). Eine bestehende Auswahl bleibt unangetastet.
     Rückgabe: (übernommen, schon NeoNote, anderweitig festgelegt)."""
     import winreg
     took = mine = other = 0
-    for e in sorted(AUDIO_EXT | VIDEO_EXT):
+    wanted = set(AUDIO_EXT | VIDEO_EXT) if exts is None else set(exts)
+    win_release_types(set(AUDIO_EXT | VIDEO_EXT) - wanted)
+    for e in sorted(wanted):
         prog = f"NeoNote.{e[1:]}"
         uc = win_user_choice(e)
         if uc:
@@ -14885,6 +14929,64 @@ class SetupWorker(QThread):
         self.progress.emit(100, tr_("Fertig"))
 
 
+class FormatPicker(QWidget):
+    """Auswahl der Formate, die NeoNote öffnen soll: Gruppen „Musik“ und „Videos“, auf Wunsch einzeln."""
+    changed = Signal()
+
+    def __init__(self, selected=None, check_cls=QCheckBox, parent=None, cols=8):
+        super().__init__(parent)
+        sel = set(AUDIO_EXT | VIDEO_EXT) if selected is None else set(selected)
+        lay = QVBoxLayout(self); lay.setContentsMargins(26, 0, 0, 0); lay.setSpacing(4)
+        self.groups = {}
+        for key, label, exts in (("a", tr_("Musik"), ASSOC_AUDIO), ("v", tr_("Videos"), ASSOC_VIDEO)):
+            cb = check_cls(label); cb.setTristate(False)
+            grid = QGridLayout(); grid.setContentsMargins(26, 2, 0, 6); grid.setHorizontalSpacing(6); grid.setVerticalSpacing(6)
+            chips = {}
+            for i, e in enumerate(exts):
+                b = QPushButton(e); b.setCheckable(True); b.setChecked(e in sel); b.setObjectName("fmtchip")
+                b.setCursor(Qt.PointingHandCursor); b.toggled.connect(self._sync); b.setFixedHeight(24)
+                grid.addWidget(b, i // cols, i % cols); chips[e] = b
+            box = QWidget(); box.setLayout(grid); box.hide()
+            cb.clicked.connect(lambda _=False, k=key: self._group_click(k))
+            lay.addWidget(cb); lay.addWidget(box)
+            self.groups[key] = (cb, chips, box, label)
+        self.more = QLabel(); self.more.setObjectName("hint"); self.more.setCursor(Qt.PointingHandCursor)
+        self.more.mousePressEvent = lambda _e: self.toggle_details()
+        lay.addWidget(self.more)
+        self.setStyleSheet(
+            f"QPushButton#fmtchip {{ padding: 2px 8px; min-width: 0; border-radius: 10px; font-size: 12px;"
+            f" border: 1px solid {css(T.ov(0.18))}; background: transparent; color: {css(T.fg)}; }}"
+            f"QPushButton#fmtchip:checked {{ background: {css(T.ov(0.12))}; border-color: {css(T.accent)}; color: {css(T.fg)}; }}")
+        self._open = False
+        self._sync()
+
+    def toggle_details(self):
+        self._open = not self._open
+        for cb, chips, box, label in self.groups.values():
+            box.setVisible(self._open)
+        self._sync()
+
+    def _group_click(self, key):
+        cb, chips, box, label = self.groups[key]
+        allon = all(b.isChecked() for b in chips.values())
+        for b in chips.values():
+            b.blockSignals(True); b.setChecked(not allon); b.blockSignals(False)
+        self._sync()
+
+    def _sync(self, *_):
+        for cb, chips, box, label in self.groups.values():
+            n, t = sum(b.isChecked() for b in chips.values()), len(chips)
+            cb.setTristate(0 < n < t)
+            cb.setCheckState(Qt.Checked if n == t else Qt.PartiallyChecked if n else Qt.Unchecked)
+            cb.setText(tr_("{0} ({1} von {2} Formaten)").format(label, n, t))
+        self.more.setText(f"<a style='color:{css(T.accent)}' href='#'>"
+                          + (tr_("Einzelauswahl ausblenden") if self._open else tr_("Formate einzeln auswählen")) + "</a>")
+        self.changed.emit()
+
+    def selected(self):
+        return {e for cb, chips, box, label in self.groups.values() for e, b in chips.items() if b.isChecked()}
+
+
 class NeoCheck(QCheckBox):
     """Runde Checkbox in Akzentfarbe mit gezeichnetem Häkchen."""
 
@@ -14899,12 +15001,14 @@ class NeoCheck(QCheckBox):
         p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
         y = self.height() / 2
         box = QRectF(0.5, y - 8, 16, 16)
-        on = self.isChecked()
+        on = self.checkState() != Qt.Unchecked
         p.setPen(QPen(T.accent if on else T.ov(0.30), 1)); p.setBrush(T.accent if on else T.ov(0.05))
         if not self.isEnabled():
             p.setOpacity(0.55)
         p.drawRoundedRect(box, 4, 4)
-        if on:
+        if self.checkState() == Qt.PartiallyChecked:           # Teil einer Gruppe gewählt: Strich
+            p.setPen(QPen(T.on_acc, 2, Qt.SolidLine, Qt.RoundCap)); p.drawLine(QPointF(5, y), QPointF(12, y))
+        elif on:
             p.setPen(QPen(T.on_acc, 2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)); p.setBrush(Qt.NoBrush)
             path = QPainterPath(QPointF(4.5, y)); path.lineTo(7.5, y + 3); path.lineTo(12.5, y - 3.5)
             p.drawPath(path)
@@ -14915,13 +15019,20 @@ class NeoCheck(QCheckBox):
 class SetupWindow(QWidget):
     """Ein Fenster im Look des Players: Neon-Note, Ordner, Optionen, Fortschritt."""
 
+    def _fit_height(self):
+        """Mit aufgeklappter Formatauswahl wächst das Fenster mit (nach oben begrenzt durch den Bildschirm)."""
+        extra = sum(box.sizeHint().height() for _cb, _ch, box, _l in self.fmt.groups.values()) if self.fmt._open else 0
+        scr = self.screen().availableGeometry().height() if self.screen() else 1000
+        self.setFixedSize(540, min(self._h0 + max(0, extra), scr - 40))
+
     def __init__(self, src, version):
         super().__init__(None, Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setWindowTitle(tr_("{0} {1} – Setup").format(APP_TITLE, version))
         self.setWindowIcon(app_icon())
         self.src, self.version = src, version
-        self.setFixedSize(540, 570)
+        self._h0 = 640                          # inkl. Formatauswahl (zugeklappt)
+        self.setFixedSize(540, self._h0)
         self.icon = app_icon().pixmap(96, 96)
         dst, old_ver = win_default_install_dir() if IS_WIN else (str(Path.home() / "NeoNote"), "")
         self.old_ver = old_ver
@@ -14946,10 +15057,14 @@ class SetupWindow(QWidget):
         self.cb_desk = NeoCheck(tr_("Verknüpfung auf dem Desktop")); self.cb_desk.setChecked(False)
         self.cb_assoc = NeoCheck(tr_("Für Musik und Videos anbieten (Öffnen mit, Standard-Apps)"))
         self.cb_assoc.setChecked(False)
-        self.cb_default = NeoCheck(tr_("NeoNote als Standardplayer für alle Musik- und Videodateien festlegen"))
+        self.cb_default = NeoCheck(tr_("NeoNote als Standardplayer für …"))
         self.cb_default.setChecked(False); self.cb_default.setEnabled(False)
         self.cb_assoc.toggled.connect(lambda v: (self.cb_default.setEnabled(v), v or self.cb_default.setChecked(False)))
-        lay.addWidget(self.cb_desk); lay.addWidget(self.cb_assoc); lay.addWidget(self.cb_default)
+        self.fmt = FormatPicker(check_cls=NeoCheck, cols=7); self.fmt.setEnabled(False)
+        self.cb_default.toggled.connect(self.fmt.setEnabled)
+        self._fmt_h0 = self.fmt.sizeHint().height()
+        self.fmt.changed.connect(lambda: QTimer.singleShot(0, self._fit_height))
+        lay.addWidget(self.cb_desk); lay.addWidget(self.cb_assoc); lay.addWidget(self.cb_default); lay.addWidget(self.fmt)
         lay.addStretch()
         self.bar = QProgressBar(); self.bar.setRange(0, 100); self.bar.setTextVisible(False)
         self.bar.setFixedHeight(6); self.bar.hide()
@@ -15017,7 +15132,7 @@ class SetupWindow(QWidget):
             self.path.setText(d)
 
     def _go(self):
-        for w in (self.path, self.btn_browse, self.cb_desk, self.cb_assoc, self.cb_default, self.btn_go, self.btn_x):
+        for w in (self.path, self.btn_browse, self.cb_desk, self.cb_assoc, self.cb_default, self.fmt, self.btn_go, self.btn_x):
             w.setEnabled(False)
         self.bar.show(); self.status.setText(tr_("Starte …"))
         self.th = SetupWorker(self.src, self.path.text().strip(), self.cb_desk.isChecked(),
@@ -15031,15 +15146,15 @@ class SetupWindow(QWidget):
         self.btn_x.setEnabled(True)
         if not ok:
             self.status.setText(tr_("<span style='color:#ff6b6b'>Das hat nicht geklappt: {0}</span>").format(err))
-            for w in (self.path, self.btn_browse, self.cb_desk, self.cb_assoc, self.cb_default, self.btn_go):
+            for w in (self.path, self.btn_browse, self.cb_desk, self.cb_assoc, self.cb_default, self.fmt, self.btn_go):
                 w.setEnabled(True)
             self.btn_go.setText(tr_("Erneut versuchen"))
             return
         self.result_ok = True
         self.bar.setValue(100)
         self.status.setText(tr_("NeoNote ist installiert. Viel Spaß mit deiner Musik!"))
-        if self.cb_default.isChecked() and self.cb_assoc.isChecked() and self.isVisible():
-            took, mine, other = win_claim_free_types()
+        if self.cb_default.isChecked() and self.cb_assoc.isChecked() and self.isVisible() and self.fmt.selected():
+            took, mine, other = win_claim_free_types(self.fmt.selected())
             if other:
                 # für schon festgelegte Formate lässt Windows nur die Einstellungen zu
                 win_open_default_apps()
@@ -15047,8 +15162,8 @@ class SetupWindow(QWidget):
                                         "Windows schon ein Programm festgelegt – die kannst du in den Einstellungen, "
                                         "die sich gerade öffnen, bei NeoNote einzeln umstellen.").format(took + mine, other))
             else:
-                self.status.setText(tr_("NeoNote ist installiert und öffnet jetzt alle Musik- und Videodateien."))
-        self.cb_desk.hide(); self.cb_assoc.hide(); self.cb_default.hide()
+                self.status.setText(tr_("NeoNote ist installiert und öffnet jetzt alle gewählten Formate."))
+        self.cb_desk.hide(); self.cb_assoc.hide(); self.cb_default.hide(); self.fmt.hide()
         self.btn_go.setText(tr_("NeoNote starten")); self.btn_go.setEnabled(True)
         self.btn_go.clicked.disconnect(); self.btn_go.clicked.connect(self._launch)
         self.btn_close.show(); self.update()

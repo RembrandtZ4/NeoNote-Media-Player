@@ -810,5 +810,13 @@
  "Auch Testversionen (Beta) anbieten": "Also offer test versions (beta)",
  "Testversionen enthalten die neuesten Funktionen und Korrekturen, bevor sie offiziell erscheinen – können aber noch Fehler haben.": "Test versions contain the newest features and fixes before they are officially released – but may still have bugs.",
  "Testversion {0} ist verfügbar.": "Test version {0} is available.",
- "Fenster beim Öffnen und Schließen animieren": "Animate windows when opening and closing"
+ "Fenster beim Öffnen und Schließen animieren": "Animate windows when opening and closing",
+ "NeoNote als Standardplayer für …": "Make NeoNote the default player for …",
+ "{0} ({1} von {2} Formaten)": "{0} ({1} of {2} formats)",
+ "Einzelauswahl ausblenden": "Hide individual formats",
+ "Formate einzeln auswählen": "Choose formats individually",
+ "NeoNote ist installiert und öffnet jetzt alle gewählten Formate.": "NeoNote is installed and now opens all selected formats.",
+ "NeoNote öffnet jetzt alle gewählten Formate.": "NeoNote now opens all selected formats.",
+ "Diese Formate mit NeoNote öffnen:": "Open these formats with NeoNote:",
+ "Zuordnung übernehmen": "Apply file associations"
 }
