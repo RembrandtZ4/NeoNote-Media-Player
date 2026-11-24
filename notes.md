@@ -1,45 +1,31 @@
-🇬🇧 English · 🇩🇪 Deutsch unten
+🧪 **Beta / test version** · 🇩🇪 Deutsch unten
 
-## Download
+This is a **test version** for everyone who wants to try new features early. It may still contain bugs. The regular version is still [1.3.1](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest).
 
-| System | File |
-|---|---|
-| **Windows 10/11** | `NeoNote-Setup-1.3.1.exe` – run it and click through the installer. NeoNote 1.1.8 and newer offer this update by itself. |
-| **Linux (all distributions)** | `NeoNote-1.3.1-x86_64.flatpak` – open it with a double-click (Discover, GNOME Software) or run `flatpak install --user NeoNote-1.3.1-x86_64.flatpak`. |
-| **Linux (Arch, CachyOS, Manjaro …)** | `neonote-1.3.1-linux-arch.zip` – unpack it and run `./install.sh` in the folder. |
+**Download:** `NeoNote-Setup-1.3.1.92.exe` (Windows 10/11) – install over your existing NeoNote, settings and library are kept. Test versions are Windows-only; on Linux, test builds are available as a Flatpak in the [test](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/tag/test) pre-release.
 
-> The Flatpak is attached a few minutes after the release is published (it is built automatically). On first launch Windows may show “Windows protected your PC” because the installer isn't signed. Click “More info ▸ Run anyway” to continue.
->
-> If NeoNote 1.3 reports “No connection to GitHub” when checking for updates, please download this version once by hand – from 1.3.1 on the update check works on those systems too.
+**Get test versions automatically:** Settings ▸ System ▸ Updates ▸ “Also offer test versions (beta)”. The updater then offers new test versions as well as regular ones.
 
-**Improved**
-- **Always on top:** pin button next to “Minimize” (and in the ☰ menu, Ctrl+Shift+T). Suggested in the Deskmodder forum.
-- Tooltips and right-click menus now match the window: translucent, rounded corners and blur. Can be turned off under Settings ▸ Appearance.
+**New**
+- **Open music and videos with NeoNote** like VLC does: the installer option (and the button under Settings ▸ System) makes NeoNote the default for every format that has no app chosen yet. Formats you or Windows already assigned stay protected by Windows – those you switch by hand.
+- **Beta channel** in the updater (see above).
 
 **Fixes**
-- Update check: if the GitHub API can't be reached (e.g. rate limit), NeoNote falls back to the release page; the message now shows the reason.
-- Update check and all online features failed on fresh Windows installations (e.g. Windows Sandbox) with “No connection to GitHub”: Windows only downloads missing root certificates when a browser needs them. NeoNote now ships its own certificate list as a fallback.
-- Settings: the window is tall enough for the largest tab (rows were squeezed together before).
+- Settings: the window opens at its usual size again and can be made smaller; long tabs scroll instead of being squeezed.
 
 ---
 
-## Download
+🧪 **Beta / Testversion**
 
-| System | Datei |
-|---|---|
-| **Windows 10/11** | `NeoNote-Setup-1.3.1.exe` – starten und den Installer durchklicken. NeoNote ab 1.1.8 bietet dieses Update von selbst an. |
-| **Linux (alle Distributionen)** | `NeoNote-1.3.1-x86_64.flatpak` – per Doppelklick öffnen (Discover, GNOME Software) oder `flatpak install --user NeoNote-1.3.1-x86_64.flatpak` ausführen. |
-| **Linux (Arch, CachyOS, Manjaro …)** | `neonote-1.3.1-linux-arch.zip` – entpacken, im Ordner `./install.sh` ausführen. |
+Das ist eine **Testversion** für alle, die neue Funktionen früh ausprobieren möchten. Sie kann noch Fehler enthalten. Die reguläre Version ist weiterhin [1.3.1](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest).
 
-> Das Flatpak erscheint ein paar Minuten nach der Veröffentlichung (es wird automatisch gebaut). Beim ersten Start zeigt Windows eventuell „Der Computer wurde durch Windows geschützt“, weil der Installer nicht signiert ist. Mit „Weitere Informationen ▸ Trotzdem ausführen“ geht es weiter.
->
-> Meldet NeoNote 1.3 bei der Update-Suche „Keine Verbindung zu GitHub“, lade diese Version bitte einmal von Hand herunter – ab 1.3.1 klappt die Update-Prüfung auch auf diesen Systemen.
+**Download:** `NeoNote-Setup-1.3.1.92.exe` (Windows 10/11) – einfach über das vorhandene NeoNote installieren, Einstellungen und Bibliothek bleiben erhalten. Testversionen gibt es nur für Windows; unter Linux gibt es Testpakete als Flatpak in der Vorabversion [test](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/tag/test).
 
-**Verbessert**
-- **Immer im Vordergrund:** Stecknadel-Knopf neben „Minimieren“ (und im ☰-Menü, Strg+Umschalt+T). Ein Wunsch aus dem Deskmodder-Forum.
-- Kurzinfos (Tooltips) und Rechtsklick-Menüs passen jetzt zum Fenster: durchscheinend, mit runden Ecken und Weichzeichner. Abschaltbar unter Einstellungen ▸ Darstellung.
+**Testversionen automatisch bekommen:** Einstellungen ▸ System ▸ Updates ▸ „Auch Testversionen (Beta) anbieten“. Der Updater bietet dann neben regulären Versionen auch neue Testversionen an.
+
+**Neu**
+- **Musik und Videos mit NeoNote öffnen** wie bei VLC: Die Option im Installer (und der Knopf unter Einstellungen ▸ System) macht NeoNote zum Standard für alle Formate, für die noch kein Programm gewählt ist. Formate, die du oder Windows schon zugeordnet habt, schützt Windows – die stellst du von Hand um.
+- **Beta-Kanal** im Updater (siehe oben).
 
 **Behoben**
-- Update-Prüfung: Ist die GitHub-API nicht erreichbar (z. B. Abfragelimit), nutzt NeoNote die Release-Seite; die Meldung nennt jetzt den Grund.
-- Update-Prüfung und alle Online-Funktionen scheiterten auf frischen Windows-Installationen (z. B. Windows-Sandbox) mit „Keine Verbindung zu GitHub“: Windows lädt fehlende Stammzertifikate erst nach, wenn ein Browser sie braucht. NeoNote bringt jetzt eine eigene Zertifikatsliste als Rückfall mit.
-- Einstellungen: Das Fenster ist hoch genug für den größten Reiter (vorher wurden Zeilen zusammengequetscht).
+- Einstellungen: Das Fenster öffnet wieder in der gewohnten Größe und lässt sich kleiner ziehen; lange Reiter scrollen, statt gequetscht zu werden.

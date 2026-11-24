@@ -1,5 +1,7 @@
 # Veröffentlicht eine Release-Seite aus fertigen Dateien und baut danach Flatpak und AUR-Paket.
 # Inhalt dieses Zweigs: version.txt, commit.txt (Quellstand auf main), notes.md, files/*
+# Liegt zusätzlich eine Datei „prerelease“ im Zweig, wird es eine Testversion (Beta): Vorabversion, nicht „neueste“,
+# kein Flatpak und kein AUR-Upload. Der Updater bietet sie nur an, wer „Auch Testversionen (Beta) anbieten“ eingeschaltet hat.
 name: Release veröffentlichen
 on:
   push:
@@ -12,6 +14,7 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       commit: ${{ steps.meta.outputs.commit }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,6 +23,7 @@ jobs:
         run: |
           echo "version=$(tr -d '[:space:]' < version.txt)" >> "$GITHUB_OUTPUT"
           echo "commit=$(tr -d '[:space:]' < commit.txt)" >> "$GITHUB_OUTPUT"
+          if [ -e prerelease ]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
       - name: Release anlegen oder aktualisieren
         env:
           GH_TOKEN: ${{ github.token }}
@@ -28,8 +32,13 @@ jobs:
           VER=$(tr -d '[:space:]' < version.txt)
           TAG="v$VER"
           TITLE="NeoNote Media Player $VER"
+          if [ -e prerelease ]; then
+            TITLE="NeoNote Media Player $VER (Beta)"; KIND="--prerelease --latest=false"
+          else
+            KIND="--prerelease=false --latest"
+          fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TITLE" --notes-file notes.md --latest
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TITLE" --notes-file notes.md $KIND
             gh release upload "$TAG" files/* --repo "$GITHUB_REPOSITORY" --clobber
             # Anhänge, die nicht mehr zu dieser Release gehören, entfernen (das Flatpak hängt der nächste Schritt an)
             for a in $(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'); do
@@ -38,11 +47,13 @@ jobs:
             done
           else
             gh release create "$TAG" files/* --repo "$GITHUB_REPOSITORY" \
-              --target "$(tr -d '[:space:]' < commit.txt)" --title "$TITLE" --notes-file notes.md --latest
+              --target "$(tr -d '[:space:]' < commit.txt)" --title "$TITLE" --notes-file notes.md $KIND
           fi
 
   flatpak:
     needs: publish
+    # Testversionen (Beta) gibt es nur für Windows; Linux-Tester nutzen das Flatpak der Vorabversion „test“
+    if: needs.publish.outputs.prerelease != 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.9
@@ -66,6 +77,7 @@ jobs:
 
   aur:
     needs: publish
+    if: needs.publish.outputs.prerelease != 'true'
     runs-on: ubuntu-latest
     env:
       AUR_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
