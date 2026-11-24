@@ -1157,6 +1157,30 @@ def set_kde_blur(widget, on, radius=0):
 # ════════════════════════════════════════════════════════════════════════════
 #  Online-Informationen: MusicBrainz + Cover Art Archive
 # ════════════════════════════════════════════════════════════════════════════
+def _setup_tls():
+    """Zertifikate für alle HTTPS-Abfragen: die des Systems plus die mitgelieferte certifi-Liste.
+    Hintergrund: Python liest unter Windows nur die schon vorhandenen Stammzertifikate. Frische Systeme
+    (z. B. Windows-Sandbox) laden fehlende erst nach, wenn ein Browser sie braucht – NeoNote bekam dann
+    „certificate verify failed“ und meldete „Keine Verbindung zu GitHub“."""
+    try:
+        import ssl
+        import certifi
+        where = certifi.where()
+
+        def ctx_factory(*a, **kw):
+            ctx = ssl.create_default_context(*a, **kw)
+            try:
+                ctx.load_verify_locations(cafile=where)
+            except Exception:
+                pass
+            return ctx
+        ssl._create_default_https_context = ctx_factory
+    except Exception:
+        pass
+
+
+_setup_tls()
+
 MB_URL = "https://musicbrainz.org/ws/2/"
 CAA_URL = "https://coverartarchive.org/"
 USER_AGENT = f"NeoNote/{APP_VERSION} ( Linux-Musikplayer )"

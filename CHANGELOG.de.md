@@ -10,6 +10,7 @@
 
 **Behoben**
 - Update-Prüfung: Ist die GitHub-API nicht erreichbar (z. B. Abfragelimit), nutzt NeoNote die Release-Seite; die Meldung nennt jetzt den Grund.
+- Update-Prüfung und alle Online-Funktionen scheiterten auf frischen Windows-Installationen (z. B. Windows-Sandbox) mit „Keine Verbindung zu GitHub“: Windows lädt fehlende Stammzertifikate erst nach, wenn ein Browser sie braucht. NeoNote bringt jetzt eine eigene Zertifikatsliste als Rückfall mit.
 - Einstellungen: Das Fenster ist hoch genug für den größten Reiter (vorher wurden Zeilen zusammengequetscht).
 
 ## 1.3 – 23.11.2026

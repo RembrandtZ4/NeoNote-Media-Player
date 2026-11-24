@@ -10,6 +10,7 @@
 
 **Fixes**
 - Update check: if the GitHub API can't be reached (e.g. rate limit), NeoNote falls back to the release page; the message now shows the reason.
+- Update check and all online features failed on fresh Windows installations (e.g. Windows Sandbox) with “No connection to GitHub”: Windows only downloads missing root certificates when a browser needs them. NeoNote now ships its own certificate list as a fallback.
 - Settings: the window is tall enough for the largest tab (rows were squeezed together before).
 
 ## 1.3 – 2026-11-23

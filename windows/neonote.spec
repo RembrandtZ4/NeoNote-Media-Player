@@ -3,7 +3,7 @@ block_cipher = None
 import os
 _bins = [('vulkan-1.dll', '.')] + ([('libmpv-2.dll', '.')] if os.path.exists('libmpv-2.dll') else [])
 a = Analysis(['../neonote.py'], pathex=[], binaries=_bins, datas=[('neonote.ico', '.'), ('icons', 'icons'), ('../i18n', 'i18n'), ('../LICENSE', '.'), ('../THIRD_PARTY_NOTICES.md', '.')],
-    hiddenimports=['mpv', 'py7zr', 'winrt.windows.media', 'winrt.windows.media.playback', 'winrt.windows.foundation',
+    hiddenimports=['mpv', 'certifi', 'py7zr', 'winrt.windows.media', 'winrt.windows.media.playback', 'winrt.windows.foundation',
                    'winrt.windows.foundation.collections', 'winrt.windows.storage', 'winrt.windows.storage.streams',
                    'mutagen.id3', 'mutagen.asf', 'mutagen.mp4', 'mutagen.flac', 'mutagen.oggvorbis'],
     excludes=['jeepney', 'tkinter', 'PySide6.QtWebEngineCore', 'PySide6.QtWebEngineWidgets', 'PySide6.QtQuick3D',
