@@ -824,14 +824,14 @@ class GlassDialogs(QObject):
         if not self.animations() or getattr(d, "_nn_anim_in", None):
             return
         target = d.pos()
-        d.setWindowOpacity(0.0)
+        d.setWindowOpacity(0.35)                # sofort sichtbar, dann kurz aufblenden – wirkt flotter
         grp = QParallelAnimationGroup(d)
-        fade = QPropertyAnimation(d, b"windowOpacity", d); fade.setDuration(180)
-        fade.setStartValue(0.0); fade.setEndValue(1.0); fade.setEasingCurve(QEasingCurve.OutCubic)
+        fade = QPropertyAnimation(d, b"windowOpacity", d); fade.setDuration(110)
+        fade.setStartValue(0.35); fade.setEndValue(1.0); fade.setEasingCurve(QEasingCurve.OutCubic)
         grp.addAnimation(fade)
         if not d.isMaximized():
-            slide = QPropertyAnimation(d, b"pos", d); slide.setDuration(200)
-            slide.setStartValue(target + QPoint(0, 14)); slide.setEndValue(target)
+            slide = QPropertyAnimation(d, b"pos", d); slide.setDuration(130)
+            slide.setStartValue(target + QPoint(0, 8)); slide.setEndValue(target)
             slide.setEasingCurve(QEasingCurve.OutCubic)
             grp.addAnimation(slide)
         d._nn_anim_in = grp
@@ -842,7 +842,7 @@ class GlassDialogs(QObject):
         """Vor dem Schließen kurz ausblenden; then() schließt den Dialog danach wirklich."""
         if not self.animations() or d.property("nnGlass") is not True or not d.isVisible():
             then(); return
-        fade = QPropertyAnimation(d, b"windowOpacity", d); fade.setDuration(130)
+        fade = QPropertyAnimation(d, b"windowOpacity", d); fade.setDuration(90)
         fade.setStartValue(d.windowOpacity()); fade.setEndValue(0.0); fade.setEasingCurve(QEasingCurve.InCubic)
         fade.finished.connect(lambda: (then(), d.setWindowOpacity(1.0)))
         d._nn_anim_out = fade
@@ -4704,6 +4704,12 @@ class AboutPage(QWidget):
         self.ulbl = QLabel(""); self.ulbl.setObjectName("hint"); self.ulbl.setWordWrap(True)
         ub.clicked.connect(lambda: win.check_updates(manual=True, report=self.ulbl.setText))
         urow.addWidget(ub); urow.addWidget(self.ulbl, 1); lay.addLayout(urow)
+        self.beta = QCheckBox(tr_("Auch Testversionen (Beta) anbieten"))
+        self.beta.setChecked(win.settings.value("update/beta", False, type=bool))
+        self.beta.setToolTip(tr_("Testversionen enthalten die neuesten Funktionen und Korrekturen, bevor sie offiziell "
+                                 "erscheinen – können aber noch Fehler haben."))
+        self.beta.toggled.connect(lambda v: win.settings.setValue("update/beta", v))
+        lay.addWidget(self.beta)
         lay.addStretch()
 
 
@@ -9314,7 +9320,10 @@ class SettingsDialog(QDialog):
         self.navlist.itemDoubleClicked.connect(lambda _it: self._nav_rename())
         self._build_jf_tab(win)
         ab = QScrollArea(); ab.setWidgetResizable(True); ab.setFrameShape(QFrame.NoFrame)
-        ap = AboutPage(win); ab.setWidget(ap); ab.viewport().setAutoFillBackground(False); ap.setAutoFillBackground(False)
+        ap = AboutPage(win); ab.setWidget(ap);
+        ap.beta.toggled.connect(lambda v: self.s_ubeta.isChecked() != v and self.s_ubeta.setChecked(v))
+        self.s_ubeta.toggled.connect(lambda v: ap.beta.isChecked() != v and ap.beta.setChecked(v))
+        ab.viewport().setAutoFillBackground(False); ap.setAutoFillBackground(False)
         self.tabs.addTab(ab, tr_("Über"))
 
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Apply | QDialogButtonBox.Cancel)

@@ -11,7 +11,7 @@
 - **Update progress:** when NeoNote updates itself, a small window in the installer's look now shows the progress instead of nothing happening until NeoNote restarts.
 - Tooltips are now off by default (Settings ▸ Appearance ▸ “Show tooltips when hovering with the mouse”).
 - Test versions show “Beta” next to the version number.
-- **Beta channel:** Settings ▸ System ▸ “Also offer test versions (beta)” – the updater then also offers test versions before they are officially released.
+- **Beta channel:** Settings ▸ System or ▸ About ▸ “Also offer test versions (beta)” – the updater then also offers test versions before they are officially released.
 
 **Fixes**
 - Settings: the window opens at its usual size again and can be made smaller; long tabs scroll instead of being squeezed.
