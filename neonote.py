@@ -38,7 +38,7 @@ from collections import OrderedDict, defaultdict, deque
 from pathlib import Path
 
 import mutagen
-from PySide6.QtCore import (QDate, QMimeData, QTime, QPropertyAnimation, QEasingCurve, QProcess, QAbstractItemModel, QBuffer, QEvent, QFileSystemWatcher, QLocale, QObject, QItemSelection,
+from PySide6.QtCore import (QParallelAnimationGroup, QDate, QMimeData, QTime, QPropertyAnimation, QEasingCurve, QProcess, QAbstractItemModel, QBuffer, QEvent, QFileSystemWatcher, QLocale, QObject, QItemSelection,
                             QItemSelectionModel, QModelIndex, QPoint, QPointF, QRect,
                             QRectF, QSettings, QSize, Qt, QThread, QTimer,
                             QUrl, Signal, qVersion)
@@ -814,6 +814,38 @@ class GlassDialogs(QObject):
         return (bool(getattr(self.win, "frameless", False)) and os.environ.get("NEONOTE_PLAIN_DIALOGS") != "1"
                 and self.win.settings.value("ui/glass_dialogs", True, type=bool))
 
+    def animations(self):
+        return self.win.settings.value("ui/animations", True, type=bool)
+
+    def animate_in(self, d):
+        """Dialog weich einblenden und dabei ein Stück nach oben gleiten lassen (ca. 0,18 s)."""
+        if not self.animations() or getattr(d, "_nn_anim_in", None):
+            return
+        target = d.pos()
+        d.setWindowOpacity(0.0)
+        grp = QParallelAnimationGroup(d)
+        fade = QPropertyAnimation(d, b"windowOpacity", d); fade.setDuration(180)
+        fade.setStartValue(0.0); fade.setEndValue(1.0); fade.setEasingCurve(QEasingCurve.OutCubic)
+        grp.addAnimation(fade)
+        if not d.isMaximized():
+            slide = QPropertyAnimation(d, b"pos", d); slide.setDuration(200)
+            slide.setStartValue(target + QPoint(0, 14)); slide.setEndValue(target)
+            slide.setEasingCurve(QEasingCurve.OutCubic)
+            grp.addAnimation(slide)
+        d._nn_anim_in = grp
+        grp.finished.connect(lambda: (d.setWindowOpacity(1.0), setattr(d, "_nn_anim_in", None)))
+        QTimer.singleShot(0, grp.start)       # erst wenn das Fenster seine endgültige Position hat
+
+    def animate_out(self, d, then):
+        """Vor dem Schließen kurz ausblenden; then() schließt den Dialog danach wirklich."""
+        if not self.animations() or d.property("nnGlass") is not True or not d.isVisible():
+            then(); return
+        fade = QPropertyAnimation(d, b"windowOpacity", d); fade.setDuration(130)
+        fade.setStartValue(d.windowOpacity()); fade.setEndValue(0.0); fade.setEasingCurve(QEasingCurve.InCubic)
+        fade.finished.connect(lambda: (then(), d.setWindowOpacity(1.0)))
+        d._nn_anim_out = fade
+        fade.start()
+
     def tips_active(self):
         return (bool(getattr(self.win, "frameless", False))
                 and self.win.settings.value("ui/glass_tooltips", True, type=bool))
@@ -840,6 +872,8 @@ class GlassDialogs(QObject):
             tb = getattr(obj, "_nn_title", None)
             if tb is not None:
                 tb.setGeometry(0, 0, obj.width(), GlassTitle.H); tb.raise_()
+            if t == QEvent.Show and not ev.spontaneous():
+                self.animate_in(obj)
             if t == QEvent.Show or not getattr(obj, "_nn_blur_t", None):
                 QTimer.singleShot(0, lambda o=obj: self.blur(o))
             else:
@@ -8190,6 +8224,10 @@ class ThemePage(QWidget):
         self.frameless.toggled.connect(self.glasstip.setEnabled)
         self.glasstip.toggled.connect(lambda v: win.settings.setValue("ui/glass_tooltips", v))
         form.addRow("", self.glasstip)
+        self.anim = QCheckBox(tr_("Fenster beim Öffnen und Schließen animieren"))
+        self.anim.setChecked(win.settings.value("ui/animations", True, type=bool))
+        self.anim.toggled.connect(lambda v: win.settings.setValue("ui/animations", v))
+        form.addRow("", self.anim)
         # Sprache (wirkt nach einem Neustart)
         self.lang = QComboBox()
         for code, name in LANGUAGES:
@@ -9239,6 +9277,13 @@ class SettingsDialog(QDialog):
     def showEvent(self, e):
         super().showEvent(e)
         self._fit_tabs()           # nach dem Polieren (Schrift/Stil) noch einmal messen
+
+    def done(self, r):
+        gd = getattr(self.win, "_glass", None)
+        if gd is None or getattr(self, "_nn_closing", False):
+            return super().done(r)
+        self._nn_closing = True
+        gd.animate_out(self, lambda: QDialog.done(self, r))
 
     def _folders(self):
         return [self.flist.item(i).text() for i in range(self.flist.count())]
