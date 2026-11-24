@@ -8823,7 +8823,9 @@ class SettingsDialog(QDialog):
 
         # Darstellung
         self.theme = ThemePage(win, win.theme_dict)
-        self.tabs.addTab(self.theme, tr_("Darstellung"))
+        tha = QScrollArea(); tha.setWidgetResizable(True); tha.setFrameShape(QFrame.NoFrame)   # bei kleinem Fenster scrollen
+        tha.setWidget(self.theme); tha.viewport().setAutoFillBackground(False); self.theme.setAutoFillBackground(False)
+        self.tabs.addTab(tha, tr_("Darstellung"))
 
         # Online
         on = QWidget(); ov = QVBoxLayout(on); ov.setContentsMargins(16, 16, 16, 16); ov.setSpacing(10)
@@ -9173,21 +9175,21 @@ class SettingsDialog(QDialog):
         bb.button(QDialogButtonBox.Apply).clicked.connect(self.apply)
         lay.addWidget(bb)
         self.tabs.setCurrentIndex(tab)
-        self._fit_tabs()
 
     def _fit_tabs(self):
-        """Breit genug, dass alle Reiter (bis „Über“) ohne Pfeile sichtbar sind."""
+        """Beim Öffnen breit genug, dass alle Reiter (bis „Über“) ohne Pfeile sichtbar sind – kleiner ziehen
+        bleibt möglich (dann erscheinen Pfeile an der Reiterleiste, lange Reiter scrollen)."""
+        if getattr(self, "_fitted", False):
+            return
+        self._fitted = True
+        self.setMinimumSize(760, 600)
         m = self.layout().contentsMargins()
         need = self.tabs.tabBar().sizeHint().width() + m.left() + m.right() + 24
-        self.setMinimumWidth(max(760, need))
-        # hoch genug für den größten Reiter, sonst werden Zeilen gequetscht (Auswahlfelder abgeschnitten, Hinweise überlappen)
-        page_h = max((self.tabs.widget(i).sizeHint().height() for i in range(self.tabs.count())), default=0)
-        need_h = self.sizeHint().height() - self.tabs.currentWidget().sizeHint().height() + page_h if self.tabs.count() else 0
-        scr = self.screen().availableGeometry().height() if self.screen() else 1000
-        need_h = min(need_h, int(scr * 0.92))
-        self.setMinimumHeight(max(600, need_h))
-        if self.width() < need or self.height() < need_h:
-            self.resize(max(self.width(), need), max(self.height(), need_h))
+        scr = self.screen().availableGeometry() if self.screen() else None
+        if scr is not None:
+            need = min(need, int(scr.width() * 0.95))
+        if self.width() < need:
+            self.resize(need, self.height())
 
     def showEvent(self, e):
         super().showEvent(e)

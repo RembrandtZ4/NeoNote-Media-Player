@@ -2,6 +2,12 @@
 
 🇬🇧 [English](CHANGELOG.md) | 🇩🇪 **Deutsch**
 
+## Nächste Version (in Arbeit)
+
+**Behoben**
+- Windows: „Immer im Vordergrund“ hielt das Fenster nicht oben (der Download von 1.3.1 wurde noch am selben Tag ersetzt).
+- Einstellungen: Das Fenster öffnet wieder in der gewohnten Größe und lässt sich kleiner ziehen; lange Reiter scrollen, statt gequetscht zu werden.
+
 ## 1.3.1 – 24.11.2026
 
 **Verbessert**

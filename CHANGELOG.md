@@ -2,6 +2,12 @@
 
 🇬🇧 **English** | 🇩🇪 [Deutsch](CHANGELOG.de.md)
 
+## Next version (in progress)
+
+**Fixes**
+- Windows: “Always on top” didn't keep the window on top (the 1.3.1 download was replaced the same day).
+- Settings: the window opens at its usual size again and can be made smaller; long tabs scroll instead of being squeezed.
+
 ## 1.3.1 – 2026-11-24
 
 **Improved**
