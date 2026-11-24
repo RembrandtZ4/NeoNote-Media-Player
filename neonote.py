@@ -856,7 +856,11 @@ class GlassDialogs(QObject):
 
     def eventFilter(self, obj, ev):
         t = ev.type()
-        if t in (QEvent.Polish, QEvent.Show) and obj.isWidgetType() and (obj.inherits("QTipLabel") or isinstance(obj, QMenu)):
+        if t in (QEvent.Polish, QEvent.Show, QEvent.Resize) and obj.isWidgetType() and (obj.inherits("QTipLabel") or isinstance(obj, QMenu)):
+            if t == QEvent.Resize:
+                if obj.property("nnTip") is True and obj.isVisible() and self.tips_active():
+                    win_popup_shape(obj, getattr(obj, "_nn_r", 0))
+                return False
             self.tooltip(obj, t)
             return False
         if t == QEvent.Polish:
@@ -903,8 +907,8 @@ class GlassDialogs(QObject):
             tip.setProperty("nnTip", True)
             created = tip.testAttribute(Qt.WA_WState_Created)
             tip.setAttribute(Qt.WA_TranslucentBackground)
-            if created and not IS_WIN:
-                tip.windowHandle().destroy()      # X11: neu anlegen, damit das Fenster einen Alphakanal bekommt
+            if created:
+                tip.windowHandle().destroy()      # neu anlegen, damit das Fenster einen Alphakanal bekommt
             return
         if tip.property("nnTip") is not True:
             return
@@ -912,16 +916,25 @@ class GlassDialogs(QObject):
             tip.setStyleSheet("")
             return
         blur = bool(self.win.theme_dict.get("blur"))
-        bg = QColor(T.solid); bg.setAlphaF(T.alpha if blur else max(T.alpha, 0.9))
-        r = max(self.radius() - 4, 0) if not IS_WIN else 0
+        bg = QColor(T.solid)
         if isinstance(tip, QMenu):
-            r = self.radius() if not IS_WIN else 0
+            r = GlassDialogs.RADIUS
+            bg.setAlphaF(T.alpha if blur else max(T.alpha, 0.9))
             tip.setStyleSheet(f"QMenu {{ background: {css(bg)}; color: {css(T.fg)}; border: 1px solid {css(T.ov(0.16))};"
                               f" border-radius: {r}px; padding: 5px; }}")
         else:
-            tip.setStyleSheet(f"QToolTip {{ background: {css(bg)}; color: {css(T.fg)}; border: 1px solid {css(T.ov(0.16))};"
-                              f" border-radius: {r}px; padding: 5px 8px; }}")
-        QTimer.singleShot(0, lambda: tip.isVisible() and set_window_blur(tip, blur, r))
+            # Kurzinfos zarter: durchscheinender als das Fenster, feiner Rand
+            r = max(GlassDialogs.RADIUS - 4, 4)
+            bg.setAlphaF(T.alpha * 0.82 if blur else max(T.alpha * 0.9, 0.8))
+            tip.setStyleSheet(f"QToolTip {{ background: {css(bg)}; color: {css(T.fg)}; border: 1px solid {css(T.ov(0.09))};"
+                              f" border-radius: {r}px; padding: 5px 9px; }}")
+        tip._nn_r = r
+
+        def shape():
+            if tip.isVisible():
+                set_window_blur(tip, blur, r)
+                win_popup_shape(tip, r)
+        QTimer.singleShot(0, shape)
 
     @staticmethod
     def resizable(d):
@@ -975,6 +988,34 @@ class GlassDialogs(QObject):
             p.setCompositionMode(QPainter.CompositionMode_Source)
             p.drawRect(rect)
         p.end()
+
+
+def win_popup_shape(widget, radius):
+    """Windows: Kurzinfo/Menü selbst abrunden – eigener runder Fensterbereich statt der DWM-Ecken (die bei
+    durchscheinenden Fenstern eckig bleiben) und ohne den harten Klassen-Schatten (CS_DROPSHADOW)."""
+    if not IS_WIN:
+        return
+    try:
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        hwnd = wintypes.HWND(int(widget.winId()))
+        pref = ctypes.c_int(1)                                   # DWMWCP_DONOTROUND
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(pref), ctypes.sizeof(pref))
+        get = user32.GetClassLongPtrW; get.restype = ctypes.c_size_t; get.argtypes = [wintypes.HWND, ctypes.c_int]
+        put = user32.SetClassLongPtrW; put.restype = ctypes.c_size_t
+        put.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_size_t]
+        style = get(hwnd, -26)                                   # GCL_STYLE
+        if style & 0x00020000:                                   # CS_DROPSHADOW
+            put(hwnd, -26, style & ~0x00020000)
+        dpr = widget.devicePixelRatioF()
+        w, h, r = int(widget.width() * dpr), int(widget.height() * dpr), int(round(radius * dpr))
+        key = (int(widget.winId()), w, h, r)
+        if getattr(widget, "_nn_popup_rgn", None) != key:
+            rgn = ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, w + 1, h + 1, 2 * r, 2 * r)
+            user32.SetWindowRgn(hwnd, rgn, True)
+            widget._nn_popup_rgn = key
+    except Exception:
+        pass
 
 
 def set_window_blur(widget, on, radius=0):

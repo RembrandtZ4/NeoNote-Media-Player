@@ -7,6 +7,7 @@
 **New**
 - **Open music and videos with NeoNote** like VLC does: the installer option (and the button under Settings ▸ System) now makes NeoNote the default for every format that has no app chosen yet. Formats you or Windows already assigned stay protected by Windows – those you switch by hand. Suggested in the Deskmodder forum.
 - **Animated dialogs:** settings and other dialogs fade in and glide up slightly when opening, and fade out when closing (Settings ▸ Appearance, can be turned off).
+- Tooltips look lighter: more translucent, finer border, properly rounded corners on Windows too (without the hard Windows shadow).
 - **Beta channel:** Settings ▸ System ▸ “Also offer test versions (beta)” – the updater then also offers test versions before they are officially released.
 
 **Fixes**
