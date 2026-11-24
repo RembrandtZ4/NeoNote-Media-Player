@@ -5,7 +5,12 @@
 ## Next version (in progress)
 
 **Improved**
+- **Always on top:** pin button next to “Minimize” (and in the ☰ menu, Ctrl+Shift+T). Suggested in the Deskmodder forum.
 - Tooltips and right-click menus now match the window: translucent, rounded corners and blur. Can be turned off under Settings ▸ Appearance.
+
+**Fixes**
+- Update check: if the GitHub API can't be reached (e.g. rate limit), NeoNote falls back to the release page; the message now shows the reason.
+- Settings: the window is tall enough for the largest tab (rows were squeezed together before).
 
 ## 1.3 – 2026-11-23
 

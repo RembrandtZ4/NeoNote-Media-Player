@@ -32,6 +32,7 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 
 ## Later
 - [ ] **Faster start** – find and speed up slow startup steps; optionally preload at login (starts hidden in the tray, the window then appears instantly)
+- [ ] **Casting** to Chromecast, AirPlay and DLNA/UPnP devices (TVs, speakers, AV receivers)
 - [ ] **Remote control** – control NeoNote on the PC from your phone via a simple web page on the home network (no app needed)
 
 ## Earlier
@@ -71,6 +72,7 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 
 ## Später
 - [ ] **Schnellerer Start** – langsame Startschritte finden und beschleunigen; auf Wunsch beim Anmelden vorladen (startet unsichtbar im Infobereich, das Fenster erscheint dann sofort)
+- [ ] **Streamen (Cast)** zu Chromecast, AirPlay und DLNA/UPnP-Geräten (Fernseher, Lautsprecher, AV-Receiver)
 - [ ] **Fernbedienung** – NeoNote am PC vom Handy aus steuern, über eine einfache Webseite im Heimnetz (ohne App)
 
 ## Früher

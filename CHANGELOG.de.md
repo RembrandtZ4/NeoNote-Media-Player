@@ -5,7 +5,12 @@
 ## Nächste Version (in Arbeit)
 
 **Verbessert**
+- **Immer im Vordergrund:** Stecknadel-Knopf neben „Minimieren“ (und im ☰-Menü, Strg+Umschalt+T). Ein Wunsch aus dem Deskmodder-Forum.
 - Kurzinfos (Tooltips) und Rechtsklick-Menüs passen jetzt zum Fenster: durchscheinend, mit runden Ecken und Weichzeichner. Abschaltbar unter Einstellungen ▸ Darstellung.
+
+**Behoben**
+- Update-Prüfung: Ist die GitHub-API nicht erreichbar (z. B. Abfragelimit), nutzt NeoNote die Release-Seite; die Meldung nennt jetzt den Grund.
+- Einstellungen: Das Fenster ist hoch genug für den größten Reiter (vorher wurden Zeilen zusammengequetscht).
 
 ## 1.3 – 23.11.2026
 

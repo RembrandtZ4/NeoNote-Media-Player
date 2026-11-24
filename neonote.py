@@ -1060,6 +1060,55 @@ def x11_normal_window(widget):
         return False
 
 
+def x11_keep_above(widget, on):
+    """X11/XWayland: „Immer im Vordergrund“ über _NET_WM_STATE beim Fenstermanager anfragen – ohne die Qt-Fensterflags
+    zu ändern (das legt das Fenster neu an und verliert Durchsichtigkeit, Weichzeichner und Fenstertyp)."""
+    if IS_WIN or QGuiApplication.platformName() != "xcb":
+        return False
+    try:
+        lib = ctypes.util.find_library("X11")
+        if not lib:
+            return False
+        x = ctypes.cdll.LoadLibrary(lib)
+        x.XOpenDisplay.restype = ctypes.c_void_p
+        x.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        x.XInternAtom.restype = ctypes.c_ulong
+        x.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+        x.XDefaultRootWindow.restype = ctypes.c_ulong
+        x.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+        x.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        x.XCloseDisplay.argtypes = [ctypes.c_void_p]
+
+        class XClientMessageEvent(ctypes.Structure):
+            _fields_ = [("type", ctypes.c_int), ("serial", ctypes.c_ulong), ("send_event", ctypes.c_int),
+                        ("display", ctypes.c_void_p), ("window", ctypes.c_ulong), ("message_type", ctypes.c_ulong),
+                        ("format", ctypes.c_int), ("data", ctypes.c_long * 5)]
+
+        class XEvent(ctypes.Union):
+            _fields_ = [("xclient", XClientMessageEvent), ("pad", ctypes.c_long * 24)]
+
+        x.XSendEvent.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_long, ctypes.POINTER(XEvent)]
+        dpy = x.XOpenDisplay(None)
+        if not dpy:
+            return False
+        ev = XEvent()
+        ev.xclient.type = 33                                   # ClientMessage
+        ev.xclient.send_event = 1
+        ev.xclient.display = dpy
+        ev.xclient.window = int(widget.winId())
+        ev.xclient.message_type = x.XInternAtom(dpy, b"_NET_WM_STATE", 0)
+        ev.xclient.format = 32
+        ev.xclient.data[0] = 1 if on else 0                    # _NET_WM_STATE_ADD / _REMOVE
+        ev.xclient.data[1] = x.XInternAtom(dpy, b"_NET_WM_STATE_ABOVE", 0)
+        ev.xclient.data[3] = 1                                 # Quelle: normales Programm
+        x.XSendEvent(dpy, x.XDefaultRootWindow(dpy), 0, (1 << 19) | (1 << 20), ctypes.byref(ev))
+        x.XSync(dpy, 0)
+        x.XCloseDisplay(dpy)
+        return True
+    except Exception:
+        return False
+
+
 def set_kde_blur(widget, on, radius=0):
     """Weichzeichner hinter dem Fenster (KWin). Funktioniert für X11/XWayland-Fenster."""
     if QGuiApplication.platformName() != "xcb":
@@ -4350,7 +4399,27 @@ class UpdateCheck(QThread):
             self.result.emit({"version": ver, "notes": d.get("body") or "", "url": d.get("html_url") or RELEASES_URL,
                               "assets": assets})
         except Exception as e:
-            self.failed.emit(str(e))
+            crash_note(f"Update-Prüfung über die GitHub-API fehlgeschlagen: {e!r}")
+            try:                                          # z. B. API-Limit (403) oder gesperrte API: Release-Seite
+                ver = self._from_release_page()
+                name = f"NeoNote-Setup-{ver}.exe"
+                url = f"https://github.com/{GITHUB_REPO}/releases/download/v{ver}/{name}"
+                self.result.emit({"version": ver, "notes": "", "url": f"https://github.com/{GITHUB_REPO}/releases/tag/v{ver}",
+                                  "assets": {name: {"url": url, "size": 0, "digest": ""}}})
+            except Exception as e2:
+                crash_note(f"Update-Prüfung über die Release-Seite fehlgeschlagen: {e2!r}")
+                self.failed.emit(str(e2) or str(e))
+
+    @staticmethod
+    def _from_release_page():
+        """github.com/…/releases/latest leitet auf …/tag/vX.Y weiter – daraus die Version lesen."""
+        req = urllib.request.Request(RELEASES_URL, method="HEAD", headers={"User-Agent": f"{APP_NAME}/{APP_VERSION}"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            final = r.geturl()
+        m = re.search(r"/releases/tag/v?([0-9][0-9A-Za-z.\-]*)$", final)
+        if not m:
+            raise ValueError(f"unerwartete Adresse: {final}")
+        return m.group(1)
 
 
 class UpdateDownload(QThread):
@@ -5480,6 +5549,12 @@ def make_icon(name, size=20, color=None):
     elif name == "plus":
         lp = QPen(c, 1.6); lp.setCapStyle(Qt.RoundCap); p.setPen(lp)
         p.drawLine(P(.5, .24), P(.5, .76)); p.drawLine(P(.24, .5), P(.76, .5))
+    elif name in ("pin", "pinned"):                       # Stecknadel: immer im Vordergrund
+        p.save(); p.translate(.5 * s, .5 * s); p.rotate(40); p.translate(-.5 * s, -.5 * s)
+        p.setPen(QPen(c, 1.2)); p.setBrush(c if name == "pinned" else Qt.NoBrush)
+        body = QPainterPath(P(.38, .2)); body.lineTo(P(.62, .2)); body.lineTo(P(.58, .46)); body.lineTo(P(.68, .58))
+        body.lineTo(P(.32, .58)); body.lineTo(P(.42, .46)); body.closeSubpath(); p.drawPath(body)
+        p.drawLine(P(.5, .58), P(.5, .84)); p.restore()
     elif name == "minimize":
         p.setPen(QPen(c, 1.2)); p.drawLine(P(.28, .5), P(.72, .5))
     elif name == "maximize":
@@ -9680,6 +9755,8 @@ class MainWindow(QMainWindow):
         splash_step(tr_("Bereite die Wiedergabe vor …"), 32)
         self._build_player()
         self.set_frameless(self.settings.value("window/frameless", True, type=bool), initial=True)
+        if self.settings.value("ui/on_top", False, type=bool):
+            self.set_on_top(True, initial=True)
         splash_step(tr_("Wende das Design an …"), 44)
         self.apply_theme(self.theme_dict)
 
@@ -10739,11 +10816,44 @@ class MainWindow(QMainWindow):
         if paths:
             self.open_files(paths)
 
+    # ── Immer im Vordergrund ──────────────────────────────────────────────
+    on_top = False
+
+    def set_on_top(self, on, initial=False):
+        on = bool(on)
+        self.settings.setValue("ui/on_top", on)
+        self.btn_pin.setChecked(on)
+        self._icons = [(b, ("pinned" if on else "pin") if b is self.btn_pin else n, sz) for b, n, sz in self._icons]
+        self.btn_pin.setIcon(make_icon("pinned" if on else "pin", 16))
+        if hasattr(self, "act_ontop"):
+            self.act_ontop.setChecked(on)
+        if on == self.on_top and not initial:
+            return
+        self.on_top = on
+        if IS_WIN and self.isVisible():
+            try:                                          # ohne Neuanlegen des Fensters (kein Flackern)
+                import ctypes.wintypes
+                ctypes.windll.user32.SetWindowPos(int(self.winId()), -1 if on else -2, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010)
+                return
+            except Exception:
+                pass
+        if not self.isVisible():
+            if QGuiApplication.platformName() == "xcb":
+                QTimer.singleShot(400, lambda: self.on_top and x11_keep_above(self, True))   # nach dem ersten Anzeigen
+            else:
+                self.setWindowFlag(Qt.WindowStaysOnTopHint, on)
+            return
+        if x11_keep_above(self, on):
+            return
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, on)
+        self.show()
+
     # ── Eigene Fensterleiste ──────────────────────────────────────────────
     def set_frameless(self, on, initial=False):
         self.frameless = bool(on)
         self.btn_min.setVisible(self.frameless)
         self.btn_max.setVisible(self.frameless)
+        self.btn_pin.setVisible(self.frameless)
         self._update_frame_margin()
         # Windows: durchsichtige Fenster mit Systemrahmen werden falsch beschnitten → dann deckend
         if IS_WIN:
@@ -11235,10 +11345,12 @@ class MainWindow(QMainWindow):
         self.top_menu.setPopupMode(QToolButton.InstantPopup)
         tl.addSpacing(4); tl.addWidget(self.top_queue); tl.addWidget(self.top_gear); tl.addWidget(self.top_menu)
         tl.addSpacing(8)
+        self.btn_pin = self._icon_btn("pin", 16, tr_("Immer im Vordergrund (Strg+Umschalt+T)"),
+                                      lambda on: self.set_on_top(on), checkable=True, obj="winbtn")
         self.btn_min = self._icon_btn("minimize", 16, tr_("Minimieren"), self.showMinimized, obj="winbtn")
         self.btn_max = self._icon_btn("maximize", 16, tr_("Maximieren"), self.toggle_maximize, obj="winbtn")
         self.btn_close = self._icon_btn("close", 16, tr_("NeoNote beenden"), self.close, obj="closebtn")
-        for b in (self.btn_min, self.btn_max, self.btn_close):
+        for b in (self.btn_pin, self.btn_min, self.btn_max, self.btn_close):
             tl.addWidget(b)
         root.addWidget(top)
         # Bei Videos: statt der Titelleiste nur Minimieren/Maximieren/Schließen oben rechts über dem Bild
@@ -11287,6 +11399,10 @@ class MainWindow(QMainWindow):
         self.act_autodj.triggered.connect(lambda on: self.set_autodj(on))
         tm.addSeparator()
         tm.addActions(m.actions())
+        self.act_ontop = QAction(tr_("Immer im Vordergrund\tStrg+Umschalt+T"), tm)
+        self.act_ontop.setCheckable(True)
+        self.act_ontop.triggered.connect(lambda on: self.set_on_top(on))
+        tm.insertAction(about_sep, self.act_ontop)
         self.act_cmdbar = QAction(tr_("Befehlsleiste anzeigen"), tm)
         tm.insertAction(about_sep, self.act_cmdbar)     # bei den Ansichts-Einträgen, über „Über NeoNote“
         self.act_cmdbar.setCheckable(True)
@@ -11474,7 +11590,7 @@ class MainWindow(QMainWindow):
         self.btn_queue.setChecked(self.queue_visible); self.top_queue.setChecked(self.queue_visible)
         self.qpanel.setVisible(self.queue_visible)
         for seq, slot in (("Ctrl+L", lambda: self.set_queue_visible(not self.queue_visible)),
-                          ("F11", self.toggle_fullscreen), ("Ctrl+O", self.open_dialog), ("Ctrl+M", self.show_mini), ("Ctrl+E", self.open_equalizer), ("Ctrl+T", self.toggle_lyrics), ("Ctrl+I", self.toggle_info), ("Ctrl+Shift+V", self.cycle_vis_style),
+                          ("F11", self.toggle_fullscreen), ("Ctrl+O", self.open_dialog), ("Ctrl+M", self.show_mini), ("Ctrl+E", self.open_equalizer), ("Ctrl+T", self.toggle_lyrics), ("Ctrl+I", self.toggle_info), ("Ctrl+Shift+V", self.cycle_vis_style), ("Ctrl+Shift+T", lambda: self.set_on_top(not self.on_top)),
                           ("Ctrl+P", self.toggle_play), ("Ctrl+Right", self.next_track),
                           ("Ctrl+Left", self.prev_track), ("Ctrl+F", self.search.setFocus),
                           ("Alt+Left", self.go_back), ("Alt+Right", self.go_forward),
@@ -13827,9 +13943,11 @@ class MainWindow(QMainWindow):
                 report(tr_("Version {0} ist verfügbar.").format(info["version"]))
             self._update_found(info, manual)
 
-        def bad(_e):
+        def bad(e):
             if report:
-                report(tr_("Keine Verbindung zu GitHub – bitte später noch einmal versuchen."))
+                why = str(e).strip()[:120]
+                report(tr_("Keine Verbindung zu GitHub – bitte später noch einmal versuchen.")
+                       + (f"\n({why})" if why else ""))
 
         th.result.connect(ok); th.failed.connect(bad)
         th.start()

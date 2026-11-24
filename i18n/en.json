@@ -799,5 +799,7 @@
  "Auf den Ordner „{0}“ hat NeoNote keinen Zugriff.\n\nIst das Laufwerk eingehängt? Öffne es sonst einmal im Dateimanager und versuche es erneut.": "NeoNote can't access the folder “{0}”.\n\nIs the drive mounted? If not, open it once in your file manager and try again.",
  "OK": "OK",
  "Einstellungen übernehmen, Fenster bleibt offen": "Apply settings and keep this window open",
- "Kurzinfos und Menüs im selben Look (durchscheinend, runde Ecken)": "Tooltips and menus in the same look (translucent, rounded corners)"
+ "Kurzinfos und Menüs im selben Look (durchscheinend, runde Ecken)": "Tooltips and menus in the same look (translucent, rounded corners)",
+ "Immer im Vordergrund (Strg+Umschalt+T)": "Always on top (Ctrl+Shift+T)",
+ "Immer im Vordergrund\tStrg+Umschalt+T": "Always on top\tCtrl+Shift+T"
 }
