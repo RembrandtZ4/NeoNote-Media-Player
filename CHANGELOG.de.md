@@ -2,7 +2,7 @@
 
 🇬🇧 [English](CHANGELOG.md) | 🇩🇪 **Deutsch**
 
-## Nächste Version (in Arbeit)
+## 1.3.1 – 24.11.2026
 
 **Verbessert**
 - **Immer im Vordergrund:** Stecknadel-Knopf neben „Minimieren“ (und im ☰-Menü, Strg+Umschalt+T). Ein Wunsch aus dem Deskmodder-Forum.

@@ -3,7 +3,7 @@
 # Entfernen:     sudo pacman -R neonote
 
 pkgname=neonote
-pkgver=1.3
+pkgver=1.3.1
 pkgrel=1
 epoch=1
 pkgdesc="NeoNote Media Player – Musik- und Videoplayer im Stil von Windows Media Player 12"

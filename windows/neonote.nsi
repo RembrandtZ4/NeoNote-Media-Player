@@ -7,7 +7,7 @@ Target amd64-unicode
 !define APP "NeoNote"
 !define TITLE "NeoNote Media Player"
 !ifndef VERSION
-  !define VERSION "1.3"
+  !define VERSION "1.3.1"
 !endif
 Name "${TITLE}"
 Caption "${TITLE} ${VERSION} – Setup"
@@ -20,7 +20,7 @@ SetCompressor /SOLID lzma
 InstallDir "$PROGRAMFILES64\NeoNote"
 BrandingText "${TITLE} ${VERSION}"
 !ifndef VIVERSION
-  !define VIVERSION "1.3.0.0"   ; Dateiversion braucht vier Stellen
+  !define VIVERSION "1.3.1.0"   ; Dateiversion braucht vier Stellen
 !endif
 VIProductVersion "${VIVERSION}"
 VIAddVersionKey "ProductName" "${TITLE}"

@@ -2,7 +2,7 @@
 
 🇬🇧 **English** | 🇩🇪 [Deutsch](CHANGELOG.de.md)
 
-## Next version (in progress)
+## 1.3.1 – 2026-11-24
 
 **Improved**
 - **Always on top:** pin button next to “Minimize” (and in the ☰ menu, Ctrl+Shift+T). Suggested in the Deskmodder forum.
