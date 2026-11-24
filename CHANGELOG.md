@@ -14,6 +14,8 @@
 - **Beta channel:** Settings ▸ System or ▸ About ▸ “Also offer test versions (beta)” – the updater then also offers test versions before they are officially released.
 
 **Fixes**
+- Appearance: changing colors or the blur reacted slowly. The blur now switches instantly, and color changes no longer reload every cover from disk.
+- Settings open faster: the audio device list and file associations load right after the window appears.
 - Settings: the window opens at its usual size again and can be made smaller; long tabs scroll instead of being squeezed.
 
 ## 1.3.1 – 2026-11-24

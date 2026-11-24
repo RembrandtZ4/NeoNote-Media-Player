@@ -5346,6 +5346,7 @@ class CoverCache:
     BUDGET = 192 * 1024 * 1024          # Bytes für fertig skalierte Cover
 
     def __init__(self, limit=None):
+        self._ph_keys = set()           # Einträge, die nur einen Platzhalter enthalten
         self.cache = OrderedDict()
         self.bytes = 0
         self.gen = 0                    # steigt bei clear(); daran erkennen abgeleitete Caches veraltete Bilder
@@ -5375,6 +5376,7 @@ class CoverCache:
                 JF_FETCHER.want(key)                      # wird nachgeladen; Platzhalter nicht merken
                 return self.placeholder(size)
             pm = self.placeholder(size)
+            self._ph_keys.add(ck)
         else:
             pm = QPixmap.fromImage(img)
         self._put(ck, pm)
@@ -5407,6 +5409,7 @@ class CoverCache:
                 return
             self._missing.add(key)
             pm = self.placeholder(size)
+            self._ph_keys.add((key, size))
         else:
             pm = QPixmap.fromImage(img)
         self._put((key, size), pm)
@@ -5424,8 +5427,18 @@ class CoverCache:
         self._missing.discard(key)
         self.gen += 1
 
+    def clear_placeholders(self):
+        """Nach einem Farbwechsel: nur die Platzhalter (Neon-Note in der Akzentfarbe) verwerfen – echte Cover
+        bleiben im Speicher und müssen nicht neu von der Platte gelesen werden."""
+        for ck in self._ph_keys:
+            v = self.cache.pop(ck, None)
+            if v is not None:
+                self.bytes -= v.width() * v.height() * 4
+        self._ph_keys.clear()
+        self.gen += 1
+
     def clear(self):
-        self.cache.clear(); self.bytes = 0; self._missing.clear()
+        self.cache.clear(); self.bytes = 0; self._missing.clear(); self._ph_keys.clear()
         self.gen += 1
         if self.loader is not None:
             self.loader.drop_background()
@@ -10090,12 +10103,17 @@ class MainWindow(QMainWindow):
         cur = getattr(self, "theme_dict", None)
         if cur is not None and hasattr(self, "top_menu"):
             diff = {k for k in set(d) | set(cur) if d.get(k) != cur.get(k)}
-            if diff and diff <= {"cmdbar", "opacity"}:
-                # Deckkraft steckt nur im Fensterhintergrund (paintEvent), nicht in den Stylesheets:
-                # neu zeichnen genügt, kein teurer Neuaufbau der Darstellung
+            if diff and diff <= {"cmdbar", "opacity", "blur"}:
+                # Deckkraft und Weichzeichner stecken nur im Fensterhintergrund (paintEvent) bzw. beim
+                # Fenstermanager, nicht in den Stylesheets: neu zeichnen genügt, kein teurer Neuaufbau
                 self.theme_dict = dict(d); T.update(d)
                 if "cmdbar" in diff:
                     self._apply_cmdbar()
+                if "blur" in diff:
+                    self._apply_blur()
+                    for w in QApplication.topLevelWidgets():
+                        if w.isVisible() and w.property("nnGlass") is True:
+                            self._glass.blur(w)
                 for w in QApplication.topLevelWidgets():
                     if w.isVisible():
                         w.update()
@@ -10104,9 +10122,19 @@ class MainWindow(QMainWindow):
         self.theme_dict = dict(d)
         T.update(d)
         app = QApplication.instance()
-        app.setPalette(build_palette())
-        app.setStyleSheet(app_style())
-        self.setStyleSheet(main_style())
+        # Beim Neuaufbau der Stile bekommt jedes Widget Ereignisse – die app-weiten Filter (in Python) solange
+        # abhängen, das spart bei offenem Einstellungsfenster spürbar Zeit
+        filters = [f for f in (getattr(self, "_glass", None), getattr(self, "_xbuttons", None),
+                                 getattr(self, "_title_styler", None)) if f is not None]
+        for f in filters:
+            app.removeEventFilter(f)
+        try:
+            app.setPalette(build_palette())
+            app.setStyleSheet(app_style())
+            self.setStyleSheet(main_style())
+        finally:
+            for f in filters:
+                app.installEventFilter(f)
         for btn, name, size in self._icons:
             btn.setIcon(make_icon(name, size))
         self.btn_repeat.setIcon(make_icon("repeat1" if self.repeat == 2 else "repeat", 20))
@@ -10127,7 +10155,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, "split"):
             for i in range(self.split.count()):
                 self.split.handle(i).update()
-        self.covers.clear()
+        if d.get("accent") != (cur or {}).get("accent") or T.cover != old_cover:
+            self.covers.clear_placeholders()         # echte Cover bleiben, nur die Neon-Platzhalter neu
         if self.cur:
             self.np_cover.setPixmap(self.covers.get(self.cur["t"]["cover"], 42))
         else:
