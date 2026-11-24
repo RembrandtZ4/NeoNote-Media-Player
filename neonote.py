@@ -9081,8 +9081,14 @@ class SettingsDialog(QDialog):
         m = self.layout().contentsMargins()
         need = self.tabs.tabBar().sizeHint().width() + m.left() + m.right() + 24
         self.setMinimumWidth(max(760, need))
-        if self.width() < need:
-            self.resize(need, self.height())
+        # hoch genug für den größten Reiter, sonst werden Zeilen gequetscht (Auswahlfelder abgeschnitten, Hinweise überlappen)
+        page_h = max((self.tabs.widget(i).sizeHint().height() for i in range(self.tabs.count())), default=0)
+        need_h = self.sizeHint().height() - self.tabs.currentWidget().sizeHint().height() + page_h if self.tabs.count() else 0
+        scr = self.screen().availableGeometry().height() if self.screen() else 1000
+        need_h = min(need_h, int(scr * 0.92))
+        self.setMinimumHeight(max(600, need_h))
+        if self.width() < need or self.height() < need_h:
+            self.resize(max(self.width(), need), max(self.height(), need_h))
 
     def showEvent(self, e):
         super().showEvent(e)
