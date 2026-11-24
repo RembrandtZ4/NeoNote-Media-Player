@@ -5,7 +5,6 @@
 ## Next version (in progress)
 
 **Fixes**
-- Windows: “Always on top” didn't keep the window on top (the 1.3.1 download was replaced the same day).
 - Settings: the window opens at its usual size again and can be made smaller; long tabs scroll instead of being squeezed.
 
 ## 1.3.1 – 2026-11-24
@@ -17,6 +16,7 @@
 **Fixes**
 - Update check: if the GitHub API can't be reached (e.g. rate limit), NeoNote falls back to the release page; the message now shows the reason.
 - Update check and all online features failed on fresh Windows installations (e.g. Windows Sandbox) with “No connection to GitHub”: Windows only downloads missing root certificates when a browser needs them. NeoNote now ships its own certificate list as a fallback.
+- Windows: “Always on top” didn't keep the window on top – fixed in the 1.3.1 download on release day.
 - Settings: the window is tall enough for the largest tab (rows were squeezed together before).
 
 ## 1.3 – 2026-11-23
