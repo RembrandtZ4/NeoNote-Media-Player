@@ -818,5 +818,10 @@
  "NeoNote ist installiert und öffnet jetzt alle gewählten Formate.": "NeoNote is installed and now opens all selected formats.",
  "NeoNote öffnet jetzt alle gewählten Formate.": "NeoNote now opens all selected formats.",
  "Diese Formate mit NeoNote öffnen:": "Open these formats with NeoNote:",
- "Zuordnung übernehmen": "Apply file associations"
+ "Zuordnung übernehmen": "Apply file associations",
+ "Kurzinfos beim Darüberfahren mit der Maus anzeigen": "Show tooltips when hovering with the mouse",
+ "Update wird installiert …": "Installing update …",
+ "Update auf {0}": "Update to {0}",
+ "Fertig – NeoNote startet neu …": "Done – restarting NeoNote …",
+ "Update fehlgeschlagen": "Update failed"
 }

@@ -858,6 +858,8 @@ class GlassDialogs(QObject):
 
     def eventFilter(self, obj, ev):
         t = ev.type()
+        if t == QEvent.ToolTip and not self.win.settings.value("ui/tooltips", False, type=bool):
+            return True                             # Kurzinfos sind abgeschaltet (Einstellungen ▸ Darstellung)
         if t in (QEvent.Polish, QEvent.Show, QEvent.Resize) and obj.isWidgetType() and (obj.inherits("QTipLabel") or isinstance(obj, QMenu)):
             if t == QEvent.Resize:
                 if obj.property("nnTip") is True and obj.isVisible() and self.tips_active():
@@ -4426,6 +4428,17 @@ def version_tuple(v):
     return tuple(int(x) for x in re.findall(r"\d+", str(v))[:4]) or (0,)
 
 
+def is_beta(v=None):
+    """Testversionen tragen eine vierte Stelle ab 90 (z. B. 1.3.1.94 vor 1.3.2)."""
+    t = version_tuple(v or APP_VERSION)
+    return len(t) >= 4 and t[3] >= 90
+
+
+def version_label(v=None):
+    v = v or APP_VERSION
+    return f"{v} Beta" if is_beta(v) else v
+
+
 def is_newer(v):
     return version_tuple(v) > version_tuple(APP_VERSION)
 
@@ -4596,7 +4609,7 @@ def win_run_update(setup, restart):
     wartet, bis er fertig ist, und startet NeoNote danach wieder – ohne Administratorrechte."""
     def q(x):
         return "'" + str(x).replace("'", "''") + "'"
-    ps = f"try {{ Start-Process -FilePath {q(setup)} -ArgumentList '/S' -Verb RunAs -Wait }} catch {{ }}"
+    ps = f"try {{ Start-Process -FilePath {q(setup)} -ArgumentList '/S','/UPDATE' -Verb RunAs -Wait }} catch {{ }}"
     if restart:
         ps += f"; Start-Sleep -Milliseconds 600; Start-Process -FilePath {q(sys.executable)}"
     subprocess.Popen(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
@@ -4628,7 +4641,7 @@ class AboutPage(QWidget):
         ic = QLabel(); ic.setPixmap(app_icon().pixmap(72, 72)); head.addWidget(ic, 0, Qt.AlignTop)
         tv = QVBoxLayout(); tv.setSpacing(2)
         t1 = QLabel(APP_TITLE); f = t1.font(); f.setPointSizeF(f.pointSizeF() + 6); f.setWeight(QFont.DemiBold); t1.setFont(f)
-        t2 = QLabel(tr_("Version {0} vom {1}").format(APP_VERSION, app_date_text())); t2.setObjectName("hint")
+        t2 = QLabel(tr_("Version {0} vom {1}").format(version_label(), app_date_text())); t2.setObjectName("hint")
         t3 = QLabel(tr_("Musik und Videos im Stil des Windows Media Player 12 – für Linux und Windows."))
         t3.setWordWrap(True)
         tv.addWidget(t1); tv.addWidget(t2); tv.addSpacing(4); tv.addWidget(t3)
@@ -5891,7 +5904,7 @@ class Splash(QWidget):
         p.drawText(QRectF(0, 128, self.width(), 34), Qt.AlignCenter, APP_NAME)
         f2 = QFont(self.font()); f2.setPointSizeF(9.5)
         p.setFont(f2); p.setPen(T.dim)
-        p.drawText(QRectF(0, 160, self.width(), 20), Qt.AlignCenter, tr_("Media Player  ·  Version {0}").format(APP_VERSION))
+        p.drawText(QRectF(0, 160, self.width(), 20), Qt.AlignCenter, tr_("Media Player  ·  Version {0}").format(version_label()))
         # Fortschrittsbalken
         bar = QRectF(48, 206, self.width() - 96, 4)
         p.setBrush(T.ov(0.10)); p.drawRoundedRect(bar, 2, 2)
@@ -8261,6 +8274,10 @@ class ThemePage(QWidget):
         gh.setObjectName("hint"); gh.setWordWrap(True)
         form.addRow("", self.glassdlg)
         form.addRow("", gh)
+        self.tips = QCheckBox(tr_("Kurzinfos beim Darüberfahren mit der Maus anzeigen"))
+        self.tips.setChecked(win.settings.value("ui/tooltips", False, type=bool))
+        self.tips.toggled.connect(lambda v: win.settings.setValue("ui/tooltips", v))
+        form.addRow("", self.tips)
         self.glasstip = QCheckBox(tr_("Kurzinfos und Menüs im selben Look (durchscheinend, runde Ecken)"))
         self.glasstip.setChecked(win.settings.value("ui/glass_tooltips", True, type=bool))
         self.glasstip.setEnabled(win.frameless)
@@ -14110,7 +14127,7 @@ class MainWindow(QMainWindow):
             self.settings.setValue("update/last_check", time.time())
             if not is_newer(info["version"]):
                 if report:
-                    report(tr_("NeoNote ist auf dem neuesten Stand ({0}).").format(APP_VERSION))
+                    report(tr_("NeoNote ist auf dem neuesten Stand ({0}).").format(version_label()))
                 return
             if report:
                 report((tr_("Testversion {0} ist verfügbar.") if info.get("beta") else
@@ -15016,6 +15033,52 @@ class NeoCheck(QCheckBox):
         p.drawText(QRectF(26, 0, self.width() - 26, self.height()), Qt.AlignVCenter | Qt.AlignLeft, self.text())
 
 
+class UpdateWindow(QWidget):
+    """Kleines Fenster im Look des Installer-Startfensters, solange ein Update aus NeoNote heraus installiert wird
+    (vorher lief das unsichtbar ohne jede Rückmeldung)."""
+
+    def __init__(self, version):
+        super().__init__(None, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setWindowTitle(f"{APP_TITLE} – Update")           # „NeoNote“ im Titel: das Startfenster schließt sich
+        self.setFixedSize(460, 200)
+        self.version = version
+        self.icon = app_icon().pixmap(96, 96)
+        self.text = tr_("Update wird installiert …")
+        self.value = 0
+        scr = QGuiApplication.primaryScreen().availableGeometry()
+        self.move(scr.center() - self.rect().center())
+
+    def set_progress(self, v, text=""):
+        self.value = max(0, min(100, int(v)))
+        if text:
+            self.text = text
+        self.update()
+
+    def paintEvent(self, _e):
+        p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(self.rect()).adjusted(1, 1, -1, -1)
+        bg = mix(T.bg, QColor("#000000"), 0.15) if T.dark else QColor(T.bg)
+        bg.setAlphaF(0.97)
+        p.setPen(QPen(T.ov(0.12), 1)); p.setBrush(bg); p.drawRoundedRect(r, 14, 14)
+        g = QRadialGradient(QPointF(88, 78), 90)
+        g.setColorAt(0, T.acc(0.28)); g.setColorAt(1, T.acc(0.0))
+        p.setPen(Qt.NoPen); p.setBrush(g); p.drawEllipse(QPointF(88, 78), 100, 80)
+        p.drawPixmap(40, 30, self.icon)
+        f = QFont(self.font()); f.setPointSizeF(17); f.setWeight(QFont.DemiBold)
+        p.setFont(f); p.setPen(T.fg)
+        p.drawText(QRectF(160, 34, 280, 30), Qt.AlignLeft | Qt.AlignVCenter, APP_NAME)
+        f.setPointSizeF(10.5); f.setWeight(QFont.Normal); p.setFont(f); p.setPen(T.fg)
+        p.drawText(QRectF(160, 66, 280, 22), Qt.AlignLeft | Qt.AlignVCenter,
+                   tr_("Update auf {0}").format(version_label(self.version)))
+        f.setPointSizeF(9.5); p.setFont(f); p.setPen(T.ov(0.55))
+        p.drawText(QRectF(160, 92, 280, 20), Qt.AlignLeft | Qt.AlignVCenter, self.text)
+        track = QRectF(40, 160, self.width() - 80, 4)
+        p.setPen(Qt.NoPen); p.setBrush(T.ov(0.12)); p.drawRoundedRect(track, 2, 2)
+        p.setBrush(T.accent)
+        p.drawRoundedRect(QRectF(track.x(), track.y(), max(4.0, track.width() * self.value / 100), 4), 2, 2)
+
+
 class SetupWindow(QWidget):
     """Ein Fenster im Look des Players: Neon-Note, Ordner, Optionen, Fortschritt."""
 
@@ -15043,8 +15106,8 @@ class SetupWindow(QWidget):
         self.btn_x.clicked.connect(self.close)
         top.addWidget(self.btn_x); lay.addLayout(top)
         lay.addSpacing(168)
-        sub = (tr_("Update von Version {0} auf {1}").format(old_ver, version) if old_ver and old_ver != version
-               else f"Media Player  ·  Version {version}")
+        sub = (tr_("Update von Version {0} auf {1}").format(version_label(old_ver), version_label(version))
+               if old_ver and old_ver != version else f"Media Player  ·  Version {version_label(version)}")
         self.sub = QLabel(sub); self.sub.setAlignment(Qt.AlignCenter); self.sub.setObjectName("dim")
         lay.addWidget(self.sub); lay.addSpacing(14)
         lay.addWidget(QLabel(tr_("Installieren nach")))
@@ -15217,7 +15280,20 @@ def run_setup():
         w.cb_default.setChecked(False)
         w.th = None
         w._go()
-        w.th.done.connect(lambda ok, _e: (w.th.wait(), QApplication.instance().exit(0 if ok else 1)))
+        uw = None
+        if "--update" in args:                 # Update aus NeoNote: kleines Fortschrittsfenster statt gar nichts
+            uw = UpdateWindow(version)
+            w.th.progress.connect(lambda v, t: uw.set_progress(v, t))
+            uw.show()
+
+        def finished(ok, _e):
+            w.th.wait()
+            if uw is not None:
+                uw.set_progress(100, tr_("Fertig – NeoNote startet neu …") if ok else tr_("Update fehlgeschlagen"))
+                QTimer.singleShot(900 if ok else 2500, lambda: QApplication.instance().exit(0 if ok else 1))
+            else:
+                QApplication.instance().exit(0 if ok else 1)
+        w.th.done.connect(finished)
     else:
         w.show()
     return app.exec()

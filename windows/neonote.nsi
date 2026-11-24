@@ -38,8 +38,15 @@ Section
   ${GetOptions} $R0 "/S" $R1
   IfErrors +2
   StrCpy $9 "1"
-  ; Startfenster im NeoNote-Look, solange entpackt wird (schließt sich, sobald das Setup-Fenster erscheint)
+  ; /UPDATE: still installiert, aber von NeoNote selbst gestartet – dann zeigen wir Fortschritt
+  StrCpy $4 "0"
+  ClearErrors
+  ${GetOptions} $R0 "/UPDATE" $R1
+  IfErrors +2
+  StrCpy $4 "1"
+  ; Startfenster im NeoNote-Look, solange entpackt wird (schließt sich, sobald das Setup- bzw. Update-Fenster erscheint)
   ${If} $9 != "1"
+  ${OrIf} $4 == "1"
     InitPluginsDir
     File "/oname=$PLUGINSDIR\neonote-splash.exe" "splash\neonote-splash.exe"
     Exec '"$PLUGINSDIR\neonote-splash.exe"'
@@ -89,6 +96,8 @@ Section
   StrCpy $1 ""
   StrCmp $9 "1" 0 +2
   StrCpy $1 "--silent"
+  StrCmp $4 "1" 0 +2
+  StrCpy $1 "--silent --update"
   ExecWait '"$8\NeoNote.exe" --setup --version ${VERSION} $1' $0
   FindWindow $2 "NeoNoteSplash"
   ${If} $2 != 0
