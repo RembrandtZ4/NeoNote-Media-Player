@@ -14949,6 +14949,7 @@ class SetupWorker(QThread):
 class FormatPicker(QWidget):
     """Auswahl der Formate, die NeoNote öffnen soll: Gruppen „Musik“ und „Videos“, auf Wunsch einzeln."""
     changed = Signal()
+    user_changed = Signal()                     # nur bei Klicks auf Gruppen oder Formate
 
     def __init__(self, selected=None, check_cls=QCheckBox, parent=None, cols=8):
         super().__init__(parent)
@@ -14962,6 +14963,7 @@ class FormatPicker(QWidget):
             for i, e in enumerate(exts):
                 b = QPushButton(e); b.setCheckable(True); b.setChecked(e in sel); b.setObjectName("fmtchip")
                 b.setCursor(Qt.PointingHandCursor); b.toggled.connect(self._sync); b.setFixedHeight(24)
+                b.clicked.connect(self.user_changed.emit)
                 grid.addWidget(b, i // cols, i % cols); chips[e] = b
             box = QWidget(); box.setLayout(grid); box.hide()
             cb.clicked.connect(lambda _=False, k=key: self._group_click(k))
@@ -14989,6 +14991,7 @@ class FormatPicker(QWidget):
         for b in chips.values():
             b.blockSignals(True); b.setChecked(not allon); b.blockSignals(False)
         self._sync()
+        self.user_changed.emit()
 
     def _sync(self, *_):
         for cb, chips, box, label in self.groups.values():
@@ -15121,10 +15124,14 @@ class SetupWindow(QWidget):
         self.cb_assoc = NeoCheck(tr_("Für Musik und Videos anbieten (Öffnen mit, Standard-Apps)"))
         self.cb_assoc.setChecked(False)
         self.cb_default = NeoCheck(tr_("NeoNote als Standardplayer für …"))
-        self.cb_default.setChecked(False); self.cb_default.setEnabled(False)
-        self.cb_assoc.toggled.connect(lambda v: (self.cb_default.setEnabled(v), v or self.cb_default.setChecked(False)))
-        self.fmt = FormatPicker(check_cls=NeoCheck, cols=7); self.fmt.setEnabled(False)
-        self.cb_default.toggled.connect(self.fmt.setEnabled)
+        self.cb_default.setChecked(False)
+        # Standardplayer braucht die Anmeldung bei Windows („Öffnen mit“) – deshalb hängen die Haken zusammen,
+        # lassen sich aber in beliebiger Reihenfolge setzen: Standardplayer oder ein Format an → Anmeldung an,
+        # Anmeldung aus → Standardplayer aus.
+        self.cb_assoc.toggled.connect(lambda v: v or self.cb_default.setChecked(False))
+        self.cb_default.toggled.connect(lambda v: v and self.cb_assoc.setChecked(True))
+        self.fmt = FormatPicker(check_cls=NeoCheck, cols=7)
+        self.fmt.user_changed.connect(lambda: self.fmt.selected() and self.cb_default.setChecked(True))
         self._fmt_h0 = self.fmt.sizeHint().height()
         self.fmt.changed.connect(lambda: QTimer.singleShot(0, self._fit_height))
         lay.addWidget(self.cb_desk); lay.addWidget(self.cb_assoc); lay.addWidget(self.cb_default); lay.addWidget(self.fmt)
