@@ -11,6 +11,7 @@
 - **Update-Fortschritt:** Aktualisiert sich NeoNote selbst, zeigt jetzt ein kleines Fenster im Look des Installers den Fortschritt – vorher passierte bis zum Neustart sichtbar nichts.
 - Kurzinfos sind jetzt standardmäßig aus (Einstellungen ▸ Darstellung ▸ „Kurzinfos beim Darüberfahren mit der Maus anzeigen“).
 - Testversionen zeigen „Beta“ hinter der Versionsnummer.
+- **Beim Anmelden im Hintergrund starten** (Einstellungen ▸ System): NeoNote lädt beim Anmelden unsichtbar in die Systemleiste – ein Klick auf NeoNote öffnet das Fenster dann sofort. Schließen versteckt es nur, beendet wird über das Menü des Symbols.
 - **Beta-Kanal:** Einstellungen ▸ System oder ▸ Über ▸ „Auch Testversionen (Beta) anbieten“ – der Updater bietet dann auch Testversionen an, bevor sie offiziell erscheinen.
 
 **Behoben**

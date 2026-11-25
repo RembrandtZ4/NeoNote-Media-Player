@@ -130,6 +130,8 @@ Section "Uninstall"
   Delete "$INSTDIR\NeoNote.exe"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
+  ; Vorladen beim Anmelden entfernen
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "NeoNote"
   ; NeoNote als Standard für Formate ohne Nutzerauswahl (HKCU) wieder austragen
   ReadRegStr $0 HKCU "Software\Classes\.3gp" ""
   StrCmp $0 "NeoNote.3gp" 0 +2

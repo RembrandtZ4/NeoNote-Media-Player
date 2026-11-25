@@ -5971,6 +5971,40 @@ def _process_age():
 _START_AGE = _process_age()               # wie lange lief der Prozess schon, als dieses Modul geladen wurde
 
 
+def set_autostart(on):
+    """„Beim Anmelden im Hintergrund starten“: Windows über den Run-Schlüssel, Linux über ~/.config/autostart."""
+    try:
+        if IS_WIN:
+            import winreg
+            with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0,
+                                    winreg.KEY_SET_VALUE) as k:
+                if on:
+                    exe = sys.executable if getattr(sys, "frozen", False) else f'{sys.executable}" "{os.path.abspath(__file__)}'
+                    winreg.SetValueEx(k, APP_NAME, 0, winreg.REG_SZ, f'"{exe}" --background')
+                else:
+                    try:
+                        winreg.DeleteValue(k, APP_NAME)
+                    except OSError:
+                        pass
+            return True
+        f = Path.home() / ".config" / "autostart" / "neonote.desktop"
+        if not on:
+            f.unlink(missing_ok=True)
+            return True
+        if FLATPAK_ID:
+            cmd = f"flatpak run {FLATPAK_ID} --background"
+        else:
+            cmd = (shutil.which("neonote") or f"{sys.executable} {os.path.abspath(__file__)}") + " --background"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("[Desktop Entry]\nType=Application\nName=NeoNote\n"
+                     f"Exec={cmd}\nIcon={FLATPAK_ID or 'neonote'}\nX-GNOME-Autostart-enabled=true\n"
+                     "NoDisplay=true\n", encoding="utf-8")
+        return True
+    except Exception as e:
+        crash_note(f"Autostart: {e!r}")
+        return False
+
+
 def write_startup_log():
     """Dauer der Startschritte nach DATA_DIR/startup.log – hilft, langsame Starts zu finden."""
     try:
@@ -9114,6 +9148,18 @@ class SettingsDialog(QDialog):
         self.s_tray.toggled.connect(lambda v: self.s_close.setEnabled(v))
         self.s_close.setEnabled(self.s_tray.isChecked())
         sv.addWidget(self.s_tray); sv.addWidget(self.s_close)
+        self.s_pre = QCheckBox(tr_("Beim Anmelden im Hintergrund starten – NeoNote öffnet sich dann sofort"))
+        self.s_pre.setChecked(win.settings.value("system/preload", False, type=bool))
+        self.s_pre.setToolTip(tr_("NeoNote lädt beim Anmelden unsichtbar in die Systemleiste. Schließen versteckt das "
+                                  "Fenster nur, beendet wird über das Menü des Symbols."))
+
+        def pre_toggled(v):
+            if v:                                  # vorgeladen bleibt NeoNote nur mit Symbol und „Schließen versteckt“
+                self.s_tray.setChecked(True); self.s_close.setChecked(True)
+            self.s_tray.setEnabled(not v); self.s_close.setEnabled(not v and self.s_tray.isChecked())
+        self.s_pre.toggled.connect(pre_toggled)
+        pre_toggled(self.s_pre.isChecked())
+        sv.addWidget(self.s_pre)
         th = QLabel(tr_("Klick auf das Symbol zeigt oder versteckt das Fenster, Mittelklick startet bzw. pausiert. "
                     "Über das Menü des Symbols kannst du den Player jederzeit ganz beenden."))
         th.setObjectName("hint"); th.setWordWrap(True); sv.addWidget(th)
@@ -9441,6 +9487,9 @@ class SettingsDialog(QDialog):
                 w.sync_ratings_to_files()
         w.settings.setValue("system/tray", self.s_tray.isChecked())
         w.settings.setValue("system/close_to_tray", self.s_close.isChecked())
+        if self.s_pre.isChecked() != w.settings.value("system/preload", False, type=bool):
+            if set_autostart(self.s_pre.isChecked()):
+                w.settings.setValue("system/preload", self.s_pre.isChecked())
         w.settings.setValue("system/mpris", self.s_mpris.isChecked())
         w.settings.setValue("ui/splash", self.s_splash.isChecked())
         w.settings.setValue("update/check", self.s_ucheck.currentData())
@@ -15513,7 +15562,8 @@ def main():
                    f"{', Flatpak' if FLATPAK_ID else ''}")
     app.setStyle(NeoStyle())
     global _SPLASH
-    if s.value("ui/splash", True, type=bool) and not os.environ.get("NEONOTE_NOSPLASH"):
+    background = "--background" in sys.argv          # Vorladen beim Anmelden: kein Startbild, kein Fenster
+    if s.value("ui/splash", True, type=bool) and not os.environ.get("NEONOTE_NOSPLASH") and not background:
         T.update({k: s.value(f"theme/{k}", v, type=type(v)) for k, v in DEFAULT_THEME.items()})
         _SPLASH = Splash(); _SPLASH.show()
         _start_mark("Startbild sichtbar")
@@ -15527,7 +15577,12 @@ def main():
     geo = s.value("window/geometry")
     if geo:
         w.restoreGeometry(geo)
-    if s.value("window/maximized", False, type=bool):
+    if background:
+        crash_note("Im Hintergrund vorgeladen (Anmeldung)")
+        w._mini_was_max = s.value("window/maximized", False, type=bool)   # beim ersten Öffnen wie zuletzt
+        if getattr(w, "tray", None) is not None:
+            w.tray.setVisible(True)
+    elif s.value("window/maximized", False, type=bool):
         w.showMaximized()
     else:
         w.show()
