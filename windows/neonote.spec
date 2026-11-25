@@ -15,6 +15,8 @@ a = Analysis(['../neonote.py'], pathex=[], binaries=_bins, datas=[('neonote.ico'
               'PySide6.QtNfc', 'PySide6.QtSpatialAudio', 'PySide6.QtHttpServer', 'PySide6.QtCanvasPainter'],
     noarchive=False)
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='NeoNote', debug=False, strip=False, upx=False,
+# Startbild, das der Programmstarter sofort zeigt – noch bevor Python und Qt geladen sind (splash/make_start_splash.py)
+splash = Splash('start_splash.png', binaries=a.binaries, datas=a.datas, text_pos=None, always_on_top=True)
+exe = EXE(pyz, splash, a.scripts, [], exclude_binaries=True, name='NeoNote', debug=False, strip=False, upx=False,
           console=False, icon='neonote.ico', version='version_info.txt')
-coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='NeoNote')
+coll = COLLECT(exe, splash.binaries, a.binaries, a.datas, strip=False, upx=False, name='NeoNote')

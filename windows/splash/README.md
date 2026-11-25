@@ -12,3 +12,10 @@ x86_64-w64-mingw32-gcc -O2 -municode -mwindows -o neonote-splash.exe splash.c sp
 ```
 
 `neonote.nsi` erwartet die fertige Datei unter `splash\neonote-splash.exe` neben dem Skript.
+
+## Startbild des Programmstarters (`start_splash.png`)
+
+Erscheint sofort beim Klick auf NeoNote, noch bevor Python und Qt geladen sind (PyInstaller-Splash), und wird
+nahtlos vom Startbild in NeoNote abgelöst. Vor jedem Bau neu erzeugen (enthält die Version):
+
+    python make_start_splash.py ../../neonote.py ../start_splash.png

@@ -71,7 +71,8 @@ Section
       ${EndIf}
     ${EndIf}
     ${If} $6 == "1"
-      nsExec::Exec '"$7\NeoNote.exe" --quit'
+      System::Call 'kernel32::SetEnvironmentVariable(t "PYINSTALLER_SUPPRESS_SPLASH_SCREEN", t "1")'
+  nsExec::Exec '"$7\NeoNote.exe" --quit'
       Pop $0
       StrCpy $5 0
       ${Do}
@@ -98,6 +99,8 @@ Section
   StrCpy $1 "--silent"
   StrCmp $4 "1" 0 +2
   StrCpy $1 "--silent --update"
+  ; Das Startbild des Programmstarters hier unterdrücken – das Installer-Startfenster ist ja schon da
+  System::Call 'kernel32::SetEnvironmentVariable(t "PYINSTALLER_SUPPRESS_SPLASH_SCREEN", t "1")'
   ExecWait '"$8\NeoNote.exe" --setup --version ${VERSION} $1' $0
   FindWindow $2 "NeoNoteSplash"
   ${If} $2 != 0

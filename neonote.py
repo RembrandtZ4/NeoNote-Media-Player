@@ -9,6 +9,44 @@ Flaches Design mit Transparenz, anpassbaren Farben und WMP12-Titelliste mit Albu
 Abhängigkeiten:  PySide6, mutagen
 Start:           python3 neonote.py
 """
+import sys
+
+
+def close_boot_splash():
+    """Startbild des Programmstarters (erscheint sofort beim Klick, noch vor Python) schließen."""
+    if getattr(sys, "frozen", False):
+        try:
+            import pyi_splash
+            pyi_splash.close()
+        except Exception:
+            pass
+
+
+def _fast_handoff():
+    """Windows: Läuft NeoNote schon (z. B. vorgeladen beim Anmelden), die Dateien bzw. „Fenster zeigen“ sofort an die
+    laufende Instanz schicken – noch bevor Qt und der Rest geladen werden. Spart beim erneuten Öffnen Sekunden."""
+    if sys.platform != "win32" or __name__ != "__main__" and not getattr(sys, "frozen", False):
+        return
+    args = sys.argv[1:]
+    if any(a.startswith("-") for a in args):              # Setup, Neustart, Hintergrund … normal behandeln
+        return
+    import os, re, json, getpass, ctypes
+    name = "neonote-" + re.sub(r"[^A-Za-z0-9_.-]", "_", getpass.getuser() or "user")
+    try:
+        files = [os.path.abspath(a) if os.path.exists(a) else a for a in args]
+        with open("\\\\.\\pipe\\" + name, "wb", buffering=0) as pipe:
+            close_boot_splash()
+            try:   # die laufende Instanz darf ihr Fenster nach vorn holen (Klick kam ja vom Benutzer)
+                ctypes.windll.user32.AllowSetForegroundWindow(-1)
+            except Exception:
+                pass
+            pipe.write(json.dumps(files).encode("utf-8"))
+    except OSError:
+        return                                            # keine laufende Instanz: normal starten
+    sys.exit(0)
+
+
+_fast_handoff()
 import base64
 import bisect
 import glob as globmod
@@ -15566,6 +15604,7 @@ def crash_note(text):
 
 def main():
     if "--setup" in sys.argv:
+        close_boot_splash()
         sys.exit(run_setup())
     if os.environ.get("NEONOTE_SELFTEST"):
         _selftest()
@@ -15607,6 +15646,8 @@ def main():
     # Läuft NeoNote schon? Dann Dateien dorthin schicken und beenden.
     sock = QLocalSocket()
     sock.connectToServer(SERVER_NAME)
+    if "--quit" in sys.argv or "--setup" in sys.argv or "--background" in sys.argv:
+        close_boot_splash()           # Installer, Beenden und Vorladen zeigen kein Startbild des Starters
     if "--quit" in sys.argv:          # vom Installer: laufende Instanz sauber beenden – selbst nie starten
         if sock.waitForConnected(1500):
             sock.write(json.dumps({"cmd": "quit"}).encode("utf-8"))
@@ -15614,6 +15655,7 @@ def main():
             sock.disconnectFromServer()
         return
     if sock.waitForConnected(400):
+        close_boot_splash()
         if IS_WIN:
             try:   # die laufende Instanz darf ihr Fenster nach vorn holen (Klick kam ja vom Benutzer)
                 ctypes.windll.user32.AllowSetForegroundWindow(-1)
@@ -15635,6 +15677,8 @@ def main():
     if s.value("ui/splash", True, type=bool) and not os.environ.get("NEONOTE_NOSPLASH") and not background:
         T.update({k: s.value(f"theme/{k}", v, type=type(v)) for k, v in DEFAULT_THEME.items()})
         _SPLASH = Splash(); _SPLASH.show()
+        QApplication.processEvents()
+        close_boot_splash()                       # nahtlos vom Startbild des Starters übernehmen
         _start_mark("Startbild sichtbar")
         splash_step(tr_("Lade die Einstellungen …"), 8)
     w = MainWindow()
@@ -15646,6 +15690,7 @@ def main():
     geo = s.value("window/geometry")
     if geo:
         w.restoreGeometry(geo)
+    close_boot_splash()                           # falls ohne eigenes Startbild gestartet
     if background:
         crash_note("Im Hintergrund vorgeladen (Anmeldung)")
         w._mini_was_max = s.value("window/maximized", False, type=bool)   # beim ersten Öffnen wie zuletzt

@@ -12,6 +12,8 @@
 - Kurzinfos sind jetzt standardmäßig aus (Einstellungen ▸ Darstellung ▸ „Kurzinfos beim Darüberfahren mit der Maus anzeigen“).
 - Testversionen zeigen „Beta“ hinter der Versionsnummer.
 - **Schnellerer Start:** Die fertig sortierte Bibliothek (Alben, Sampler, Editionen) liegt in einem Schnellstart-Zwischenspeicher – bei großen Bibliotheken dauert dieser Schritt nur noch etwa ein Drittel.
+- **Sofortige Rückmeldung beim Start (Windows):** Ein Startbild erscheint direkt beim Klick auf NeoNote, noch bevor Python und Qt geladen sind – vorher passierte rund zwei Sekunden lang nichts.
+- **Ein laufendes NeoNote öffnet sich viel schneller (Windows):** Es übergibt an die laufende Instanz, bevor Qt geladen wird – spürbar vor allem mit „Beim Anmelden im Hintergrund starten“ und beim Öffnen von Dateien.
 - **Beim Anmelden im Hintergrund starten** (Einstellungen ▸ System): NeoNote lädt beim Anmelden unsichtbar in die Systemleiste – ein Klick auf NeoNote öffnet das Fenster dann sofort. Schließen versteckt es nur, beendet wird über das Menü des Symbols.
 - **Beta-Kanal:** Einstellungen ▸ System oder ▸ Über ▸ „Auch Testversionen (Beta) anbieten“ – der Updater bietet dann auch Testversionen an, bevor sie offiziell erscheinen.
 
