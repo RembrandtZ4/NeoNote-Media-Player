@@ -24,6 +24,8 @@
 - Appearance: changing colors or the blur reacted slowly. The blur now switches instantly, and color changes no longer reload every cover from disk.
 - Settings open faster: the audio device list and file associations load right after the window appears.
 - Settings: the window opens at its usual size again and can be made smaller; long tabs scroll instead of being squeezed.
+- **Frozen NeoNote in the background (Windows):** if a running (e.g. preloaded) NeoNote no longer responds, clicking NeoNote used to do nothing at all. NeoNote now notices this after a few seconds and offers to end the frozen instance and start fresh.
+- The start screen shown on click is now closed again as a safety measure if it stays up for some reason; dialogs always close even if their fade-out animation gets stuck.
 
 ## 1.3.1 – 2026-11-24
 

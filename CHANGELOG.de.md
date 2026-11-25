@@ -24,6 +24,8 @@
 - Darstellung: Farbwechsel und Weichzeichner reagierten träge. Der Weichzeichner schaltet jetzt sofort um, und bei Farbwechseln liest NeoNote nicht mehr alle Cover neu von der Platte.
 - Einstellungen öffnen schneller: Geräteliste und Dateizuordnung laden erst direkt nach dem Öffnen.
 - Einstellungen: Das Fenster öffnet wieder in der gewohnten Größe und lässt sich kleiner ziehen; lange Reiter scrollen, statt gequetscht zu werden.
+- **Hängendes NeoNote im Hintergrund (Windows):** Reagierte ein laufendes (z. B. vorgeladenes) NeoNote nicht mehr, passierte beim Klick auf NeoNote einfach gar nichts. Jetzt merkt NeoNote das nach ein paar Sekunden und bietet an, die hängende Instanz zu beenden und neu zu starten.
+- Das Startbild beim Klick wird zur Sicherheit noch einmal geschlossen, falls es aus irgendeinem Grund stehen bleibt; Dialoge schließen sich auch dann, wenn ihre Ausblend-Animation hängt.
 
 ## 1.3.1 – 24.11.2026
 

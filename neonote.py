@@ -34,16 +34,71 @@ def _fast_handoff():
     name = "neonote-" + re.sub(r"[^A-Za-z0-9_.-]", "_", getpass.getuser() or "user")
     try:
         files = [os.path.abspath(a) if os.path.exists(a) else a for a in args]
-        with open("\\\\.\\pipe\\" + name, "wb", buffering=0) as pipe:
+        with open("\\\\.\\pipe\\" + name, "r+b", buffering=0) as pipe:   # lesbar: für PeekNamedPipe
             close_boot_splash()
             try:   # die laufende Instanz darf ihr Fenster nach vorn holen (Klick kam ja vom Benutzer)
                 ctypes.windll.user32.AllowSetForegroundWindow(-1)
             except Exception:
                 pass
             pipe.write(json.dumps(files).encode("utf-8"))
+            if not _handoff_answered(pipe):
+                if not _handoff_hung(pipe):
+                    sys.exit(0)
+                return                                    # hängende Instanz beendet: selbst normal starten
     except OSError:
         return                                            # keine laufende Instanz: normal starten
     sys.exit(0)
+
+
+def _handoff_answered(pipe, timeout=10.0):
+    """Die laufende Instanz trennt die Verbindung, sobald sie die Nachricht gelesen hat. Passiert das nicht
+    innerhalb von ein paar Sekunden, hängt sie – sonst würde jeder Klick aufs Symbol ins Leere laufen."""
+    import ctypes, msvcrt, time
+    from ctypes import wintypes
+    try:
+        h = msvcrt.get_osfhandle(pipe.fileno())
+        peek = ctypes.windll.kernel32.PeekNamedPipe
+        peek.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p,
+                         ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            avail = wintypes.DWORD(0)
+            if not peek(h, None, 0, None, ctypes.byref(avail), None) or avail.value:
+                return True                               # getrennt (= gelesen) oder Antwort da
+            time.sleep(0.05)
+        return False
+    except Exception:
+        return True                                       # im Zweifel wie bisher verhalten
+
+
+def _handoff_hung(pipe):
+    """Hängende Instanz: fragen, ob sie beendet werden soll. True = beendet, jetzt selbst starten."""
+    import ctypes, msvcrt
+    from ctypes import wintypes
+    k32, u32 = ctypes.windll.kernel32, ctypes.windll.user32
+    try:
+        de = (k32.GetUserDefaultUILanguage() & 0x3FF) == 0x07
+    except Exception:
+        de = False
+    text = ("NeoNote läuft bereits, reagiert aber nicht.\n\nDie hängende Instanz beenden und NeoNote neu starten?"
+            if de else "NeoNote is already running but not responding.\n\nEnd the frozen instance and restart NeoNote?")
+    if u32.MessageBoxW(None, text, "NeoNote", 0x04 | 0x30 | 0x40000) != 6:      # Ja/Nein, Warnung, im Vordergrund
+        return False
+    try:
+        pid = wintypes.ULONG(0)
+        k32.GetNamedPipeServerProcessId.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.ULONG)]
+        if not k32.GetNamedPipeServerProcessId(msvcrt.get_osfhandle(pipe.fileno()), ctypes.byref(pid)):
+            return False
+        k32.OpenProcess.restype = wintypes.HANDLE
+        hp = k32.OpenProcess(0x0001 | 0x00100000, False, pid.value)            # TERMINATE | SYNCHRONIZE
+        if not hp:
+            return False
+        k32.TerminateProcess(wintypes.HANDLE(hp), 1)
+        k32.WaitForSingleObject(wintypes.HANDLE(hp), 5000)
+        k32.CloseHandle(wintypes.HANDLE(hp))
+        return True
+    except Exception:
+        return False
 
 
 _fast_handoff()
@@ -882,9 +937,18 @@ class GlassDialogs(QObject):
             then(); return
         fade = QPropertyAnimation(d, b"windowOpacity", d); fade.setDuration(90)
         fade.setStartValue(d.windowOpacity()); fade.setEndValue(0.0); fade.setEasingCurve(QEasingCurve.InCubic)
-        fade.finished.connect(lambda: (then(), d.setWindowOpacity(1.0)))
+        state = {"done": False}
+
+        def finish():
+            if state["done"]:
+                return
+            state["done"] = True
+            fade.stop()
+            then(); d.setWindowOpacity(1.0)
+        fade.finished.connect(finish)
         d._nn_anim_out = fade
         fade.start()
+        QTimer.singleShot(400, finish)          # falls die Animation (z. B. verdecktes Fenster, VM) nie endet
 
     def tips_active(self):
         return (bool(getattr(self.win, "frameless", False))
@@ -15752,6 +15816,8 @@ def main():
     if geo:
         w.restoreGeometry(geo)
     close_boot_splash()                           # falls ohne eigenes Startbild gestartet
+    for ms in (500, 2000, 6000):                  # Sicherheitsnetz: das Startbild des Starters liegt immer oben –
+        QTimer.singleShot(ms, close_boot_splash)  # bleibt es hängen, würde es das Programm verdecken
     if background:
         crash_note("Im Hintergrund vorgeladen (Anmeldung)")
         w._mini_was_max = s.value("window/maximized", False, type=bool)   # beim ersten Öffnen wie zuletzt
