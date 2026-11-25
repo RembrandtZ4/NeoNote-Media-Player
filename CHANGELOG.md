@@ -16,6 +16,7 @@
 - **Reopening a running NeoNote is much faster (Windows):** it hands over to the running instance before loading Qt – especially noticeable with “Start in the background when signing in” and when opening files.
 - **Start in the background when signing in** (Settings ▸ System): NeoNote loads invisibly into the system tray when you sign in – clicking NeoNote then opens the window instantly. Closing only hides it; quit from the tray icon's menu.
 - **What's new after an update:** after updating, NeoNote shows once what's new in this version (Settings ▸ About, can be turned off). “What's new?” in the update bar now starts right with the changes.
+- **Uninstall:** like VLC, the uninstaller now offers to also delete your library, playlists, settings and cached covers (default: keep everything; music and video files are never touched). Suggested in the Deskmodder forum.
 - **Beta channel:** Settings ▸ System or ▸ About ▸ “Also offer test versions (beta)” – the updater then also offers test versions before they are officially released.
 
 **Fixes**

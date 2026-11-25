@@ -16,6 +16,7 @@
 - **Ein laufendes NeoNote öffnet sich viel schneller (Windows):** Es übergibt an die laufende Instanz, bevor Qt geladen wird – spürbar vor allem mit „Beim Anmelden im Hintergrund starten“ und beim Öffnen von Dateien.
 - **Beim Anmelden im Hintergrund starten** (Einstellungen ▸ System): NeoNote lädt beim Anmelden unsichtbar in die Systemleiste – ein Klick auf NeoNote öffnet das Fenster dann sofort. Schließen versteckt es nur, beendet wird über das Menü des Symbols.
 - **Neuerungen nach einem Update:** Nach dem Aktualisieren zeigt NeoNote einmal, was in dieser Version neu ist (Einstellungen ▸ Über, abschaltbar). „Was ist neu?“ in der Update-Leiste beginnt jetzt direkt mit den Neuerungen.
+- **Deinstallation:** Wie bei VLC bietet der Deinstaller jetzt an, auch Bibliothek, Wiedergabelisten, Einstellungen und zwischengespeicherte Cover zu löschen (Standard: alles behalten; Musik- und Videodateien werden nie angefasst). Ein Hinweis aus dem Deskmodder-Forum.
 - **Beta-Kanal:** Einstellungen ▸ System oder ▸ Über ▸ „Auch Testversionen (Beta) anbieten“ – der Updater bietet dann auch Testversionen an, bevor sie offiziell erscheinen.
 
 **Behoben**

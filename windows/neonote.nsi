@@ -117,8 +117,12 @@ Section
 SectionEnd
 
 Function un.onInit
-  MessageBox MB_YESNO|MB_ICONQUESTION "${TITLE} wirklich entfernen?$\n$\nDeine Bibliothek, Wiedergabelisten und Einstellungen bleiben erhalten." /SD IDYES IDYES +2
+  MessageBox MB_YESNO|MB_ICONQUESTION "${TITLE} wirklich entfernen?" /SD IDYES IDYES +2
   Abort
+  ; Wie bei VLC: auf Wunsch auch die persönlichen Daten entfernen (Standard: behalten). Musikdateien bleiben immer.
+  StrCpy $R9 "0"
+  MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Auch deine Bibliothek, Wiedergabelisten, Einstellungen und zwischengespeicherten Cover löschen?$\n$\nDeine Musik- und Videodateien bleiben in jedem Fall erhalten.$\n$\nNein = alles behalten, z. B. für eine spätere Neuinstallation." /SD IDNO IDNO +2
+  StrCpy $R9 "1"
 FunctionEnd
 
 Section "Uninstall"
@@ -399,6 +403,13 @@ Section "Uninstall"
   DeleteRegValue HKLM "Software\RegisteredApplications" "NeoNote"
   DeleteRegKey HKLM "Software\NeoNote"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\NeoNote"
+  ${If} $R9 == "1"
+    SetShellVarContext current
+    RMDir /r "$APPDATA\NeoNote"
+    RMDir /r "$LOCALAPPDATA\NeoNote"
+    DeleteRegKey HKCU "Software\NeoNote"
+    SetShellVarContext all
+  ${EndIf}
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
   IfSilent +2
   MessageBox MB_OK|MB_ICONINFORMATION "${TITLE} wurde entfernt."
