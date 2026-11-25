@@ -4738,15 +4738,74 @@ def win_run_update(setup, restart):
                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
+NOTES_SECTIONS = [  # Überschriften der Release-Texte → Abschnitt im Fenster „Was ist neu?“
+    (("Neu", "New"), "new"),
+    (("Verbessert", "Improved"), "improved"),
+    (("Behoben", "Fixes", "Fehlerbehebungen", "Fixed"), "fixed"),
+]
+
+
+def release_notes_sections(body):
+    """Release-Text in Abschnitte zerlegen: [(art, [Punkt, …]), …] – art ist new / improved / fixed / other."""
+    kinds = {h: k for hs, k in NOTES_SECTIONS for h in hs}
+    out, cur = [], None
+    for line in release_notes_for_lang(body).splitlines():
+        st = line.strip()
+        m = re.fullmatch(r"\*\*(.+?)\*\*:?", st)
+        if m and not st.startswith("- "):
+            cur = (kinds.get(m.group(1).strip(), "other"), [])
+            out.append(cur)
+        elif st.startswith(("- ", "* ")):
+            if cur is None:
+                cur = ("other", []); out.append(cur)
+            cur[1].append(st[2:].strip())
+        elif st and cur is not None and cur[1]:
+            cur[1][-1] += " " + st                    # umbrochene Zeile gehört zum vorigen Punkt
+    return [(k, items) for k, items in out if items]
+
+
+def _notes_inline(t):
+    t = html.escape(t, quote=False)
+    t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
+    t = re.sub(r"`(.+?)`", r"<code>\1</code>", t)
+    return re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r'<a href="\2">\1</a>', t)
+
+
+def release_notes_html(body):
+    """Abschnitte „Neue Funktionen“, „Verbesserungen“, „Behobene Fehler“ als HTML mit Akzentfarbe."""
+    titles = {"new": tr_("Neue Funktionen"), "improved": tr_("Verbesserungen"),
+              "fixed": tr_("Behobene Fehler"), "other": tr_("Weitere Änderungen")}
+    acc = T.accent.name()
+    parts = []
+    for kind, items in release_notes_sections(body):
+        parts.append(f'<h3 style="color:{acc}; margin-top:14px; margin-bottom:4px;">{titles[kind]}'
+                     f' <span style="font-weight:normal; color:gray;">({len(items)})</span></h3>')
+        parts.append('<ul style="margin-left:-12px;">' +
+                     "".join(f'<li style="margin-bottom:5px;">{_notes_inline(i)}</li>' for i in items) + "</ul>")
+    return "".join(parts)
+
+
 class WhatsNewDialog(QDialog):
     def __init__(self, parent, info):
         super().__init__(parent)
         self.setWindowTitle(tr_("Neu in NeoNote {0}").format(info["version"]))
-        self.resize(620, 520)
-        lay = QVBoxLayout(self); lay.setContentsMargins(18, 16, 18, 14)
+        self.resize(640, 560)
+        lay = QVBoxLayout(self); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(8)
+        head = QHBoxLayout(); head.setSpacing(12)
+        ic = QLabel(); ic.setPixmap(app_icon().pixmap(40, 40)); head.addWidget(ic, 0, Qt.AlignVCenter)
+        t = QLabel(tr_("Neu in NeoNote {0}").format(version_label(info["version"])))
+        f = t.font(); f.setPointSizeF(f.pointSizeF() + 5); f.setWeight(QFont.DemiBold); t.setFont(f)
+        head.addWidget(t, 1); lay.addLayout(head)
         tb = QTextBrowser(); tb.setOpenExternalLinks(True)
-        tb.setMarkdown(release_notes_for_lang(info.get("notes", "")))
+        page = release_notes_html(info.get("notes", ""))
+        if page:
+            tb.setHtml(page)
+        else:                                          # unbekannter Aufbau: Text so zeigen, wie er ist
+            tb.setMarkdown(release_notes_for_lang(info.get("notes", "")))
         lay.addWidget(tb, 1)
+        if info.get("url"):
+            more = QLabel(f'<a href="{html.escape(info["url"])}">{tr_("Alle Details auf GitHub")}</a>')
+            more.setOpenExternalLinks(True); lay.addWidget(more)
         bb = QDialogButtonBox(QDialogButtonBox.Close); bb.rejected.connect(self.reject)
         bb.button(QDialogButtonBox.Close).setText(tr_("Schließen"))
         lay.addWidget(bb)
