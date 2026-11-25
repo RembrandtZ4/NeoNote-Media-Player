@@ -826,5 +826,7 @@
  "Update fehlgeschlagen": "Update failed",
  "Beim Anmelden im Hintergrund starten – NeoNote öffnet sich dann sofort": "Start in the background when signing in – NeoNote then opens instantly",
  "NeoNote lädt beim Anmelden unsichtbar in die Systemleiste. Schließen versteckt das Fenster nur, beendet wird über das Menü des Symbols.": "NeoNote loads invisibly into the system tray when you sign in. Closing only hides the window; quit from the tray icon's menu.",
- "Nach einem Update zeigen, was neu ist": "Show what's new after an update"
+ "Nach einem Update zeigen, was neu ist": "Show what's new after an update",
+ "Weichzeichner beim Verschieben pausieren (für ältere Rechner)": "Pause blur while moving the window (for older PCs)",
+ "Verschiebt sich das Fenster ruckelig, schaltet NeoNote den Weichzeichner nur während des Verschiebens und Größenänderns kurz aus.": "If moving the window stutters, NeoNote briefly turns off the blur only while moving and resizing."
 }

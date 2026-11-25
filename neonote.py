@@ -8417,6 +8417,15 @@ class ThemePage(QWidget):
         self.blur_hint = QLabel(); self.blur_hint.setWordWrap(True); self.blur_hint.setObjectName("hint")
         form.addRow("", self.blur)
         form.addRow("", self.blur_hint)
+        if IS_WIN:
+            self.blurmove = QCheckBox(tr_("Weichzeichner beim Verschieben pausieren (für ältere Rechner)"))
+            self.blurmove.setChecked(win.settings.value("ui/blur_pause_move", False, type=bool))
+            self.blurmove.setToolTip(tr_("Verschiebt sich das Fenster ruckelig, schaltet NeoNote den Weichzeichner nur "
+                                         "während des Verschiebens und Größenänderns kurz aus."))
+            self.blurmove.toggled.connect(lambda v: win.settings.setValue("ui/blur_pause_move", v))
+            self.blurmove.setEnabled(self.t["blur"])
+            self.blur.toggled.connect(self.blurmove.setEnabled)
+            form.addRow("", self.blurmove)
         self.cov = QComboBox()
         self.cov.addItems([n for n, _ in COVER_SIZES]); self.cov.setCurrentIndex(self.t["cover"])
         self.cov.currentIndexChanged.connect(lambda i: self._set("cover", i))
@@ -11495,7 +11504,12 @@ class MainWindow(QMainWindow):
             try:
                 from ctypes import wintypes
                 msg = wintypes.MSG.from_address(int(message))
-                if msg.message == 0x0083 and msg.wParam:          # WM_NCCALCSIZE: ganze Fläche ist Inhalt
+                if msg.message in (0x0231, 0x0232):               # WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE
+                    # ältere Grafik: Weichzeichner während des Verschiebens pausieren, sonst ruckelt es
+                    if (self.theme_dict.get("blur") and
+                            self.settings.value("ui/blur_pause_move", False, type=bool)):
+                        set_window_blur(self, msg.message == 0x0232, self.corner_radius())
+                elif msg.message == 0x0083 and msg.wParam:        # WM_NCCALCSIZE: ganze Fläche ist Inhalt
                     u = ctypes.windll.user32
                     if u.IsZoomed(msg.hWnd):
                         # maximiert legt Windows den (unsichtbaren) Rahmen über den Bildschirmrand → auf Arbeitsfläche begrenzen
