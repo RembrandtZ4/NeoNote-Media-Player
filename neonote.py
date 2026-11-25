@@ -4523,8 +4523,11 @@ def release_notes_for_lang(body):
     lines = txt.splitlines()
     if lines and ("English" in lines[0] and "Deutsch" in lines[0]):
         lines = lines[1:]
-    # Download-Tabelle weglassen – im Player interessiert nur, was neu ist
-    first = next((i for i, l in enumerate(lines) if l.startswith("**")), None)
+    # Download-Tabelle und Hinweise zum Herunterladen weglassen – im Player interessiert nur, was neu ist
+    first = next((i for i, l in enumerate(lines)
+                  if re.fullmatch(r"\*\*(Neu|New|Verbessert|Improved|Behoben|Fixes|Fehlerbehebungen)\*\*", l.strip())), None)
+    if first is None:
+        first = next((i for i, l in enumerate(lines) if l.startswith("**")), None)
     if first is not None:
         lines = lines[first:]
     return "\n".join(lines).strip()
