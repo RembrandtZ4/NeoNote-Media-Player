@@ -11,6 +11,7 @@
 - **Update progress:** when NeoNote updates itself, a small window in the installer's look now shows the progress instead of nothing happening until NeoNote restarts.
 - Tooltips are now off by default (Settings ▸ Appearance ▸ “Show tooltips when hovering with the mouse”).
 - Test versions show “Beta” next to the version number.
+- **Faster start:** the finished library (albums, compilations, editions) is kept in a quick-start cache – with large libraries the library step takes only about a third of the time.
 - **Start in the background when signing in** (Settings ▸ System): NeoNote loads invisibly into the system tray when you sign in – clicking NeoNote then opens the window instantly. Closing only hides it; quit from the tray icon's menu.
 - **Beta channel:** Settings ▸ System or ▸ About ▸ “Also offer test versions (beta)” – the updater then also offers test versions before they are officially released.
 

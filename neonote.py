@@ -5061,16 +5061,76 @@ class Library:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         atomic_write_text(OVERRIDES_FILE, json.dumps(self.overrides, ensure_ascii=False))
 
+    CACHE_FILE = DATA_DIR / "library.cache"
+    CACHE_VER = 1
+
+    def _cache_key(self):
+        """Schnellstart-Cache gilt nur, solange Bibliothek, Bearbeitungen und Ausgeblendete unverändert sind."""
+        def sig(f):
+            try:
+                st = os.stat(f)
+                return (st.st_size, st.st_mtime_ns)
+            except OSError:
+                return None
+        return (self.CACHE_VER, LIB_VERSION, VARIOUS, APP_VERSION, sig(LIB_FILE), sig(OVERRIDES_FILE), sig(HIDDEN_FILE))
+
+    def _load_cache(self):
+        import marshal
+        import gc
+        gc_on = gc.isenabled()
+        gc.disable()                      # zehntausende neue Objekte: die Speicherbereinigung dabei nicht ständig anwerfen
+        try:
+            return self._load_cache_inner(marshal)
+        finally:
+            if gc_on:
+                gc.enable()
+
+    def _load_cache_inner(self, marshal):
+        try:
+            c = marshal.loads(self.CACHE_FILE.read_bytes())    # loads(Bytes) ist um ein Vielfaches schneller als load(Datei)
+            if c.get("key") != list(self._cache_key()):
+                return False
+            tracks = c["tracks"]
+            albums = OrderedDict()
+            for key, meta, idx in c["albums"]:
+                a = dict(meta); a["tracks"] = [tracks[i] for i in idx]
+                albums[key] = a
+            self.tracks, self.albums = tracks, albums
+            return True
+        except Exception:
+            return False
+
+    def _save_cache(self):
+        import marshal
+        try:
+            pos = {id(t): i for i, t in enumerate(self.tracks)}
+            albums = [(k, {kk: vv for kk, vv in a.items() if kk != "tracks"}, [pos[id(t)] for t in a["tracks"]])
+                      for k, a in self.albums.items()]
+            blob = marshal.dumps({"key": list(self._cache_key()), "tracks": self.tracks, "albums": albums})
+            tmp = self.CACHE_FILE.with_suffix(".tmp")
+            tmp.write_bytes(blob)
+            os.replace(tmp, self.CACHE_FILE)
+        except Exception:
+            pass
+
     def load(self):
+        # Schnellstart: fertig sortierte Bibliothek (Alben, Sampler, Editionen) aus dem Cache – spart das
+        # Einlesen der JSON-Datei und das Neuberechnen bei jedem Start
+        if self._load_cache():
+            return
         data = read_json_file(LIB_FILE, {"version": LIB_VERSION, "tracks": []})
         if isinstance(data, list) or data.get("version") != LIB_VERSION:
             self.outdated = True
             data = {"tracks": data if isinstance(data, list) else data.get("tracks", [])}
         self.set_tracks(data["tracks"])
+        if not self.outdated and self.tracks:
+            self._save_cache()
 
     def save(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         atomic_write_text(LIB_FILE, json.dumps({"version": LIB_VERSION, "tracks": self.tracks}, ensure_ascii=False))
+        if type(self) is Library and self.tracks:
+            self._save_cache()
 
     def set_tracks(self, tracks):
         if self.hidden:                                  # in „Bibliothek prüfen“ ausgeblendete Doppelte
@@ -10147,6 +10207,16 @@ class MainWindow(QMainWindow):
         if not self.frameless:
             win_titlebar_color(self)
 
+    def _set_styles(self):
+        """App- und Fenster-Stylesheet setzen – nur wenn sie sich wirklich geändert haben (jedes Setzen gestaltet
+        alle Widgets neu)."""
+        app = QApplication.instance()
+        a, m = app_style(), main_style()
+        if a != getattr(self, "_qss_app", None):
+            app.setStyleSheet(a); self._qss_app = a
+        if m != getattr(self, "_qss_main", None):
+            self.setStyleSheet(m); self._qss_main = m
+
     def apply_theme(self, d):
         # Nur die Befehlsleiste ein-/ausblenden? Dann nicht die ganze Darstellung neu aufbauen.
         cur = getattr(self, "theme_dict", None)
@@ -10179,8 +10249,7 @@ class MainWindow(QMainWindow):
             app.removeEventFilter(f)
         try:
             app.setPalette(build_palette())
-            app.setStyleSheet(app_style())
-            self.setStyleSheet(main_style())
+            self._set_styles()
         finally:
             for f in filters:
                 app.installEventFilter(f)
