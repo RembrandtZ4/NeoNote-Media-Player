@@ -4576,6 +4576,22 @@ def installed_by_package():
     return not IS_WIN and (bool(FLATPAK_ID) or str(Path(__file__).resolve()).startswith("/usr/"))
 
 
+NOTES_SECTIONS = [  # Überschriften der Release-Texte → Abschnitt im Fenster „Was ist neu?“
+    (("Neu", "New", "Neue Funktionen", "New features"), "new"),
+    (("Verbessert", "Improved", "Verbesserungen", "Improvements", "Schneller", "Faster"), "improved"),
+    (("Behoben", "Fixes", "Fehlerbehebungen", "Fixed", "Behobene Fehler", "Bug fixes"), "fixed"),
+]
+
+
+def notes_heading(line):
+    """Abschnittsüberschrift im Release-Text („**Neu**“ oder „### ✨ Neue Funktionen“) → reiner Name, sonst None."""
+    st = line.strip()
+    m = re.fullmatch(r"\*\*([^*]+?)\*\*:?", st) or re.fullmatch(r"#{2,4}\s+(.+?)\s*#*", st)
+    if not m:
+        return None
+    return re.sub(r"^[^\w]+", "", m.group(1)).strip() or None      # Emoji vorne weglassen
+
+
 def release_notes_for_lang(body):
     """Die Release-Texte sind zweisprachig (oben Englisch, nach „---“ Deutsch): passenden Teil wählen."""
     body = (body or "").replace("\r\n", "\n")
@@ -4588,10 +4604,10 @@ def release_notes_for_lang(body):
     if lines and ("English" in lines[0] and "Deutsch" in lines[0]):
         lines = lines[1:]
     # Download-Tabelle und Hinweise zum Herunterladen weglassen – im Player interessiert nur, was neu ist
-    first = next((i for i, l in enumerate(lines)
-                  if re.fullmatch(r"\*\*(Neu|New|Verbessert|Improved|Behoben|Fixes|Fehlerbehebungen)\*\*", l.strip())), None)
+    known = {h for hs, _k in NOTES_SECTIONS for h in hs}
+    first = next((i for i, l in enumerate(lines) if notes_heading(l) in known), None)
     if first is None:
-        first = next((i for i, l in enumerate(lines) if l.startswith("**")), None)
+        first = next((i for i, l in enumerate(lines) if notes_heading(l)), None)
     if first is not None:
         lines = lines[first:]
     return "\n".join(lines).strip()
@@ -4738,11 +4754,6 @@ def win_run_update(setup, restart):
                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
-NOTES_SECTIONS = [  # Überschriften der Release-Texte → Abschnitt im Fenster „Was ist neu?“
-    (("Neu", "New"), "new"),
-    (("Verbessert", "Improved"), "improved"),
-    (("Behoben", "Fixes", "Fehlerbehebungen", "Fixed"), "fixed"),
-]
 
 
 def release_notes_sections(body):
@@ -4751,9 +4762,9 @@ def release_notes_sections(body):
     out, cur = [], None
     for line in release_notes_for_lang(body).splitlines():
         st = line.strip()
-        m = re.fullmatch(r"\*\*(.+?)\*\*:?", st)
-        if m and not st.startswith("- "):
-            cur = (kinds.get(m.group(1).strip(), "other"), [])
+        head = notes_heading(st)
+        if head:
+            cur = (kinds.get(head, "other"), [])
             out.append(cur)
         elif st.startswith(("- ", "* ")):
             if cur is None:

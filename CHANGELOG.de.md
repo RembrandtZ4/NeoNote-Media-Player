@@ -4,23 +4,25 @@
 
 ## Nächste Version (in Arbeit)
 
-**Neu**
+### ✨ Neue Funktionen
 - **Musik und Videos mit NeoNote öffnen** wie bei VLC: Die Option im Installer (und der Knopf unter Einstellungen ▸ System) macht NeoNote jetzt zum Standard für alle Formate, für die noch kein Programm gewählt ist. Formate, die du oder Windows schon zugeordnet habt, schützt Windows – die stellst du von Hand um. Welche Formate, lässt sich auswählen: Musik und Videos getrennt oder einzeln – im Installer und später unter Einstellungen ▸ System. Ein Hinweis aus dem Deskmodder-Forum.
 - **Animierte Dialoge:** Einstellungen und andere Dialoge blenden sich beim Öffnen weich ein und gleiten leicht nach oben, beim Schließen blenden sie aus (Einstellungen ▸ Darstellung, abschaltbar).
-- Kurzinfos wirken zarter: durchscheinender, feinerer Rand, auch unter Windows sauber runde Ecken (ohne den harten Windows-Schatten).
 - **Update-Fortschritt:** Aktualisiert sich NeoNote selbst, zeigt jetzt ein kleines Fenster im Look des Installers den Fortschritt – vorher passierte bis zum Neustart sichtbar nichts.
-- Kurzinfos sind jetzt standardmäßig aus (Einstellungen ▸ Darstellung ▸ „Kurzinfos beim Darüberfahren mit der Maus anzeigen“).
-- Testversionen zeigen „Beta“ hinter der Versionsnummer.
-- **Schnellerer Start:** Die fertig sortierte Bibliothek (Alben, Sampler, Editionen) liegt in einem Schnellstart-Zwischenspeicher – bei großen Bibliotheken dauert dieser Schritt nur noch etwa ein Drittel.
-- **Sofortige Rückmeldung beim Start (Windows):** Ein Startbild erscheint direkt beim Klick auf NeoNote, noch bevor Python und Qt geladen sind – vorher passierte rund zwei Sekunden lang nichts.
-- **Ein laufendes NeoNote öffnet sich viel schneller (Windows):** Es übergibt an die laufende Instanz, bevor Qt geladen wird – spürbar vor allem mit „Beim Anmelden im Hintergrund starten“ und beim Öffnen von Dateien.
 - **Beim Anmelden im Hintergrund starten** (Einstellungen ▸ System): NeoNote lädt beim Anmelden unsichtbar in die Systemleiste – ein Klick auf NeoNote öffnet das Fenster dann sofort. Schließen versteckt es nur, beendet wird über das Menü des Symbols.
 - **Neuerungen nach einem Update:** Nach dem Aktualisieren zeigt NeoNote einmal, was in dieser Version neu ist (Einstellungen ▸ Über, abschaltbar). „Was ist neu?“ in der Update-Leiste beginnt jetzt direkt mit den Neuerungen. Beides ist in „Neue Funktionen“, „Verbesserungen“ und „Behobene Fehler“ gegliedert.
 - **Deinstallation:** Wie bei VLC bietet der Deinstaller jetzt an, auch Bibliothek, Wiedergabelisten, Einstellungen und zwischengespeicherte Cover zu löschen (Standard: alles behalten; Musik- und Videodateien werden nie angefasst). Ein Hinweis aus dem Deskmodder-Forum.
 - **Flüssigeres Verschieben auf älteren Rechnern (Windows):** Einstellungen ▸ Darstellung ▸ „Weichzeichner beim Verschieben pausieren“ – der Weichzeichner ist nur während des Ziehens oder Größenänderns aus.
 - **Beta-Kanal:** Einstellungen ▸ System oder ▸ Über ▸ „Auch Testversionen (Beta) anbieten“ – der Updater bietet dann auch Testversionen an, bevor sie offiziell erscheinen.
 
-**Behoben**
+### ⚡ Verbesserungen
+- Kurzinfos wirken zarter: durchscheinender, feinerer Rand, auch unter Windows sauber runde Ecken (ohne den harten Windows-Schatten).
+- Kurzinfos sind jetzt standardmäßig aus (Einstellungen ▸ Darstellung ▸ „Kurzinfos beim Darüberfahren mit der Maus anzeigen“).
+- Testversionen zeigen „Beta“ hinter der Versionsnummer.
+- **Schnellerer Start:** Die fertig sortierte Bibliothek (Alben, Sampler, Editionen) liegt in einem Schnellstart-Zwischenspeicher – bei großen Bibliotheken dauert dieser Schritt nur noch etwa ein Drittel.
+- **Sofortige Rückmeldung beim Start (Windows):** Ein Startbild erscheint direkt beim Klick auf NeoNote, noch bevor Python und Qt geladen sind – vorher passierte rund zwei Sekunden lang nichts.
+- **Ein laufendes NeoNote öffnet sich viel schneller (Windows):** Es übergibt an die laufende Instanz, bevor Qt geladen wird – spürbar vor allem mit „Beim Anmelden im Hintergrund starten“ und beim Öffnen von Dateien.
+
+### 🐞 Behobene Fehler
 - Darstellung: Farbwechsel und Weichzeichner reagierten träge. Der Weichzeichner schaltet jetzt sofort um, und bei Farbwechseln liest NeoNote nicht mehr alle Cover neu von der Platte.
 - Einstellungen öffnen schneller: Geräteliste und Dateizuordnung laden erst direkt nach dem Öffnen.
 - Einstellungen: Das Fenster öffnet wieder in der gewohnten Größe und lässt sich kleiner ziehen; lange Reiter scrollen, statt gequetscht zu werden.
@@ -29,11 +31,11 @@
 
 ## 1.3.1 – 24.11.2026
 
-**Verbessert**
+### ⚡ Verbesserungen
 - **Immer im Vordergrund:** Stecknadel-Knopf neben „Minimieren“ (und im ☰-Menü, Strg+Umschalt+T). Ein Wunsch aus dem Deskmodder-Forum.
 - Kurzinfos (Tooltips) und Rechtsklick-Menüs passen jetzt zum Fenster: durchscheinend, mit runden Ecken und Weichzeichner. Abschaltbar unter Einstellungen ▸ Darstellung.
 
-**Behoben**
+### 🐞 Behobene Fehler
 - Update-Prüfung: Ist die GitHub-API nicht erreichbar (z. B. Abfragelimit), nutzt NeoNote die Release-Seite; die Meldung nennt jetzt den Grund.
 - Update-Prüfung und alle Online-Funktionen scheiterten auf frischen Windows-Installationen (z. B. Windows-Sandbox) mit „Keine Verbindung zu GitHub“: Windows lädt fehlende Stammzertifikate erst nach, wenn ein Browser sie braucht. NeoNote bringt jetzt eine eigene Zertifikatsliste als Rückfall mit.
 - Windows: „Immer im Vordergrund“ hielt das Fenster nicht oben – noch am Veröffentlichungstag im Download von 1.3.1 behoben.
@@ -41,7 +43,7 @@
 
 ## 1.3 – 23.11.2026
 
-**Neu**
+### ✨ Neue Funktionen
 - **Überblenden** zwischen Titeln (Einstellungen ▸ System ▸ Übergänge, 1–12 Sekunden): Der nächste Titel wird eingeblendet, während der laufende ausklingt. Innerhalb eines Albums bleibt es auf Wunsch lückenlos – Live- und Konzeptalben werden nicht zerhackt.
 - **Wiedergabegeschwindigkeit** 0,5× bis 2× mit Tonhöhenkorrektur (☰-Menü) – praktisch für Hörbücher und Podcasts; eine Anzeige in der Steuerleiste zeigt, wenn es nicht 1× ist.
 - **Ausgabegerät wählen und bitgenaue Wiedergabe** für externe DACs (Einstellungen ▸ System ▸ Audioausgabe): exklusiver Zugriff (unter Windows WASAPI exklusiv), die Musik geht unverändert in Abtastrate und Bittiefe der Datei ans Gerät – ohne Lautstärke, Equalizer, ReplayGain oder Umrechnung. Wer trotzdem lieber mit dem Regler in NeoNote arbeitet, kann das zuschalten (exklusiv, aber nicht mehr streng bitgenau).
@@ -53,12 +55,12 @@
 - **Auto-DJ:** Rechtsklick auf einen Titel ▸ „Auto-DJ ab diesem Titel“ oder ☰ ▸ Auto-DJ – passende Musik ohne Ende aus der eigenen Sammlung (gleiches Genre, ähnliche Interpreten, ähnliche Zeit, deine Bewertungen), nie zweimal derselbe Interpret hintereinander.
 - **Sternbewertungen stehen jetzt in den Musikdateien**, so wie es Windows Media Player macht: bei MP3 und WMA im Format von WMP (WMP12 zeigt sie also auch an), bei FLAC, Ogg und Opus als `FMPS_RATING` (lesen Strawberry, Clementine, Amarok). Damit überstehen die Sterne Abstürze, Neuinstallationen und den Wechsel zwischen Windows und Linux. Schon vergebene Sterne trägt NeoNote einmalig nach. Das Änderungsdatum der Datei bleibt gleich, Sicherungs- und Sync-Programme halten die Dateien also nicht für neu. Der gerade laufende Titel wird erst nach dem Ende beschrieben. Abschaltbar unter Einstellungen ▸ Online-Informationen.
 
-**Verbessert**
+### ⚡ Verbesserungen
 - Installer: Statt des grauen Kastens „Setup wird vorbereitet …“ erscheint beim Entpacken ein Startfenster im NeoNote-Look – mit Neon-Note, Version und laufendem Fortschrittsbalken; es blendet sich aus, sobald das Setup-Fenster da ist.
 - Die Einstellungen haben jetzt **OK**, **Übernehmen** und **Abbrechen**: „Übernehmen“ speichert, ohne das Fenster zu schließen. Das Fenster ist breit genug für alle Reiter.
 - Dialoge haben genau dieselbe Deckkraft wie das Hauptfenster, und der Deckkraft-Regler reagiert sofort (nur neu zeichnen statt die ganze Darstellung neu aufzubauen).
 
-**Fehlerbehebungen**
+### 🐞 Behobene Fehler
 - Filme mit 5.1/7.1-Ton (z. B. DTS) hatten an Stereo-Lautsprechern und Kopfhörern keine Stimmen, weil der Mittenkanal verloren ging. NeoNote mischt Filmton jetzt selbst auf Stereo; mit Surround-Anlage lässt sich unveränderte Mehrkanal-Ausgabe einschalten (Einstellungen ▸ Video).
 - Flatpak: mpv startete nicht (fehlende Lua-Optionen), dadurch lief alles über den schwächeren Ersatzweg Qt Multimedia – keine Bild-Untertitel, kein DTS-Ton, Hänger. Behoben; der Ersatzweg stürzt unter Linux außerdem nicht mehr ab.
 - Songtexte: Steht in der Datei nur ein einfacher Text ohne Zeitstempel (häufig bei gerippten MP3s), sucht NeoNote jetzt zusätzlich bei LRCLIB nach einem zeitgesteuerten Text und nimmt diesen – so läuft der Text mit. Einfache Texte wandern außerdem langsam mit dem Lied mit.
@@ -70,7 +72,7 @@
 
 ## 1.2 – 20.11.2026
 
-**Neu**
+### ✨ Neue Funktionen
 - **Videos über mpv:** Videos laufen jetzt über mpv, das direkt auf der Grafikkarte zeichnet – flüssiges 4K, HDR-Videos mit richtigen Farben auf normalen Bildschirmen, Hardware-Decodierung über D3D11VA, VA-API oder NVDEC. Bild-Untertitel von Blu-rays und DVDs (PGS, VobSub) funktionieren jetzt, ebenso .ass- und .vtt-Untertitel. Untertitel weichen nach oben aus, solange die Steuerleiste eingeblendet ist. Abschaltbar unter Einstellungen ▸ Video; ohne mpv laufen Videos wie bisher über Qt Multimedia.
 - War zuletzt ein Video geöffnet, zeigt NeoNote beim Start nicht mehr dessen Standbild; das Video steht nur in der Warteschlange und setzt beim Abspielen an der letzten Stelle fort. Wer das Standbild wieder möchte: Einstellungen ▸ Video.
 - **Absturzschutz für Videos:** Stürzt NeoNote beim Start eines Videos ab, decodiert es beim nächsten Mal ohne Hardwarebeschleunigung; passiert es dann wieder, laufen Videos über Qt Multimedia. Ein Hinweis sagt, was umgestellt wurde. Unter Windows nutzt mpv die stabilen Kopier-Modi (z. B. `d3d11va-copy`) – decodiert wird weiter auf der Grafikkarte.
@@ -82,18 +84,18 @@
 - **Weiterschauen:** Lange Videos und Hörbücher (ab 20 Minuten) merken sich, wo du aufgehört hast, und setzen beim nächsten Mal dort fort. Wer bis kurz vor Schluss geschaut hat, beginnt wieder von vorn. Abschaltbar unter Einstellungen ▸ Video.
 - **Flatpak** für alle Linux-Systeme (Fedora, Ubuntu, Mint, openSUSE, Steam Deck …): `NeoNote-1.2-x86_64.flatpak` hängt an der Release, Installation per Doppelklick in Discover/GNOME Software oder mit `flatpak install`. Bringt libmpv und alles Nötige mit; Updates zeigt NeoNote an, installiert werden sie über Discover bzw. `flatpak update`.
 
-**Fehlerbehebungen**
+### 🐞 Behobene Fehler
 - Beim Bearbeiten direkt in der Titelliste (F2) war der markierte Text weiß auf hellem Grund und kaum lesbar; außerdem schnitt das Eingabefeld die Schrift oben und unten ab.
 - Nach einem Film blieb beim Hören von Musik der Knopf „Spuren“ stehen.
 - Bibliothek, Statistik (Bewertungen, Wiedergabezähler, „Zuletzt gespielt“), Bearbeitungen und Wiedergabelisten werden jetzt sicher gespeichert: erst in eine Hilfsdatei, dann getauscht, die vorige Fassung bleibt als `.bak`. Stürzt NeoNote mitten im Speichern ab, geht nichts mehr verloren – beim nächsten Start wird die Sicherung gelesen.
 
 ## 1.1.9 – 20.11.2026
 
-**Neu**
+### ✨ Neue Funktionen
 - **Interpreten zusammenführen** wie im WMP12: In der Interpretenansicht eine Kachel (oder mehrere markierte) auf einen anderen Interpreten ziehen. Nach einer Rückfrage wandern alle Titel dorthin – Interpret bzw. Albuminterpret wird auf den Zielnamen gesetzt (in die Dateien geschrieben oder nur in der Bibliothek, je nach Einstellung).
 - **Angaben neben dem Cover anklickbar:** In der Titelliste öffnet ein Klick auf Albumtitel, Interpret, Genre oder Jahr die passende Ansicht. Neu ist dabei die Jahresansicht mit allen Alben aus diesem Jahr, wie im WMP12.
 
-**Verbessert**
+### ⚡ Verbesserungen
 - Wie im WMP12 lässt sich das Fenster jetzt auch an der Steuerleiste unten verschieben – an allen freien Stellen und über Titel und Interpret. Doppelklick dort maximiert, wie oben.
 - Zurück und Vor merken sich ihren Verlauf jetzt auch über einen Neustart hinweg (die letzten 50 Ansichten, mit Scrollposition).
 - Installer: Läuft NeoNote noch, bittet der Installer es jetzt, sich selbst zu beenden – so werden Wiedergabeposition und Verlauf noch gespeichert. Erst wenn das nach ein paar Sekunden nicht geklappt hat, wird es wie bisher hart beendet. (Wirkt ab dem Update von 1.1.9 auf spätere Versionen.)
@@ -102,13 +104,13 @@
 - Im Menü ☰ steht „Befehlsleiste anzeigen“ jetzt bei „Darstellung…“ statt ganz unten.
 - Windows 11: Die Titelleisten der Dialoge (Einstellungen, Equalizer, Albuminfos …) haben jetzt dieselbe Farbe wie das Fenster – eine durchgehende Fläche statt eines abgesetzten Balkens. Gilt auch fürs Hauptfenster mit Systemrahmen und passt sich beim Farbwechsel sofort an.
 
-**Fehlerbehebungen**
+### 🐞 Behobene Fehler
 - Absturz beim Einschalten von Bild-Untertiteln (PGS von Blu-rays, VobSub von DVDs, DVB) in MKV-Videos: Qt Multimedia kommt damit nicht zurecht. NeoNote erkennt diese Spuren jetzt selbst und zeigt sie im Menü ausgegraut („noch nicht unterstützt“); Text-Untertitel funktionieren wie gewohnt.
 - Große Videos (4K, HDR) stauen keine Bilder mehr auf: Kommen sie schneller, als NeoNote sie zeichnen kann, werden Zwischenbilder ausgelassen. Ganz flüssig wird 4K-HDR erst mit der Wiedergabe über mpv (geplant für 1.2).
 
 ## 1.1.8 – 19.11.2026
 
-**Neu**
+### ✨ Neue Funktionen
 - **Updates:** NeoNote sucht auf Wunsch nach neuen Versionen – bei jedem Start, einmal am Tag (Standard), einmal pro Woche oder nie (Einstellungen ▸ System ▸ Updates, außerdem „Nach Updates suchen“ unter Über NeoNote). Es wird nur die Release-Seite auf GitHub gelesen.
   - Windows: „Jetzt aktualisieren“ lädt den Installer (Prüfsumme wird kontrolliert), installiert ihn still und startet NeoNote neu. Alternativ: automatisch herunterladen und beim Beenden installieren.
   - Linux: Hinweis mit „Was ist neu?“; aktualisiert wird über die Paketverwaltung.
@@ -120,10 +122,10 @@
 - **Zeitanzeige:** Ein Klick wechselt jetzt zwischen drei Anzeigen: verstrichene Zeit / Länge, Restzeit / Länge und nur die Restzeit.
 - **Windows: mpv ist dabei.** `libmpv-2.dll` liegt dem Installer bei – Equalizer und lückenlose Wiedergabe laufen sofort, ohne Download. Mit jedem Update kommt auch eine aktuelle libmpv (mit eigenem FFmpeg). Eine früher heruntergeladene Kopie wird entfernt.
 
-**Geändert**
+### 🔄 Geändert
 - „Wird gespielt“ bei Musik wieder wie in 1.1.5: normale Titelleiste oben mit Zurück/Vor und den Fensterknöpfen (ohne Suche und Überschrift), Steuerleiste unten. Der doppelte Bibliotheks-Knopf oben rechts im Bild entfällt – er sitzt unten rechts in der Steuerleiste. Die über dem Bild schwebenden, ausblendenden Leisten gibt es weiterhin bei Videos.
 
-**Fehlerbehebungen**
+### 🐞 Behobene Fehler
 - Das Einstellungsfenster schloss sich mit ✕ oder „Abbrechen“ spürbar verzögert, weil die ganze Darstellung neu aufgebaut wurde – auch ohne Änderungen. Jetzt wird nur zurückgenommen, was du wirklich geändert hast. Ebenso beim Ein- und Ausblenden der Befehlsleiste: Das geht jetzt sofort.
 - Bei Titeln über einer Stunde wurde die Zeitanzeige abgeschnitten („12:01 …:03:11“). Das Feld passt sich jetzt an.
 - „Zurück“ aus einem Interpreten oder Album führte in der Interpreten- und Albenansicht wieder ganz nach oben. Jetzt landest du an derselben Stelle wie vorher, und der eben geöffnete Eintrag ist markiert (auch mit „Vor“).
@@ -131,7 +133,7 @@
 
 ## 1.1.7 – 19.11.2026
 
-**Fehlerbehebungen**
+### 🐞 Behobene Fehler
 - Liegt ein Album doppelt vor (z. B. einmal als FLAC, einmal als MP3 in eigenen Ordnern), wurden beide Fassungen zu einem Album zusammengeworfen. Jetzt erscheinen sie wie im WMP12 als getrennte Alben, mit dem Format neben dem Jahr („2000 · FLAC“). Alben, die nur auf mehrere Ordner verteilt sind (CD1/CD2), bleiben zusammen.
 - Springen per Buchstabe in der Interpreten- und Albenansicht: Der Abschnitt erscheint jetzt oben statt am unteren Rand.
 - Fortschrittsbalken und Lautstärkeregler zeigen beim Darüberfahren eine Hand als Mauszeiger.
@@ -139,29 +141,29 @@
 
 ## 1.1.6 – 18.11.2026
 
-**Verbessert**
+### ⚡ Verbesserungen
 - „Wird gespielt“ bei Musik wie bei Videos: Statt der Titelleiste mit Suche gibt es nur noch eine schmale Leiste mit Titel, Minimieren, Maximieren und Schließen. Oben und unten laufen die Leisten jetzt durchgehend transparent ins Bild aus – ohne Kanten und Trennlinien.
 - Ziehen der Fenstergröße deutlich flüssiger: Kacheln werden als fertige Bilder gezeichnet, ihre Größe liest Qt direkt aus dem Modell, der Fensterhintergrund wird schneller gefüllt (bei 800 Interpreten etwa doppelt so schnell).
 
-**Fehlerbehebungen**
+### 🐞 Behobene Fehler
 - Windows: Der Weichzeichner wird beim Ziehen der Fenstergröße nicht mehr bei jeder kurzen Pause neu gesetzt (das ganze Fenster wurde dabei neu gezeichnet).
 - Der Größenpfeil vom Fensterrand blieb stehen, wenn man die Maus ohne Klick zurück ins Fenster bewegte.
 
 ## 1.1.5 – 17.11.2026
 
-**Neu seit 1.1.0**
+### Neu seit 1.1.0
 - **Jellyfin-Anbindung:** Musik vom eigenen Jellyfin-Server mit denselben Ansichten wie die eigene Bibliothek. Wählbare Streaming-Qualität (Original bis 128 kbit/s), Titel und Alben offline speichern, Favoriten und gespielte Titel werden mit dem Server abgeglichen.
 - **Bibliothek prüfen:** findet doppelte Titel (beste Fassung vorausgewählt), Alben ohne Cover, lückenhafte Tags und fehlende Dateien; verschobene Dateien werden wiedergefunden.
 - **Englische Oberfläche:** Sprache unter Einstellungen ▸ Darstellung, automatisch nach Systemsprache.
 - **„Über NeoNote“** mit Version, verwendeten Bausteinen und Datenordnern.
 - **Kein Standby während der Wiedergabe** (wie im WMP): Bei Musik bleibt der Rechner wach, bei Videos zusätzlich der Bildschirm. Abschaltbar unter Einstellungen ▸ System.
 
-**Schneller**
+### ⚡ Verbesserungen
 - Flüssiges Scrollen auch bei sehr großen Bibliotheken: Cover laden im Hintergrund und werden beim Entpacken gleich verkleinert, Cover-Stapel und Album-Blöcke werden nur einmal gezeichnet. Bei 800 Interpreten etwa 4–8 ms statt 17–80 ms pro Bild.
 - Schnellerer Start: die Titelliste wird nur noch einmal statt dreimal aufgebaut, die zuletzt geöffnete Ansicht erscheint direkt, die Suche nach geänderten Dateien beginnt erst, wenn das Fenster steht.
 - Unter Windows deutlich schnelleres Prüfen der Musikordner auf Änderungen.
 
-**Fehlerbehebungen**
+### 🐞 Behobene Fehler
 - Windows: Minimieren und Wiederherstellen werden jetzt wie bei anderen Programmen animiert (vorher verschwand das Fenster einfach).
 - Windows: Ein an die Taskleiste angeheftetes NeoNote (auch mit eigenem Symbol) erzeugte beim Start einen zweiten Taskleisten-Knopf. Fenster und angeheftetes Symbol gehören jetzt zusammen.
 - Windows: „Als Standardplayer festlegen“ öffnete den Explorer statt der Windows-Einstellungen.
