@@ -1,0 +1,25 @@
+# Aktualisiert nur die Texte bestehender Release-Seiten: notes/<tag>.md → Release <tag>.
+# Dateien, Titel, „neueste“ und Vorabversion bleiben unverändert.
+name: Release-Texte aktualisieren
+on:
+  push:
+    branches: [release-notes]
+permissions:
+  contents: write
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release-notes
+      - name: Texte setzen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          for f in notes/*.md; do
+            tag=$(basename "$f" .md)
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file "$f"
+            echo "aktualisiert: $tag"
+          done
