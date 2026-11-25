@@ -2,6 +2,18 @@
 
 🇬🇧 [English](README.md) | 🇩🇪 **Deutsch**
 
+<p>
+  <a href="https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest"><img alt="Version" src="https://img.shields.io/github/v/release/RembrandtZ4/NeoNote-Media-Player?label=Version&color=3d8fe0"></a>
+  <a href="https://github.com/RembrandtZ4/NeoNote-Media-Player/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/RembrandtZ4/NeoNote-Media-Player/total?color=43b05c"></a>
+  <img alt="Linux | Windows" src="https://img.shields.io/badge/Linux%20%7C%20Windows-b8bec7">
+  <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/github/license/RembrandtZ4/NeoNote-Media-Player?color=8e6cf0"></a>
+</p>
+
+<p>
+  <a href="https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest"><img alt="Download für Windows" src="https://img.shields.io/badge/Download%20für%20Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a>
+  <a href="https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest"><img alt="Download für Linux (Flatpak)" src="https://img.shields.io/badge/Download%20für%20Linux%20(Flatpak)-1d99f3?style=for-the-badge&logo=linux&logoColor=white"></a>
+</p>
+
 Ein Musik- und Videoplayer für Linux und Windows, angelehnt an Windows Media Player 12: flaches Design mit Transparenz, anpassbaren Farben, WMP12-Titelliste mit Albumcovern, „Wird gespielt“-Modus, Wiedergabelisten, Internetradio, Jellyfin-Anbindung und Mediensteuerung. Oberfläche auf Deutsch und Englisch.
 
 ![Titelliste mit Albumcovern](docs/screenshots/songs.png)
