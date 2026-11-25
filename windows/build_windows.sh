@@ -9,6 +9,7 @@ set -e
 cd "$(dirname "$0")"
 VERSION=$(sed -n 's/^APP_VERSION = "\(.*\)"/\1/p' ../neonote.py)
 python make_version.py ../neonote.py
+python splash/make_start_splash.py ../neonote.py start_splash.png
 python make_icons.py icons
 python -m PyInstaller --noconfirm --clean neonote.spec
 makensis -DVERSION="$VERSION" neonote.nsi
