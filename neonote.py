@@ -4533,6 +4533,23 @@ def release_notes_for_lang(body):
     return "\n".join(lines).strip()
 
 
+class ReleaseNotesFetch(QThread):
+    """Holt die Release-Notizen einer bestimmten Version (für „Neu in dieser Version“ nach einem Update)."""
+    result = Signal(dict)
+
+    def __init__(self, version, parent=None):
+        super().__init__(parent)
+        self.version = version
+
+    def run(self):
+        try:
+            d = UpdateCheck._api(UPDATE_API.rsplit("/", 1)[0] + f"/tags/v{self.version}")
+            if d.get("body"):
+                self.result.emit({"version": self.version, "notes": d["body"], "url": d.get("html_url") or RELEASES_URL})
+        except Exception:
+            pass
+
+
 class UpdateCheck(QThread):
     """Fragt die neueste Release-Seite ab. Es werden keine Daten übertragen, nur diese eine Seite gelesen."""
     result = Signal(dict)
@@ -4751,6 +4768,10 @@ class AboutPage(QWidget):
                                  "erscheinen – können aber noch Fehler haben."))
         self.beta.toggled.connect(lambda v: win.settings.setValue("update/beta", v))
         lay.addWidget(self.beta)
+        self.whatsnew = QCheckBox(tr_("Nach einem Update zeigen, was neu ist"))
+        self.whatsnew.setChecked(win.settings.value("ui/whats_new", True, type=bool))
+        self.whatsnew.toggled.connect(lambda v: win.settings.setValue("ui/whats_new", v))
+        lay.addWidget(self.whatsnew)
         lay.addStretch()
 
 
@@ -13926,6 +13947,10 @@ class MainWindow(QMainWindow):
         if self.isHidden() or self.isMinimized():
             self.showMaximized() if self._mini_was_max else self.showNormal()
         self.raise_(); self.activateWindow()
+        info = getattr(self, "_pending_whats_new", None)
+        if info:
+            self._pending_whats_new = None
+            QTimer.singleShot(400, lambda: WhatsNewDialog(self, info).exec())
 
     # ── Systemleiste ──────────────────────────────────────────────────────
     def setup_tray(self):
@@ -14380,6 +14405,25 @@ class MainWindow(QMainWindow):
 
     def _update_bar_wanted(self):
         return self._update_info is not None and not self.np_mode and not getattr(self, "_update_dismissed", False)
+
+    def show_whats_new_after_update(self):
+        """Nach einem Update einmal zeigen, was neu ist (abschaltbar unter Einstellungen ▸ Über)."""
+        last = self.settings.value("ui/last_version", "")
+        self.settings.setValue("ui/last_version", APP_VERSION)
+        if not last or last == APP_VERSION or not self.settings.value("ui/whats_new", True, type=bool):
+            return
+        if version_tuple(APP_VERSION) <= version_tuple(last):
+            return
+        th = ReleaseNotesFetch(APP_VERSION, self)
+        self._notes_fetch = th
+
+        def show(info):
+            if self.isVisible():
+                WhatsNewDialog(self, info).exec()
+            else:                                   # vorgeladen im Hintergrund: beim ersten Öffnen zeigen
+                self._pending_whats_new = info
+        th.result.connect(show)
+        th.start()
 
     def _update_found(self, info, manual):
         self._update_info = info
@@ -15708,6 +15752,7 @@ def main():
         _SPLASH.finish(w)
         _SPLASH = None
     QTimer.singleShot(0, write_startup_log)
+    QTimer.singleShot(2500, w.show_whats_new_after_update)
     if files:
         QTimer.singleShot(300, lambda: w.open_files(files))
     if IS_WIN and not mpv_available() and not s.value("win/mpv_asked", False, type=bool):
