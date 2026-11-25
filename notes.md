@@ -2,7 +2,7 @@
 
 This is a **test version** for everyone who wants to try new features early. It may still contain bugs. The regular version is still [1.3.1](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest).
 
-**Download:** `NeoNote-Setup-1.3.1.96.exe` (Windows 10/11) – install over your existing NeoNote, settings and library are kept. Test versions are Windows-only; on Linux, test builds are available as a Flatpak in the [test](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/tag/test) pre-release.
+**Download:** `NeoNote-Setup-1.3.1.97.exe` (Windows 10/11) – install over your existing NeoNote, settings and library are kept. Test versions are Windows-only; on Linux, test builds are available as a Flatpak in the [test](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/tag/test) pre-release.
 
 **Get test versions automatically:** Settings ▸ System (or ▸ About) ▸ “Also offer test versions (beta)”.
 
@@ -13,9 +13,15 @@ This is a **test version** for everyone who wants to try new features early. It 
 - **Update progress:** when NeoNote updates itself, a small window in the installer's look now shows the progress instead of nothing happening until NeoNote restarts.
 - Tooltips are now off by default (Settings ▸ Appearance ▸ “Show tooltips when hovering with the mouse”).
 - Test versions show “Beta” next to the version number.
+- **Faster start:** the finished library (albums, compilations, editions) is kept in a quick-start cache – with large libraries the library step takes only about a third of the time.
+- **Instant start feedback (Windows):** a start screen appears right when you click NeoNote, before Python and Qt are loaded – previously nothing happened for about two seconds.
+- **Reopening a running NeoNote is much faster (Windows):** it hands over to the running instance before loading Qt – especially noticeable with “Start in the background when signing in” and when opening files.
+- **Start in the background when signing in** (Settings ▸ System): NeoNote loads invisibly into the system tray when you sign in – clicking NeoNote then opens the window instantly. Closing only hides it; quit from the tray icon's menu.
 - **Beta channel:** Settings ▸ System or ▸ About ▸ “Also offer test versions (beta)” – the updater then also offers test versions before they are officially released.
 
 **Fixes**
+- Appearance: changing colors or the blur reacted slowly. The blur now switches instantly, and color changes no longer reload every cover from disk.
+- Settings open faster: the audio device list and file associations load right after the window appears.
 - Settings: the window opens at its usual size again and can be made smaller; long tabs scroll instead of being squeezed.
 
 ---
@@ -24,7 +30,7 @@ This is a **test version** for everyone who wants to try new features early. It 
 
 Das ist eine **Testversion** für alle, die neue Funktionen früh ausprobieren möchten. Sie kann noch Fehler enthalten. Die reguläre Version ist weiterhin [1.3.1](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest).
 
-**Download:** `NeoNote-Setup-1.3.1.96.exe` (Windows 10/11) – einfach über das vorhandene NeoNote installieren, Einstellungen und Bibliothek bleiben erhalten. Testversionen gibt es nur für Windows; unter Linux gibt es Testpakete als Flatpak in der Vorabversion [test](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/tag/test).
+**Download:** `NeoNote-Setup-1.3.1.97.exe` (Windows 10/11) – einfach über das vorhandene NeoNote installieren, Einstellungen und Bibliothek bleiben erhalten. Testversionen gibt es nur für Windows; unter Linux gibt es Testpakete als Flatpak in der Vorabversion [test](https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/tag/test).
 
 **Testversionen automatisch bekommen:** Einstellungen ▸ System (oder ▸ Über) ▸ „Auch Testversionen (Beta) anbieten“.
 
@@ -35,7 +41,13 @@ Das ist eine **Testversion** für alle, die neue Funktionen früh ausprobieren m
 - **Update-Fortschritt:** Aktualisiert sich NeoNote selbst, zeigt jetzt ein kleines Fenster im Look des Installers den Fortschritt – vorher passierte bis zum Neustart sichtbar nichts.
 - Kurzinfos sind jetzt standardmäßig aus (Einstellungen ▸ Darstellung ▸ „Kurzinfos beim Darüberfahren mit der Maus anzeigen“).
 - Testversionen zeigen „Beta“ hinter der Versionsnummer.
+- **Schnellerer Start:** Die fertig sortierte Bibliothek (Alben, Sampler, Editionen) liegt in einem Schnellstart-Zwischenspeicher – bei großen Bibliotheken dauert dieser Schritt nur noch etwa ein Drittel.
+- **Sofortige Rückmeldung beim Start (Windows):** Ein Startbild erscheint direkt beim Klick auf NeoNote, noch bevor Python und Qt geladen sind – vorher passierte rund zwei Sekunden lang nichts.
+- **Ein laufendes NeoNote öffnet sich viel schneller (Windows):** Es übergibt an die laufende Instanz, bevor Qt geladen wird – spürbar vor allem mit „Beim Anmelden im Hintergrund starten“ und beim Öffnen von Dateien.
+- **Beim Anmelden im Hintergrund starten** (Einstellungen ▸ System): NeoNote lädt beim Anmelden unsichtbar in die Systemleiste – ein Klick auf NeoNote öffnet das Fenster dann sofort. Schließen versteckt es nur, beendet wird über das Menü des Symbols.
 - **Beta-Kanal:** Einstellungen ▸ System oder ▸ Über ▸ „Auch Testversionen (Beta) anbieten“ – der Updater bietet dann auch Testversionen an, bevor sie offiziell erscheinen.
 
 **Behoben**
+- Darstellung: Farbwechsel und Weichzeichner reagierten träge. Der Weichzeichner schaltet jetzt sofort um, und bei Farbwechseln liest NeoNote nicht mehr alle Cover neu von der Platte.
+- Einstellungen öffnen schneller: Geräteliste und Dateizuordnung laden erst direkt nach dem Öffnen.
 - Einstellungen: Das Fenster öffnet wieder in der gewohnten Größe und lässt sich kleiner ziehen; lange Reiter scrollen, statt gequetscht zu werden.
