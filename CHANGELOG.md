@@ -5,6 +5,7 @@
 ## Next version (in progress)
 
 ### ✨ New features
+- **Updates and beta channel for the Arch package:** if NeoNote was installed from the Arch zip, the updater now downloads new versions itself and installs them in a terminal window (makepkg asks for your password there), then restarts NeoNote. Test versions (beta) are now also available as an Arch zip.
 - **Safe mode and crash report:** if NeoNote closes unexpectedly shortly after starting, it starts once in safe mode next time (without hardware video decoding, background blur and media controls) and shows a report to copy – on Windows including the entry from the Windows Event Viewer. Safe mode can also be turned on permanently (Settings ▸ About).
 - **Open music and videos with NeoNote** like VLC does: the installer option (and the button under Settings ▸ System) now makes NeoNote the default for every format that has no app chosen yet. Formats you or Windows already assigned stay protected by Windows – those you switch by hand. You can pick which formats: music and videos separately or one by one – in the installer and later under Settings ▸ System. Suggested by Holgi in the Deskmodder forum.
 - **Animated dialogs:** settings and other dialogs fade in and glide up slightly when opening, and fade out when closing (Settings ▸ Appearance, can be turned off).

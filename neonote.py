@@ -106,6 +106,7 @@ import base64
 import bisect
 import glob as globmod
 import re
+import shlex
 import shutil
 import ctypes
 import ctypes.util
@@ -4572,6 +4573,59 @@ def pick_folder(parent, title, start=""):
             "Ist das Laufwerk eingehängt? Öffne es sonst einmal im Dateimanager und versuche es erneut.").format(d))
         return ""
     return d
+
+
+def arch_package_install():
+    """Linux: als Arch-Paket installiert (Arch-Zip bzw. makepkg) – dann kann der Updater die neue Zip holen."""
+    return (not IS_WIN and not FLATPAK_ID and str(Path(__file__).resolve()).startswith("/usr/share/neonote/")
+            and shutil.which("pacman") is not None and shutil.which("makepkg") is not None)
+
+
+def linux_terminal(script):
+    """Befehl für ein Terminalfenster, das „script“ (bash) ausführt – None, wenn keins gefunden wird."""
+    cands = []
+    if os.environ.get("TERMINAL"):
+        cands.append((os.environ["TERMINAL"], "-e"))
+    cands += [("konsole", "-e"), ("gnome-terminal", "--"), ("kgx", "--"), ("ptyxis", "--"),
+              ("xfce4-terminal", "-x"), ("alacritty", "-e"), ("kitty", "--"), ("foot", "--"),
+              ("wezterm", "start --"), ("xterm", "-e")]
+    for exe, flag in cands:
+        path = shutil.which(exe)
+        if path:
+            return [path] + flag.split() + ["bash", "-c", script]
+    return None
+
+
+def linux_run_update(zip_path, version):
+    """Arch-Zip entpacken und install.sh in einem Terminal ausführen (makepkg fragt dort nach dem Passwort).
+    Danach startet das Skript NeoNote neu."""
+    import zipfile
+    base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "neonote-update"
+    target = base / version
+    if target.exists():
+        shutil.rmtree(target, ignore_errors=True)
+    target.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as z:
+        for m in z.namelist():                         # keine Pfade außerhalb des Zielordners
+            dest = (target / m).resolve()
+            if not str(dest).startswith(str(target.resolve()) + os.sep) and dest != target.resolve():
+                raise ValueError("unsafe path in archive: " + m)
+        z.extractall(target)
+    inst = next(iter(sorted(target.glob("*/install.sh"))), None) or (target / "install.sh")
+    if not inst.exists():
+        raise FileNotFoundError("install.sh")
+    inst.chmod(0o755)
+    q = shlex.quote
+    title = tr_("NeoNote wird auf {0} aktualisiert").format(version)
+    fail = tr_("Das Update hat nicht geklappt. Enter schließt dieses Fenster.")
+    ok = tr_("Fertig – NeoNote startet neu.")
+    script = (f"printf '\\033]0;%s\\007' {q(title)}; echo {q(title)}; echo; cd {q(str(inst.parent))} && ./install.sh && "
+              f"{{ echo; echo {q(ok)}; neonote --quit >/dev/null 2>&1; "
+              f"setsid -f neonote --restart >/dev/null 2>&1; sleep 1.5; exit 0; }}; echo; read -r -p {q(fail)} _")
+    cmd = linux_terminal(script)
+    if not cmd:
+        raise RuntimeError(tr_("Kein Terminal gefunden. Bitte von Hand ausführen: {0}").format(str(inst)))
+    subprocess.Popen(cmd, start_new_session=True)
 
 
 def installed_by_package():
@@ -9552,6 +9606,8 @@ class SettingsDialog(QDialog):
         urow.addWidget(ubtn); urow.addWidget(ulbl, 1); sv.addLayout(urow)
         uh = QLabel(tr_("NeoNote fragt dafür nur die Release-Seite des Projekts auf GitHub ab – es werden keine Daten übertragen.")
                     if IS_WIN or not installed_by_package() else
+                    tr_("Arch-Paket: NeoNote lädt neue Versionen selbst und installiert sie in einem Terminalfenster "
+                        "(dort wird nach deinem Passwort gefragt).") if arch_package_install() else
                     tr_("NeoNote zeigt neue Versionen nur an. Aktualisiert wird über die Paketverwaltung (z. B. „yay -Syu“ oder Discover)."))
         uh.setObjectName("hint"); uh.setWordWrap(True); sv.addWidget(uh)
         sv.addSpacing(8)
@@ -14591,7 +14647,20 @@ class MainWindow(QMainWindow):
         th.result.connect(ok); th.failed.connect(bad)
         th.start()
 
+    def _update_can_install(self, info):
+        """Kann NeoNote das Update selbst installieren? Windows-Installer oder Arch-Zip."""
+        return bool(((IS_WIN and getattr(sys, "frozen", False)) or arch_package_install())
+                    and self._update_asset(info)[0])
+
     def _update_asset(self, info):
+        if not IS_WIN:                                 # Arch-Paket: die Zip der Release
+            name = f"neonote-{info['version']}-linux-arch.zip"
+            if name in info["assets"]:
+                return name, info["assets"][name]
+            for n, x in info["assets"].items():
+                if n.lower().endswith("-linux-arch.zip"):
+                    return n, x
+            return None, None
         name = f"NeoNote-Setup-{info['version']}.exe"
         a = info["assets"].get(name)
         if a is None:   # sonst irgendein Windows-Installer der Release
@@ -14636,7 +14705,7 @@ class MainWindow(QMainWindow):
     def _update_found(self, info, manual):
         self._update_info = info
         self._update_dismissed = False
-        can_install = IS_WIN and getattr(sys, "frozen", False) and self._update_asset(info)[0]
+        can_install = self._update_can_install(info)
         if can_install:
             self.update_go.setText(tr_("Jetzt aktualisieren")); self.update_go.show()
         elif not IS_WIN and installed_by_package():
@@ -14647,7 +14716,7 @@ class MainWindow(QMainWindow):
             self._update_ready()
         else:
             msg = tr_("NeoNote {0} ist verfügbar.").format(info["version"])
-            if not IS_WIN and installed_by_package():
+            if not IS_WIN and installed_by_package() and not can_install:
                 msg += " " + (tr_("Aktualisieren über Discover oder „flatpak update“.") if FLATPAK_ID else
                               tr_("Aktualisieren über die Paketverwaltung (z. B. „yay -Syu“)."))
             self.update_lbl.setText(msg)
@@ -14659,7 +14728,7 @@ class MainWindow(QMainWindow):
         info = self._update_info
         if not info:
             return
-        if not (IS_WIN and getattr(sys, "frozen", False) and self._update_asset(info)[0]):
+        if not self._update_can_install(info):
             QDesktopServices.openUrl(QUrl(info.get("url") or RELEASES_URL))
             return
         if self._update_file and Path(self._update_file).exists():
@@ -14700,6 +14769,10 @@ class MainWindow(QMainWindow):
         th.start()
 
     def _update_ready(self):
+        if not IS_WIN:                                 # Linux: Installation braucht das Terminal (Passwort)
+            self.update_lbl.setText(tr_("NeoNote {0} ist geladen.").format(self._update_info["version"]))
+            self.update_go.setText(tr_("Jetzt installieren")); self.update_go.show()
+            return
         self.update_lbl.setText(tr_("NeoNote {0} ist geladen und wird beim Beenden installiert.").format(
             self._update_info["version"]))
         self.update_go.setText(tr_("Jetzt neu starten")); self.update_go.show()
@@ -14707,6 +14780,17 @@ class MainWindow(QMainWindow):
     def _install_update(self, restart):
         f = self._update_file
         if not (f and Path(f).exists()):
+            return
+        if not IS_WIN:
+            if not restart:                            # beim Beenden nicht still installieren – geht nur im Terminal
+                return
+            try:
+                linux_run_update(f, self._update_info["version"])
+            except Exception as e:
+                self.update_lbl.setText(tr_("Das Update konnte nicht gestartet werden: {0}").format(e))
+                return
+            self._update_file = None
+            self.update_lbl.setText(tr_("Das Update läuft im Terminalfenster – NeoNote startet danach neu."))
             return
         self._update_file = None
         try:

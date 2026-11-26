@@ -843,5 +843,13 @@
  "Auf GitHub melden": "Report on GitHub",
  "Kopiert ✓": "Copied ✓",
  "Bitte den Bericht hier einfügen (er ist schon in der Zwischenablage):": "Please paste the report here (it is already in the clipboard):",
- "Immer im sicheren Modus starten (ohne Hardware-Video, Weichzeichner und Mediensteuerung)": "Always start in safe mode (without hardware video, background blur and media controls)"
+ "Immer im sicheren Modus starten (ohne Hardware-Video, Weichzeichner und Mediensteuerung)": "Always start in safe mode (without hardware video, background blur and media controls)",
+ "NeoNote wird auf {0} aktualisiert": "Updating NeoNote to {0}",
+ "Das Update hat nicht geklappt. Enter schließt dieses Fenster.": "The update did not work. Press Enter to close this window.",
+ "Fertig – NeoNote startet neu.": "Done – NeoNote is restarting.",
+ "Kein Terminal gefunden. Bitte von Hand ausführen: {0}": "No terminal found. Please run it by hand: {0}",
+ "NeoNote {0} ist geladen.": "NeoNote {0} has been downloaded.",
+ "Jetzt installieren": "Install now",
+ "Das Update läuft im Terminalfenster – NeoNote startet danach neu.": "The update is running in the terminal window – NeoNote restarts afterwards.",
+ "Arch-Paket: NeoNote lädt neue Versionen selbst und installiert sie in einem Terminalfenster (dort wird nach deinem Passwort gefragt).": "Arch package: NeoNote downloads new versions itself and installs them in a terminal window (where it asks for your password)."
 }
