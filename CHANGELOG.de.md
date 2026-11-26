@@ -25,6 +25,7 @@
 - **Ein laufendes NeoNote öffnet sich viel schneller (Windows):** Es übergibt an die laufende Instanz, bevor Qt geladen wird – spürbar vor allem mit „Beim Anmelden im Hintergrund starten“ und beim Öffnen von Dateien.
 
 ### 🐞 Behobene Fehler
+- Arch-Zip: `./install.sh` brach mit „en.json wurde nicht gefunden“ ab (1.3.1). Behoben.
 - Windows: Nach dem Installieren oder Aktualisieren konnte ein leerer Ordner „NeoNote-Setup.tmp“ in „Programme“ zurückbleiben. Der Installer entfernt ihn jetzt zuverlässig, der Deinstaller räumt auch Reste älterer Versionen weg. Gemeldet von Holgi im Deskmodder-Forum.
 - Darstellung: Farbwechsel und Weichzeichner reagierten träge. Der Weichzeichner schaltet jetzt sofort um, und bei Farbwechseln liest NeoNote nicht mehr alle Cover neu von der Platte.
 - Einstellungen öffnen schneller: Geräteliste und Dateizuordnung laden erst direkt nach dem Öffnen.

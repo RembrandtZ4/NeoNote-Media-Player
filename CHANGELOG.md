@@ -25,6 +25,7 @@
 - **Reopening a running NeoNote is much faster (Windows):** it hands over to the running instance before loading Qt – especially noticeable with “Start in the background when signing in” and when opening files.
 
 ### 🐞 Bug fixes
+- Arch zip: `./install.sh` stopped with “en.json was not found” (1.3.1). Fixed.
 - Windows: after installing or updating, an empty folder “NeoNote-Setup.tmp” could be left behind in “Program Files”. The installer now removes it reliably; the uninstaller also cleans up leftovers from older versions. Reported by Holgi in the Deskmodder forum.
 - Appearance: changing colors or the blur reacted slowly. The blur now switches instantly, and color changes no longer reload every cover from disk.
 - Settings open faster: the audio device list and file associations load right after the window appears.
