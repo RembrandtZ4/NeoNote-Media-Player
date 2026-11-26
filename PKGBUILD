@@ -23,7 +23,7 @@ depends=(
 optdepends=(
   'xdg-utils: Ordner öffnen, falls kein Dateimanager über D-Bus erreichbar ist'
 )
-source=('neonote.py' 'neonote.sh' 'neonote.desktop' 'neonote.png' 'README.md' 'i18n/en.json' 'LICENSE' 'THIRD_PARTY_NOTICES.md')
+source=('neonote.py' 'neonote.sh' 'neonote.desktop' 'neonote.png' 'README.md' 'en.json' 'LICENSE' 'THIRD_PARTY_NOTICES.md')
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {

@@ -12,11 +12,14 @@ if [ "$(id -u)" -eq 0 ]; then
   exit 1
 fi
 
+# makepkg sucht lokale Quellen direkt in diesem Ordner
+[ -f en.json ] || cp i18n/en.json en.json
+
 echo "NeoNote wird gebaut und installiert."
 echo "Fehlende Pakete (PySide6, mpv, …) installiert pacman automatisch mit – dafür wird dein Passwort abgefragt."
 echo
 makepkg -si --cleanbuild
-rm -rf src pkg neonote-*.pkg.tar.*
+rm -rf src pkg neonote-*.pkg.tar.* en.json
 
 echo
 echo "Fertig! NeoNote findest du im Anwendungsmenü oder startest ihn mit:  neonote"
