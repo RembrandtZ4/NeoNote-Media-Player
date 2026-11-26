@@ -833,5 +833,15 @@
  "Verbesserungen": "Improvements",
  "Behobene Fehler": "Bug fixes",
  "Weitere Änderungen": "Other changes",
- "Alle Details auf GitHub": "All details on GitHub"
+ "Alle Details auf GitHub": "All details on GitHub",
+ "NeoNote wurde unerwartet beendet": "NeoNote closed unexpectedly",
+ "NeoNote wurde beim letzten Mal unerwartet beendet.": "NeoNote closed unexpectedly last time.",
+ "Mit dem Bericht unten lässt sich der Fehler finden. Am einfachsten: „Bericht kopieren“ und auf GitHub oder im Forum einfügen.": "The report below helps to find the problem. The easiest way: “Copy report” and paste it on GitHub or in the forum.",
+ "NeoNote läuft deshalb jetzt im sicheren Modus: ohne Hardware-Videodecodierung, Weichzeichner und Mediensteuerung. Beim nächsten Start ist wieder alles wie gewohnt.": "That's why NeoNote is now running in safe mode: without hardware video decoding, background blur and media controls. Next time it starts as usual again.",
+ "Immer im sicheren Modus starten": "Always start in safe mode",
+ "Bericht kopieren": "Copy report",
+ "Auf GitHub melden": "Report on GitHub",
+ "Kopiert ✓": "Copied ✓",
+ "Bitte den Bericht hier einfügen (er ist schon in der Zwischenablage):": "Please paste the report here (it is already in the clipboard):",
+ "Immer im sicheren Modus starten (ohne Hardware-Video, Weichzeichner und Mediensteuerung)": "Always start in safe mode (without hardware video, background blur and media controls)"
 }

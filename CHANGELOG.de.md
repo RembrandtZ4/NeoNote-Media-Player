@@ -5,6 +5,7 @@
 ## Nächste Version (in Arbeit)
 
 ### ✨ Neue Funktionen
+- **Sicherer Modus und Absturzbericht:** Endet NeoNote kurz nach dem Start unerwartet, startet es beim nächsten Mal einmal im sicheren Modus (ohne Hardware-Videodecodierung, Weichzeichner und Mediensteuerung) und zeigt einen Bericht zum Kopieren – unter Windows samt Eintrag aus der Ereignisanzeige. Der sichere Modus lässt sich auch dauerhaft einschalten (Einstellungen ▸ Über).
 - **Musik und Videos mit NeoNote öffnen** wie bei VLC: Die Option im Installer (und der Knopf unter Einstellungen ▸ System) macht NeoNote jetzt zum Standard für alle Formate, für die noch kein Programm gewählt ist. Formate, die du oder Windows schon zugeordnet habt, schützt Windows – die stellst du von Hand um. Welche Formate, lässt sich auswählen: Musik und Videos getrennt oder einzeln – im Installer und später unter Einstellungen ▸ System. Ein Hinweis aus dem Deskmodder-Forum.
 - **Animierte Dialoge:** Einstellungen und andere Dialoge blenden sich beim Öffnen weich ein und gleiten leicht nach oben, beim Schließen blenden sie aus (Einstellungen ▸ Darstellung, abschaltbar).
 - **Update-Fortschritt:** Aktualisiert sich NeoNote selbst, zeigt jetzt ein kleines Fenster im Look des Installers den Fortschritt – vorher passierte bis zum Neustart sichtbar nichts.

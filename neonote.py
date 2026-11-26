@@ -112,6 +112,8 @@ import ctypes.util
 import hashlib
 import html
 import json
+import locale
+import calendar
 import math
 import os
 import platform
@@ -138,11 +140,11 @@ from PySide6.QtCore import (QParallelAnimationGroup, QDate, QMimeData, QTime, QP
 from PySide6.QtGui import (QOpenGLContext, QOffscreenSurface, QSurfaceFormat, QRegion, QAction, QDrag, QHoverEvent, QActionGroup, QColor, QFont, QFontMetrics, QGuiApplication, QLinearGradient, QRadialGradient, QTransform,
                            QIcon, QImage, QImageReader, QKeySequence, QPainter,
                            QPainterPath, QPalette, QPen, QPixmap, QPolygonF,
-                           QShortcut, QStandardItem, QStandardItemModel, QDesktopServices)
+                           QShortcut, QStandardItem, QStandardItemModel, QDesktopServices, QFontDatabase)
 from PySide6.QtMultimedia import QAudioOutput, QMediaMetaData, QMediaPlayer, QVideoSink
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtOpenGL import QOpenGLFramebufferObject
-from PySide6.QtWidgets import (QProxyStyle, QStyleFactory, QScrollArea, QTextBrowser, QAbstractButton, QAbstractItemView, QGraphicsOpacityEffect,
+from PySide6.QtWidgets import (QPlainTextEdit, QProxyStyle, QStyleFactory, QScrollArea, QTextBrowser, QAbstractButton, QAbstractItemView, QGraphicsOpacityEffect,
                                QApplication, QButtonGroup, QCheckBox,
                                QColorDialog, QComboBox, QDialog,
                                QDialogButtonBox, QFileDialog, QFormLayout,
@@ -1126,6 +1128,7 @@ def win_popup_shape(widget, radius):
 
 def set_window_blur(widget, on, radius=0):
     """Weichzeichner hinter dem Fenster: KWin unter Linux, DWM unter Windows 10/11."""
+    on = on and not SAFE_MODE                     # sicherer Modus: keine Effekte des Fenstermanagers
     if IS_WIN:
         return set_win_blur(widget, on, radius)
     return set_kde_blur(widget, on, radius)
@@ -4796,6 +4799,48 @@ def release_notes_html(body):
     return "".join(parts)
 
 
+class CrashReportDialog(QDialog):
+    """Nach einem unerwarteten Ende: Bericht zum Kopieren, Melden auf GitHub, sicheren Modus festlegen."""
+    def __init__(self, parent, report, safe):
+        super().__init__(parent)
+        self.setWindowTitle(tr_("NeoNote wurde unerwartet beendet"))
+        self.resize(640, 520)
+        lay = QVBoxLayout(self); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(10)
+        t = QLabel(tr_("NeoNote wurde beim letzten Mal unerwartet beendet."))
+        f = t.font(); f.setPointSizeF(f.pointSizeF() + 3); f.setWeight(QFont.DemiBold); t.setFont(f)
+        lay.addWidget(t)
+        txt = tr_("Mit dem Bericht unten lässt sich der Fehler finden. Am einfachsten: „Bericht kopieren“ und "
+                  "auf GitHub oder im Forum einfügen.")
+        if safe:
+            txt = tr_("NeoNote läuft deshalb jetzt im sicheren Modus: ohne Hardware-Videodecodierung, "
+                      "Weichzeichner und Mediensteuerung. Beim nächsten Start ist wieder alles wie gewohnt.") + "\n\n" + txt
+        hint = QLabel(txt); hint.setWordWrap(True); lay.addWidget(hint)
+        box = QPlainTextEdit(report); box.setReadOnly(True)
+        box.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
+        lay.addWidget(box, 1)
+        self.always = QCheckBox(tr_("Immer im sicheren Modus starten"))
+        self.always.setChecked(parent.settings.value("system/safe_mode", False, type=bool))
+        self.always.toggled.connect(lambda v: parent.settings.setValue("system/safe_mode", v))
+        lay.addWidget(self.always)
+        bb = QDialogButtonBox()
+        copy = bb.addButton(tr_("Bericht kopieren"), QDialogButtonBox.ActionRole)
+        gh = bb.addButton(tr_("Auf GitHub melden"), QDialogButtonBox.ActionRole)
+        bb.addButton(QDialogButtonBox.Close).clicked.connect(self.reject)
+
+        def do_copy():
+            QApplication.clipboard().setText(report)
+            copy.setText(tr_("Kopiert ✓"))
+        copy.clicked.connect(do_copy)
+
+        def do_gh():
+            QApplication.clipboard().setText(report)
+            body = tr_("Bitte den Bericht hier einfügen (er ist schon in der Zwischenablage):") + "\n\n"
+            q = urllib.parse.urlencode({"title": f"Absturz {APP_VERSION}", "body": body})
+            QDesktopServices.openUrl(QUrl(f"https://github.com/RembrandtZ4/NeoNote-Media-Player/issues/new?{q}"))
+        gh.clicked.connect(do_gh)
+        lay.addWidget(bb)
+
+
 class WhatsNewDialog(QDialog):
     def __init__(self, parent, info):
         super().__init__(parent)
@@ -4906,6 +4951,11 @@ class AboutPage(QWidget):
         self.whatsnew.setChecked(win.settings.value("ui/whats_new", True, type=bool))
         self.whatsnew.toggled.connect(lambda v: win.settings.setValue("ui/whats_new", v))
         lay.addWidget(self.whatsnew)
+        self.safe = QCheckBox(tr_("Immer im sicheren Modus starten (ohne Hardware-Video, Weichzeichner und "
+                                  "Mediensteuerung)"))
+        self.safe.setChecked(win.settings.value("system/safe_mode", False, type=bool))
+        self.safe.toggled.connect(lambda v: win.settings.setValue("system/safe_mode", v))
+        lay.addWidget(self.safe)
         lay.addStretch()
 
 
@@ -10336,7 +10386,7 @@ class MainWindow(QMainWindow):
         splash_step(tr_("Verbinde die Mediensteuerung …"), 86)
         self.setup_tray()
         self.mpris = None
-        if media_control_available() and self.settings.value("system/mpris", True, type=bool):
+        if not SAFE_MODE and media_control_available() and self.settings.value("system/mpris", True, type=bool):
             try:
                 self.mpris = Smtc(self) if IS_WIN else Mpris(self)
             except Exception:
@@ -12344,7 +12394,7 @@ class MainWindow(QMainWindow):
         self.player.setVideoSink(self.video.sink)
         self.player.video_widget = self.video.gl
         self.player.video_mpv = use_mpv and self.settings.value("video/mpv", True, type=bool)
-        self.player.video_hwdec = mpv_hwdec(self.settings.value("video/hwdec", "auto"))
+        self.player.video_hwdec = "no" if SAFE_MODE else mpv_hwdec(self.settings.value("video/hwdec", "auto"))
         self.player.surround = self.settings.value("video/surround", False, type=bool)
         crash_note(f"mpv: Musik {'ja' if self.player.mp else 'nein'}, Videos "
                    f"{'ja' if self.player.video_mpv else 'nein (Einstellungen ▸ Video)'}, hwdec={self.player.video_hwdec}")
@@ -14554,6 +14604,16 @@ class MainWindow(QMainWindow):
     def _update_bar_wanted(self):
         return self._update_info is not None and not self.np_mode and not getattr(self, "_update_dismissed", False)
 
+    def show_crash_report(self):
+        """War der letzte Start ein Absturz? Dann Bericht anbieten (nur bei echten Hinweisen, nicht nach taskkill)."""
+        prev = globals().get("_PREV_UNCLEAN")
+        if not prev or not self.isVisible():
+            return
+        report = crash_report_text()
+        if not (prev["fatal"] or prev.get("events") or SAFE_MODE == "nach Absturz"):
+            return
+        CrashReportDialog(self, report, SAFE_MODE == "nach Absturz").exec()
+
     def show_whats_new_after_update(self):
         """Nach einem Update einmal zeigen, was neu ist (abschaltbar unter Einstellungen ▸ Über)."""
         last = self.settings.value("ui/last_version", "")
@@ -15766,8 +15826,17 @@ def setup_crash_log():
             try:
                 old = cur.read_text(encoding="utf-8", errors="replace")
                 # Windows meldet auch intern abgefangene C++-Ausnahmen („code 0x…“) – die sind kein Absturz
-                if "Fatal Python error" in old or "Traceback" in old or \
-                        re.search(r"Windows fatal exception: (?!code 0x)", old):
+                fatal = "Fatal Python error" in old or "Traceback" in old or \
+                    re.search(r"Windows fatal exception: (?!code 0x)", old)
+                if fatal or CLEAN_EXIT_MARK not in old:
+                    startlog = ""
+                    try:
+                        startlog = (DATA_DIR / "startup.log").read_text(encoding="utf-8", errors="replace")
+                    except OSError:
+                        pass
+                    globals()["_PREV_UNCLEAN"] = {"log": old, "fatal": bool(fatal), "startup": startlog,
+                                                  "since": cur.stat().st_mtime}
+                if fatal:
                     cur.replace(last)
             except OSError:
                 pass
@@ -15785,6 +15854,90 @@ def setup_crash_log():
         sys.excepthook = hook
     except Exception:
         pass
+
+
+CLEAN_EXIT_MARK = "– sauber beendet –"
+SAFE_MODE = False          # sicherer Modus: ohne Hardware-Video, Weichzeichner und Mediensteuerung (nur diese Sitzung)
+
+
+def safe_mode_wanted(settings):
+    """Sicher starten? Ja, wenn gewünscht – oder wenn der letzte Start kurz danach unerwartet endete."""
+    if os.environ.get("NEONOTE_SAFE") or "--safe" in sys.argv or settings.value("system/safe_mode", False, type=bool):
+        return "gewünscht"
+    if not settings.value("crash/early", False, type=bool):
+        return ""
+    try:
+        old = (DATA_DIR / "crash-current.log").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    return "" if CLEAN_EXIT_MARK in old else "nach Absturz"
+
+
+def crash_report_text():
+    """Bericht über das unerwartete Ende des letzten Starts – zum Kopieren für eine Fehlermeldung."""
+    prev = globals().get("_PREV_UNCLEAN")
+    if not prev:
+        return ""
+    since = prev["since"]
+    m = re.search(r"Start am (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", prev["log"])
+    if m:
+        try:
+            since = time.mktime(time.strptime(m.group(1), "%Y-%m-%d %H:%M:%S"))
+        except ValueError:
+            pass
+    events = windows_crash_events(since)
+    prev["events"] = events
+    parts = [f"{APP_NAME} {APP_VERSION} – {platform.system()} {platform.release()} ({platform.version()})",
+             "", "== Protokoll des letzten Starts ==", prev["log"].strip()]
+    if prev.get("startup"):
+        parts += ["", "== Startzeiten ==", prev["startup"].strip()]
+    if events:
+        parts += ["", "== Windows-Ereignisanzeige ==", events]
+    return "\n".join(parts)
+
+
+def mark_clean_exit(why="sauber beendet"):
+    """Am Ende ins Protokoll schreiben: Fehlt die Marke beim nächsten Start, endete NeoNote unerwartet."""
+    crash_note(f"– {why} –" if why != "sauber beendet" else CLEAN_EXIT_MARK)
+    if why != "sauber beendet":
+        crash_note(CLEAN_EXIT_MARK)              # Abmelden/Herunterfahren zählt nicht als Absturz
+
+
+def windows_crash_events(since):
+    """Absturzmeldungen von Windows (Ereignisanzeige ▸ Anwendung, Ereignis 1000/1001) zu NeoNote.exe seit „since“."""
+    if not IS_WIN:
+        return ""
+    try:
+        r = subprocess.run(["wevtutil", "qe", "Application", "/q:*[System[(EventID=1000 or EventID=1001)]]",
+                            "/c:20", "/rd:true", "/f:text"], capture_output=True, timeout=8,
+                           creationflags=0x08000000)                       # CREATE_NO_WINDOW
+        raw = r.stdout
+        if b"\x00" in raw[:200]:
+            text = raw.decode("utf-16", errors="replace")
+        else:
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                text = raw.decode("oem" if IS_WIN else (locale.getpreferredencoding(False) or "latin-1"),
+                                  errors="replace")
+    except Exception as e:
+        return f"(Ereignisanzeige nicht lesbar: {e!r})"
+    since -= 5
+    out = []
+    for block in re.split(r"\r?\n(?=Event\[\d+\])", text):
+        if "neonote" not in block.lower():
+            continue
+        m = re.search(r"(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.\d+)?(Z)?", block)
+        if m:
+            try:
+                tt = time.strptime(m.group(1) + " " + m.group(2), "%Y-%m-%d %H:%M:%S")
+                t = calendar.timegm(tt) if m.group(3) else time.mktime(tt)      # „Z“ = UTC
+                if t < since:                         # ältere Abstürze gehören nicht hierher
+                    continue
+            except ValueError:
+                pass
+        out.append(block.strip())
+    return "\n\n".join(out[:3])
 
 
 def crash_note(text):
@@ -15806,6 +15959,10 @@ def main():
         return
     migrate_from_darkplayer()
     s = QSettings(APP_NAME, APP_NAME)
+    global SAFE_MODE
+    SAFE_MODE = safe_mode_wanted(s)
+    if SAFE_MODE:
+        os.environ.setdefault("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", ",")    # Qt Multimedia ebenfalls ohne Hardware
     apply_video_env(s)
     blur = s.value("theme/blur", DEFAULT_THEME["blur"], type=bool)
     opacity = s.value("theme/opacity", DEFAULT_THEME["opacity"], type=int)
@@ -15861,6 +16018,13 @@ def main():
         sock.disconnectFromServer()
         return
     setup_crash_log()                 # erst hier: eine zweite Instanz darf das Protokoll der ersten nicht anfassen
+    if SAFE_MODE:
+        crash_note(f"Sicherer Modus ({SAFE_MODE}): ohne Hardware-Video, Weichzeichner, Mediensteuerung")
+    # Endet NeoNote in den ersten 45 Sekunden ohne sauberes Beenden, startet es beim nächsten Mal sicher
+    s.setValue("crash/early", True)
+    QTimer.singleShot(45000, lambda: s.remove("crash/early"))
+    app.aboutToQuit.connect(lambda: (s.remove("crash/early"), mark_clean_exit()))
+    app.commitDataRequest.connect(lambda *_: (s.remove("crash/early"), mark_clean_exit("Abmelden/Herunterfahren")))
     crash_note(f"Videodecoder: {os.environ.get('QT_FFMPEG_DECODING_HW_DEVICE_TYPES', 'automatisch')}")
     if not IS_WIN:
         crash_note(f"Anzeige: {QGuiApplication.platformName()}, Sitzung {os.environ.get('XDG_SESSION_TYPE', '?')}, "
@@ -15903,6 +16067,7 @@ def main():
         _SPLASH = None
     QTimer.singleShot(0, write_startup_log)
     QTimer.singleShot(2500, w.show_whats_new_after_update)
+    QTimer.singleShot(1800, w.show_crash_report)
     if files:
         QTimer.singleShot(300, lambda: w.open_files(files))
     if IS_WIN and not mpv_available() and not s.value("win/mpv_asked", False, type=bool):
