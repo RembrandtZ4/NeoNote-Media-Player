@@ -2,6 +2,11 @@
 
 🇬🇧 [English](CHANGELOG.md) | 🇩🇪 **Deutsch**
 
+## Nächste Version (in Arbeit)
+
+### ⚡ Verbesserungen
+- Kurzinfos lassen sich jetzt getrennt schalten: über Knöpfen und Symbolen (standardmäßig an) und über Titeln und Alben in Listen (standardmäßig aus) – Einstellungen ▸ Darstellung.
+
 ## 1.3.2 – 26.11.2026
 
 ### ✨ Neue Funktionen

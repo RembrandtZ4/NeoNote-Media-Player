@@ -852,5 +852,7 @@
  "Jetzt installieren": "Install now",
  "Das Update läuft im Terminalfenster – NeoNote startet danach neu.": "The update is running in the terminal window – NeoNote restarts afterwards.",
  "Arch-Paket: NeoNote lädt neue Versionen selbst und installiert sie in einem Terminalfenster (dort wird nach deinem Passwort gefragt).": "Arch package: NeoNote downloads new versions itself and installs them in a terminal window (where it asks for your password).",
- "Aus dem AUR installiert: Aktualisiert wird mit „yay -Syu“. Testversionen (Beta) lädt NeoNote selbst und installiert sie in einem Terminalfenster.": "Installed from the AUR: update with “yay -Syu”. Test versions (beta) are downloaded by NeoNote itself and installed in a terminal window."
+ "Aus dem AUR installiert: Aktualisiert wird mit „yay -Syu“. Testversionen (Beta) lädt NeoNote selbst und installiert sie in einem Terminalfenster.": "Installed from the AUR: update with “yay -Syu”. Test versions (beta) are downloaded by NeoNote itself and installed in a terminal window.",
+ "Kurzinfos über Knöpfen und Symbolen anzeigen": "Show tooltips on buttons and icons",
+ "Kurzinfos über Titeln und Alben in Listen anzeigen": "Show tooltips on tracks and albums in lists"
 }

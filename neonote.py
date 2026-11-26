@@ -963,8 +963,12 @@ class GlassDialogs(QObject):
 
     def eventFilter(self, obj, ev):
         t = ev.type()
-        if t == QEvent.ToolTip and not self.win.settings.value("ui/tooltips", False, type=bool):
-            return True                             # Kurzinfos sind abgeschaltet (Einstellungen ▸ Darstellung)
+        if t == QEvent.ToolTip and obj.isWidgetType():
+            # Kurzinfos getrennt schaltbar: über Knöpfen (Standard an) und über Titeln/Alben in Listen (Standard aus)
+            in_list = isinstance(obj, QAbstractItemView) or isinstance(obj.parent(), QAbstractItemView)
+            key, default = ("ui/tips_lists", False) if in_list else ("ui/tips_buttons", True)
+            if not self.win.settings.value(key, default, type=bool):
+                return True                         # abgeschaltet (Einstellungen ▸ Darstellung)
         if t in (QEvent.Polish, QEvent.Show, QEvent.Resize) and obj.isWidgetType() and (obj.inherits("QTipLabel") or isinstance(obj, QMenu)):
             if t == QEvent.Resize:
                 if obj.property("nnTip") is True and obj.isVisible() and self.tips_active():
@@ -8704,10 +8708,14 @@ class ThemePage(QWidget):
         gh.setObjectName("hint"); gh.setWordWrap(True)
         form.addRow("", self.glassdlg)
         form.addRow("", gh)
-        self.tips = QCheckBox(tr_("Kurzinfos beim Darüberfahren mit der Maus anzeigen"))
-        self.tips.setChecked(win.settings.value("ui/tooltips", False, type=bool))
-        self.tips.toggled.connect(lambda v: win.settings.setValue("ui/tooltips", v))
+        self.tips = QCheckBox(tr_("Kurzinfos über Knöpfen und Symbolen anzeigen"))
+        self.tips.setChecked(win.settings.value("ui/tips_buttons", True, type=bool))
+        self.tips.toggled.connect(lambda v: win.settings.setValue("ui/tips_buttons", v))
         form.addRow("", self.tips)
+        self.tipslist = QCheckBox(tr_("Kurzinfos über Titeln und Alben in Listen anzeigen"))
+        self.tipslist.setChecked(win.settings.value("ui/tips_lists", False, type=bool))
+        self.tipslist.toggled.connect(lambda v: win.settings.setValue("ui/tips_lists", v))
+        form.addRow("", self.tipslist)
         self.glasstip = QCheckBox(tr_("Kurzinfos und Menüs im selben Look (durchscheinend, runde Ecken)"))
         self.glasstip.setChecked(win.settings.value("ui/glass_tooltips", True, type=bool))
         self.glasstip.setEnabled(win.frameless)

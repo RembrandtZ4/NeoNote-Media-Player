@@ -2,6 +2,11 @@
 
 🇬🇧 **English** | 🇩🇪 [Deutsch](CHANGELOG.de.md)
 
+## Next version (in progress)
+
+### ⚡ Improvements
+- Tooltips can now be switched separately: on buttons and icons (on by default) and on tracks and albums in lists (off by default) – Settings ▸ Appearance.
+
 ## 1.3.2 – 2026-11-26
 
 ### ✨ New features
