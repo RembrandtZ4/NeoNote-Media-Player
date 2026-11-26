@@ -6,12 +6,12 @@
 
 ### ✨ New features
 - **Safe mode and crash report:** if NeoNote closes unexpectedly shortly after starting, it starts once in safe mode next time (without hardware video decoding, background blur and media controls) and shows a report to copy – on Windows including the entry from the Windows Event Viewer. Safe mode can also be turned on permanently (Settings ▸ About).
-- **Open music and videos with NeoNote** like VLC does: the installer option (and the button under Settings ▸ System) now makes NeoNote the default for every format that has no app chosen yet. Formats you or Windows already assigned stay protected by Windows – those you switch by hand. You can pick which formats: music and videos separately or one by one – in the installer and later under Settings ▸ System. Suggested in the Deskmodder forum.
+- **Open music and videos with NeoNote** like VLC does: the installer option (and the button under Settings ▸ System) now makes NeoNote the default for every format that has no app chosen yet. Formats you or Windows already assigned stay protected by Windows – those you switch by hand. You can pick which formats: music and videos separately or one by one – in the installer and later under Settings ▸ System. Suggested by Holgi in the Deskmodder forum.
 - **Animated dialogs:** settings and other dialogs fade in and glide up slightly when opening, and fade out when closing (Settings ▸ Appearance, can be turned off).
 - **Update progress:** when NeoNote updates itself, a small window in the installer's look now shows the progress instead of nothing happening until NeoNote restarts.
 - **Start in the background when signing in** (Settings ▸ System): NeoNote loads invisibly into the system tray when you sign in – clicking NeoNote then opens the window instantly. Closing only hides it; quit from the tray icon's menu.
 - **What's new after an update:** after updating, NeoNote shows once what's new in this version (Settings ▸ About, can be turned off). “What's new?” in the update bar now starts right with the changes. Both are sorted into “New features”, “Improvements” and “Bug fixes”.
-- **Uninstall:** like VLC, the uninstaller now offers to also delete your library, playlists, settings and cached covers (default: keep everything; music and video files are never touched). Suggested in the Deskmodder forum.
+- **Uninstall:** like VLC, the uninstaller now offers to also delete your library, playlists, settings and cached covers (default: keep everything; music and video files are never touched). Suggested by Holgi in the Deskmodder forum.
 - **Smoother window moving on older PCs (Windows):** Settings ▸ Appearance ▸ “Pause blur while moving the window” – the blur is switched off only while dragging or resizing.
 - **Beta channel:** Settings ▸ System or ▸ About ▸ “Also offer test versions (beta)” – the updater then also offers test versions before they are officially released.
 
@@ -33,7 +33,7 @@
 ## 1.3.1 – 2026-11-24
 
 ### ⚡ Improvements
-- **Always on top:** pin button next to “Minimize” (and in the ☰ menu, Ctrl+Shift+T). Suggested in the Deskmodder forum.
+- **Always on top:** pin button next to “Minimize” (and in the ☰ menu, Ctrl+Shift+T). Suggested by Holgi in the Deskmodder forum.
 - Tooltips and right-click menus now match the window: translucent, rounded corners and blur. Can be turned off under Settings ▸ Appearance.
 
 ### 🐞 Bug fixes
