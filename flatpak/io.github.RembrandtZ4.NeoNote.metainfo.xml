@@ -61,6 +61,11 @@
     <control>keyboard</control>
   </supports>
   <releases>
+    <release version="1.3.2" date="2026-11-26">
+      <description>
+        <p>Faster start with optional preloading at login, open music and videos with NeoNote like VLC, beta channel, safe mode with crash report, animated dialogs, what's new after updates, and updates for the Arch package.</p>
+      </description>
+    </release>
     <release version="1.3.1" date="2026-11-24">
       <description>
         <p>Always on top, tooltips and menus in the glass look, more reliable update check and online features on fresh Windows installations.</p>

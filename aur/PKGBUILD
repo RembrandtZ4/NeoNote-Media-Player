@@ -1,7 +1,7 @@
 # Maintainer: RembrandtZ4 <RembrandtZ4 at users dot noreply dot github dot com>
 
 pkgname=neonote
-pkgver=1.3.1
+pkgver=1.3.2
 pkgrel=1
 epoch=1
 pkgdesc="Music and video player inspired by Windows Media Player 12 (Qt 6, mpv, lyrics, Jellyfin)"

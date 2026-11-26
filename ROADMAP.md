@@ -25,14 +25,20 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [x] **Auto DJ** – endless matching music from your own collection
 - [x] **Star ratings in the music files** (WMP-compatible)
 
+## Version 1.3.2 – released 2026-11-26
+- [x] **Faster start** – quick-start cache for the library, instant start screen and optional preloading at login (starts hidden in the tray, the window then appears instantly)
+- [x] **Open music and videos with NeoNote** like VLC – pick the formats in the installer and in the settings
+- [x] **Beta channel** – try test versions early, on Windows and as an Arch zip
+- [x] **Safe mode and crash report** – if something goes wrong at start, NeoNote helps itself and shows a report to copy
+- [x] **What's new after an update**, animated dialogs, and the uninstaller can remove personal data on request
+
 ## Next
 - [ ] **Jellyfin security:** store the access token in the system's password store (Windows Credential Manager, KWallet) and warn before signing in over unencrypted `http://` outside the home network
-- [ ] **AUR package** – install with `yay -S neonote`
+- [ ] **AUR package** – install with `yay -S neonote` (ready; waiting for AUR registration to reopen)
 - [ ] **Native Wayland** with KDE's own blur (sharper with fractional scaling)
 - [ ] **Flathub** listing
 
 ## Later
-- [ ] **Faster start** – find and speed up slow startup steps; optionally preload at login (starts hidden in the tray, the window then appears instantly)
 - [ ] **Casting** to Chromecast, AirPlay and DLNA/UPnP devices (TVs, speakers, AV receivers)
 - [ ] **Remote control** – control NeoNote on the PC from your phone via a simple web page on the home network (no app needed)
 
@@ -66,14 +72,20 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [x] **Auto-DJ** – endlos passende Musik aus der eigenen Sammlung
 - [x] **Sternbewertungen in den Musikdateien** (kompatibel mit WMP)
 
+## Version 1.3.2 – erschienen am 26.11.2026
+- [x] **Schnellerer Start** – Schnellstart-Speicher für die Bibliothek, sofortiges Startbild und auf Wunsch Vorladen beim Anmelden (startet unsichtbar im Infobereich, das Fenster erscheint dann sofort)
+- [x] **Musik und Videos mit NeoNote öffnen** wie bei VLC – Formate im Installer und in den Einstellungen wählbar
+- [x] **Beta-Kanal** – Testversionen früh ausprobieren, unter Windows und als Arch-Zip
+- [x] **Sicherer Modus und Absturzbericht** – geht beim Start etwas schief, hilft sich NeoNote selbst und zeigt einen Bericht zum Kopieren
+- [x] **Neuerungen nach einem Update**, animierte Dialoge, und der Deinstaller entfernt auf Wunsch die persönlichen Daten
+
 ## Als Nächstes
 - [ ] **Jellyfin-Sicherheit:** den Zugangsschlüssel im Passwortspeicher des Systems ablegen (Windows-Anmeldeinformationsverwaltung, KWallet) und vor einer Anmeldung über unverschlüsseltes `http://` außerhalb des Heimnetzes warnen
-- [ ] **AUR-Paket** – Installation mit `yay -S neonote`
+- [ ] **AUR-Paket** – Installation mit `yay -S neonote` (fertig vorbereitet; wartet darauf, dass das AUR die Registrierung wieder öffnet)
 - [ ] **Natives Wayland** mit dem Weichzeichner von KDE (schärfer bei krummer Skalierung)
 - [ ] **Aufnahme in Flathub**
 
 ## Später
-- [ ] **Schnellerer Start** – langsame Startschritte finden und beschleunigen; auf Wunsch beim Anmelden vorladen (startet unsichtbar im Infobereich, das Fenster erscheint dann sofort)
 - [ ] **Streamen (Cast)** zu Chromecast, AirPlay und DLNA/UPnP-Geräten (Fernseher, Lautsprecher, AV-Receiver)
 - [ ] **Fernbedienung** – NeoNote am PC vom Handy aus steuern, über eine einfache Webseite im Heimnetz (ohne App)
 

@@ -2,7 +2,7 @@
 
 🇬🇧 [English](CHANGELOG.md) | 🇩🇪 **Deutsch**
 
-## Nächste Version (in Arbeit)
+## 1.3.2 – 26.11.2026
 
 ### ✨ Neue Funktionen
 - **Updates und Beta-Kanal für das Arch-Paket:** Wurde NeoNote über die Arch-Zip installiert, lädt der Updater neue Versionen jetzt selbst und installiert sie in einem Terminalfenster (makepkg fragt dort nach dem Passwort), danach startet NeoNote neu. Testversionen (Beta) gibt es jetzt auch als Arch-Zip.

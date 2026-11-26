@@ -212,8 +212,8 @@ JF_CACHE_FILE = DATA_DIR / "jellyfin.json"
 SMART_FILE = DATA_DIR / "smart_playlists.json"
 JF_OFFLINE_DIR = DATA_DIR / "jellyfin-offline"
 PLAYLIST_DIR = DATA_DIR / "playlists"
-APP_VERSION = "1.3.1"
-APP_DATE = "2026-11-24"          # Datum der Version (wird beim Veröffentlichen gesetzt)
+APP_VERSION = "1.3.2"
+APP_DATE = "2026-11-26"
 APP_AUTHOR = "RembrandtZ4"
 
 # ── Sprache ───────────────────────────────────────────────────────────────
