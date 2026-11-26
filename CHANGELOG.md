@@ -4,6 +4,9 @@
 
 ## Next version (in progress)
 
+### ✨ New features
+- **Casting (DLNA/UPnP):** the new cast button next to the volume slider plays music and videos on devices in your home network – AV receivers (e.g. Yamaha MusicCast), smart TVs, network speakers. NeoNote becomes the remote: play/pause, skip, seeking and volume control the device, the next track follows automatically, and title, artist and cover appear on the device. “Continue on this PC” switches back at the same position. Firewall: allow ports 47900 (TCP) and 47901 (UDP) if no devices are found. Suggested by Holgi in the Deskmodder forum.
+
 ### ⚡ Improvements
 - Tooltips can now be switched separately: on buttons and icons (on by default) and on tracks and albums in lists (off by default) – Settings ▸ Appearance.
 

@@ -105,6 +105,7 @@ _fast_handoff()
 import base64
 import bisect
 import glob as globmod
+import mimetypes
 import re
 import shlex
 import shutil
@@ -3441,6 +3442,667 @@ class MpvBackend(QObject):
             pass
 
 
+# ── Casting: Musik und Videos an Geräte im Heimnetz schicken (DLNA/UPnP) ─────────────────────────────────────
+# NeoNote stellt die Datei über einen kleinen HTTP-Server bereit, das Gerät (Fernseher, AV-Receiver, Yamaha
+# MusicCast, Sonos …) holt sie sich und spielt sie selbst ab. NeoNote wird dabei zur Fernbedienung.
+CAST_HTTP_PORT = 47900          # feste Ports, damit man sie in einer Firewall freigeben kann
+CAST_SSDP_PORT = 47901
+_UPNP_RENDERER = "urn:schemas-upnp-org:device:MediaRenderer:1"
+_DLNA_FLAGS = "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+_CAST_MIME = {
+    ".mp3": "audio/mpeg", ".flac": "audio/flac", ".m4a": "audio/mp4", ".aac": "audio/aac", ".alac": "audio/mp4",
+    ".ogg": "audio/ogg", ".oga": "audio/ogg", ".opus": "audio/ogg", ".wav": "audio/wav", ".wma": "audio/x-ms-wma",
+    ".aif": "audio/aiff", ".aiff": "audio/aiff", ".dsf": "audio/x-dsf", ".dff": "audio/x-dff", ".ape": "audio/x-ape",
+    ".wv": "audio/x-wavpack", ".mka": "audio/x-matroska",
+    ".mp4": "video/mp4", ".m4v": "video/mp4", ".mkv": "video/x-matroska", ".webm": "video/webm",
+    ".avi": "video/x-msvideo", ".mov": "video/quicktime", ".wmv": "video/x-ms-wmv", ".mpg": "video/mpeg",
+    ".mpeg": "video/mpeg", ".ts": "video/mp2t", ".m2ts": "video/mp2t", ".3gp": "video/3gpp",
+}
+# Geräte im Heimnetz nie über einen Proxy ansprechen (HTTP_PROXY u. ä.)
+_LAN = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def _cast_xml(data):
+    """XML aus dem Heimnetz lesen – ohne DTD und Entitäten (Schutz vor manipulierten Antworten)."""
+    import xml.etree.ElementTree as ET
+    if b"<!DOCTYPE" in data or b"<!ENTITY" in data:
+        raise ValueError("XML mit DTD abgelehnt")
+    return ET.fromstring(data)
+
+
+def _xtag(el):
+    return str(el.tag).rsplit("}", 1)[-1]
+
+
+def _xfind(el, name):
+    for e in el.iter():
+        if _xtag(e) == name:
+            return e
+    return None
+
+
+def _xtext(el, name):
+    e = _xfind(el, name)
+    return (e.text or "").strip() if e is not None and e.text else ""
+
+
+def _hms(ms):
+    sec = max(0, int(ms // 1000))
+    return f"{sec // 3600}:{sec // 60 % 60:02d}:{sec % 60:02d}"
+
+
+def _hms_ms(t):
+    """„1:02:03.500“ → Millisekunden (0 bei „NOT_IMPLEMENTED“ u. ä.)."""
+    try:
+        parts = [float(x) for x in str(t).strip().split(":")]
+    except ValueError:
+        return 0
+    ms = 0.0
+    for x in parts:
+        ms = ms * 60 + x
+    return int(ms * 1000)
+
+
+class CastDevice:
+    kind = "dlna"
+
+    def __init__(self, name, host, location, av_url, av_type, rc_url="", rc_type="", model="", udn=""):
+        self.name, self.host, self.location = name, host, location
+        self.av_url, self.av_type, self.rc_url, self.rc_type = av_url, av_type, rc_url, rc_type
+        self.model, self.udn = model, udn
+
+    @property
+    def key(self):
+        return self.udn or self.location
+
+
+def dlna_describe(location, host, timeout=3.0):
+    """Gerätebeschreibung laden: Name und Steuer-Adressen für Wiedergabe (AVTransport) und Lautstärke."""
+    u = urllib.parse.urlsplit(location)
+    if u.scheme != "http" or u.hostname != host:         # nur das Gerät selbst, das geantwortet hat
+        return None
+    with _LAN.open(location, timeout=timeout) as r:
+        data = r.read(512 * 1024)
+    root = _cast_xml(data)
+    dev = None
+    for e in root.iter():
+        if _xtag(e) == "device" and "MediaRenderer" in _xtext(e, "deviceType"):
+            dev = e
+            break
+    dev = dev if dev is not None else _xfind(root, "device")
+    if dev is None:
+        return None
+    base = _xtext(root, "URLBase") or location
+    av = rc = ("", "")
+    for e in dev.iter():
+        if _xtag(e) != "service":
+            continue
+        st, cu = _xtext(e, "serviceType"), _xtext(e, "controlURL")
+        if not cu:
+            continue
+        url = urllib.parse.urljoin(base, cu)
+        if urllib.parse.urlsplit(url).hostname != host:   # Steuerung nur beim Gerät selbst
+            continue
+        if ":AVTransport:" in st and not av[0]:
+            av = (url, st)
+        elif ":RenderingControl:" in st and not rc[0]:
+            rc = (url, st)
+    if not av[0]:
+        return None
+    name = _xtext(dev, "friendlyName") or host
+    model = " ".join(x for x in (_xtext(dev, "manufacturer"), _xtext(dev, "modelName")) if x)
+    return CastDevice(name, host, location, av[0], av[1], rc[0], rc[1], model, _xtext(dev, "UDN"))
+
+
+def dlna_discover(timeout=3.0):
+    """Geräte im Heimnetz suchen, die Medien abspielen können (SSDP: „MediaRenderer“)."""
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(("", CAST_SSDP_PORT))
+        except OSError:
+            s.bind(("", 0))
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+        for st in (_UPNP_RENDERER, "urn:schemas-upnp-org:service:AVTransport:1"):
+            msg = ("M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\n"
+                   f"MX: 2\r\nST: {st}\r\nUSER-AGENT: NeoNote/{APP_VERSION} UPnP/1.1\r\n\r\n").encode()
+            for _ in range(2):
+                try:
+                    s.sendto(msg, ("239.255.255.250", 1900))
+                except OSError:
+                    pass
+        s.settimeout(0.3)
+        locs, end = {}, time.monotonic() + timeout
+        while time.monotonic() < end:
+            try:
+                data, addr = s.recvfrom(65507)
+            except (socket.timeout, OSError):
+                continue
+            for line in data.decode("latin-1", "replace").split("\r\n"):
+                k, _, v = line.partition(":")
+                if k.strip().lower() == "location" and v.strip():
+                    locs.setdefault(v.strip(), addr[0])
+    finally:
+        s.close()
+    devs = {}
+    for loc, host in locs.items():
+        try:
+            d = dlna_describe(loc, host)
+        except Exception as e:
+            crash_note(f"Casting: {host} – Beschreibung nicht lesbar: {type(e).__name__}: {e}")
+            continue
+        if d is not None:
+            devs.setdefault(d.key, d)
+    return sorted(devs.values(), key=lambda d: d.name.lower())
+
+
+def dlna_soap(url, stype, action, args=(), timeout=6.0):
+    body = "".join(f"<{k}>{html.escape(str(v), quote=False)}</{k}>" for k, v in args)
+    env = ('<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
+           's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body>'
+           f'<u:{action} xmlns:u="{stype}">{body}</u:{action}></s:Body></s:Envelope>').encode("utf-8")
+    req = urllib.request.Request(url, data=env, method="POST", headers={
+        "Content-Type": 'text/xml; charset="utf-8"', "SOAPAction": f'"{stype}#{action}"',
+        "User-Agent": f"NeoNote/{APP_VERSION} UPnP/1.1"})
+    try:
+        with _LAN.open(req, timeout=timeout) as r:
+            data = r.read(256 * 1024)
+    except urllib.error.HTTPError as e:
+        desc = ""
+        try:
+            err = _cast_xml(e.read(64 * 1024))
+            desc = " ".join(x for x in (_xtext(err, "errorCode"), _xtext(err, "errorDescription")) if x)
+        except Exception:
+            pass
+        raise RuntimeError(f"{action}: {desc or e.code}") from None
+    resp = _xfind(_cast_xml(data), action + "Response")
+    return {_xtag(c): (c.text or "") for c in resp} if resp is not None else {}
+
+
+def lan_ip_for(host):
+    """Eigene Adresse im Heimnetz, über die das Gerät NeoNote erreicht."""
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect((host, 9))                 # kein Paket wird gesendet – nur die Route wird bestimmt
+        return s.getsockname()[0]
+    finally:
+        s.close()
+
+
+class CastServer:
+    """Kleiner HTTP-Server: liefert nur die Dateien, die gerade gecastet werden (zufällige, geheime Pfade)."""
+
+    def __init__(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        import secrets
+        self._secrets = secrets
+        self.files = {}                     # Token → (Pfad oder Bytes, MIME-Typ)
+        srv = self
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *a):
+                pass
+
+            def do_HEAD(self):
+                self._serve(True)
+
+            def do_GET(self):
+                self._serve(False)
+
+            def _serve(self, head):
+                parts = self.path.split("?", 1)[0].split("/")
+                entry = srv.files.get(parts[2]) if len(parts) >= 3 and parts[1] == "m" else None
+                if entry is None:
+                    self.send_error(404); return
+                src, mime = entry
+                try:
+                    size = len(src) if isinstance(src, bytes) else os.path.getsize(src)
+                except OSError:
+                    self.send_error(404); return
+                start, end, code = 0, size - 1, 200
+                m = re.match(r"bytes=(\d*)-(\d*)", self.headers.get("Range") or "")
+                if m and (m.group(1) or m.group(2)):
+                    if m.group(1):
+                        start = int(m.group(1))
+                        end = min(int(m.group(2)), size - 1) if m.group(2) else size - 1
+                    else:
+                        start = max(0, size - int(m.group(2)))
+                    if start > end or start >= size:
+                        self.send_response(416); self.send_header("Content-Range", f"bytes */{size}")
+                        self.send_header("Content-Length", "0"); self.end_headers(); return
+                    code = 206
+                self.close_connection = True
+                self.send_response(code)
+                self.send_header("Content-Type", mime)
+                self.send_header("Content-Length", str(end - start + 1))
+                self.send_header("Accept-Ranges", "bytes")
+                if code == 206:
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+                self.send_header("transferMode.dlna.org", "Interactive" if mime.startswith("image/") else "Streaming")
+                self.send_header("contentFeatures.dlna.org", _DLNA_FLAGS)
+                self.send_header("Connection", "close")
+                self.end_headers()
+                if head:
+                    return
+                try:
+                    if isinstance(src, bytes):
+                        self.wfile.write(src[start:end + 1])
+                        return
+                    with open(src, "rb") as f:
+                        f.seek(start)
+                        left = end - start + 1
+                        while left > 0:
+                            chunk = f.read(min(65536, left))
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                            left -= len(chunk)
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass                                    # Gerät hat abgebrochen (z. B. beim Springen)
+
+        try:
+            self.httpd = ThreadingHTTPServer(("0.0.0.0", CAST_HTTP_PORT), Handler)
+        except OSError:
+            self.httpd = ThreadingHTTPServer(("0.0.0.0", 0), Handler)
+        self.httpd.daemon_threads = True
+        threading.Thread(target=self.httpd.serve_forever, name="NeoNote-Cast-HTTP", daemon=True).start()
+
+    @property
+    def port(self):
+        return self.httpd.server_address[1]
+
+    def publish(self, src, mime, name):
+        """Datei (Pfad) oder Bytes freigeben → Pfad auf dem Server. Ältere Freigaben verfallen."""
+        token = self._secrets.token_urlsafe(16)
+        self.files[token] = (src, mime)
+        while len(self.files) > 8:
+            self.files.pop(next(iter(self.files)))
+        return f"/m/{token}/{urllib.parse.quote(name)}"
+
+    def url(self, ip, rel):
+        return f"http://{ip}:{self.port}{rel}"
+
+    def shutdown(self):
+        self.files.clear()
+        try:
+            self.httpd.shutdown(); self.httpd.server_close()
+        except Exception:
+            pass
+
+
+class CastBackend(QObject):
+    """Wiedergabe auf einem DLNA-Gerät – mit derselben Schnittstelle wie QMediaPlayer/MpvBackend."""
+    positionChanged = Signal(int)
+    durationChanged = Signal(int)
+    playbackStateChanged = Signal(object)
+    mediaStatusChanged = Signal(object)
+    errorOccurred = Signal(object, str)
+    hasVideoChanged = Signal(bool)
+    metaDataChanged = Signal()
+    tracksChanged = Signal()
+    advanced = Signal()
+    lost = Signal(str)                       # Gerät antwortet nicht mehr
+    deviceVolume = Signal(int)               # Lautstärke des Geräts (0–100) beim Verbinden
+    _res = Signal(str, object)
+
+    def __init__(self, parent, device, server, meta_cb=None):
+        super().__init__(parent)
+        from concurrent.futures import ThreadPoolExecutor
+        self.dev, self.server, self.meta_cb = device, server, meta_cb
+        self._ex = ThreadPoolExecutor(max_workers=1, thread_name_prefix="NeoNote-Cast")
+        self._res.connect(self._on_res)
+        self._src, self._state, self._status = "", QMediaPlayer.StoppedState, QMediaPlayer.NoMedia
+        self._pos = self._dur = 0
+        self._pos_t = time.monotonic()
+        self._started = self._paused = self._seen_playing = self._ended = False
+        self._polling, self._fails, self._gen = False, 0, 0
+        self._vol_pending = self._seek_pending = None
+        self._poll = QTimer(self, interval=1000); self._poll.timeout.connect(self._poll_tick)
+        self._tick = QTimer(self, interval=250); self._tick.timeout.connect(self._interp)
+        self._vol_timer = QTimer(self, singleShot=True, interval=150); self._vol_timer.timeout.connect(self._send_volume)
+        try:
+            self.ip = lan_ip_for(device.host)
+        except OSError:
+            self.ip = ""
+        if device.rc_url:
+            self._call("volume?", self._rc, "GetVolume", [("Channel", "Master")])
+
+    # ── Hilfen ─────────────────────────────────────────────────────────────
+    def _call(self, tag, fn, *a):
+        gen = self._gen
+
+        def run():
+            try:
+                r = fn(*a)
+                self._res.emit(tag, (gen, r))
+            except Exception as e:
+                self._res.emit("error:" + tag, (gen, e))
+        try:
+            self._ex.submit(run)
+        except RuntimeError:
+            pass                                    # schon beendet
+
+    def _av(self, action, args=()):
+        return dlna_soap(self.dev.av_url, self.dev.av_type, action, [("InstanceID", 0)] + list(args))
+
+    def _rc(self, action, args=()):
+        return dlna_soap(self.dev.rc_url, self.dev.rc_type, action, [("InstanceID", 0)] + list(args))
+
+    def _set_status(self, st):
+        self._status = st
+        self.mediaStatusChanged.emit(st)
+
+    def _update_state(self):
+        st = (QMediaPlayer.StoppedState if not self._started else
+              QMediaPlayer.PausedState if self._paused else QMediaPlayer.PlayingState)
+        if st != self._state:
+            self._state = st
+            self.playbackStateChanged.emit(st)
+        if self._started and not self._paused:
+            self._poll.start(); self._tick.start()
+        elif self._started:
+            self._tick.stop(); self._poll.start()
+        else:
+            self._tick.stop(); self._poll.stop()
+
+    def _prepare(self, src):
+        """Adresse fürs Gerät und Beschreibung (DIDL-Lite) mit Titel, Interpret, Album und Cover."""
+        meta = {}
+        if self.meta_cb:
+            try:
+                meta = self.meta_cb(src) or {}
+            except Exception:
+                meta = {}
+        if src.startswith(("http://", "https://")):
+            uri, mime, video = src, meta.get("mime") or "audio/mpeg", False
+            cls = "object.item.audioItem.audioBroadcast"
+        else:
+            if not self.ip:
+                raise RuntimeError(tr_("Keine Verbindung ins Heimnetz"))
+            ext = Path(src).suffix.lower()
+            mime = _CAST_MIME.get(ext) or mimetypes.guess_type(src)[0] or "application/octet-stream"
+            video = mime.startswith("video/")
+            uri = self.server.url(self.ip, self.server.publish(src, mime, "media" + ext))
+            cls = "object.item.videoItem" if video else "object.item.audioItem.musicTrack"
+        art = ""
+        if meta.get("cover"):
+            art = self.server.url(self.ip, self.server.publish(meta["cover"], "image/jpeg", "cover.jpg"))
+        e = lambda x: html.escape(str(x or ""), quote=True)
+        dur = f' duration="{_hms(meta["duration"])}.000"' if meta.get("duration") else ""
+        didl = ('<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" '
+                'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" '
+                'xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/">'
+                f'<item id="0" parentID="-1" restricted="1"><dc:title>{e(meta.get("title") or Path(src).stem)}</dc:title>'
+                + (f'<upnp:artist>{e(meta["artist"])}</upnp:artist><dc:creator>{e(meta["artist"])}</dc:creator>'
+                   if meta.get("artist") else "")
+                + (f'<upnp:album>{e(meta["album"])}</upnp:album>' if meta.get("album") else "")
+                + (f'<upnp:albumArtURI dlna:profileID="JPEG_TN">{e(art)}</upnp:albumArtURI>' if art else "")
+                + f'<upnp:class>{cls}</upnp:class>'
+                f'<res protocolInfo="http-get:*:{e(mime)}:{_DLNA_FLAGS}"{dur}>{e(uri)}</res></item></DIDL-Lite>')
+        return uri, didl, meta
+
+    def _load(self, uri, didl):
+        try:
+            self._av("Stop")
+        except Exception:
+            pass
+        self._av("SetAVTransportURI", [("CurrentURI", uri), ("CurrentURIMetaData", didl)])
+        return True
+
+    # ── QMediaPlayer-Schnittstelle ────────────────────────────────────────
+    def setSource(self, url):
+        src = url.toLocalFile() if url.isLocalFile() else url.toString()
+        self._gen += 1                               # Antworten zum vorigen Titel verwerfen
+        self._src, self._pos, self._dur = src, 0, 0
+        self._started = self._paused = self._seen_playing = self._ended = False
+        self._seek_pending = None
+        self._update_state()
+        self.positionChanged.emit(0)
+        if not src:
+            self._set_status(QMediaPlayer.NoMedia)
+            self._call("stop", self._av, "Stop")
+            return
+        try:
+            uri, didl, meta = self._prepare(src)
+        except Exception as e:
+            self._set_status(QMediaPlayer.InvalidMedia)
+            self.errorOccurred.emit(QMediaPlayer.ResourceError, str(e))
+            return
+        if meta.get("duration"):
+            self._dur = int(meta["duration"])
+            self.durationChanged.emit(self._dur)
+        self._set_status(QMediaPlayer.LoadingMedia)
+        self._call("load", self._load, uri, didl)
+
+    def play(self):
+        if not self._src:
+            return
+        if self._ended:                              # zu Ende: von vorn
+            self.setSource(QUrl.fromLocalFile(self._src) if "://" not in self._src else QUrl(self._src))
+        self._started, self._paused = True, False
+        self._pos_t = time.monotonic()
+        self._update_state()
+        self._call("play", self._av, "Play", [("Speed", "1")])
+
+    def pause(self):
+        if not self._started:
+            return
+        self._interp()
+        self._paused = True
+        self._update_state()
+        self._call("pause", self._av, "Pause")
+
+    def stop(self):
+        self._gen += 1
+        self._started = self._paused = False
+        self._pos = 0
+        self._update_state()
+        self.positionChanged.emit(0)
+        self._call("stop", self._av, "Stop")
+
+    def setPosition(self, ms):
+        ms = max(0, int(ms))
+        self._pos, self._pos_t = ms, time.monotonic()
+        self.positionChanged.emit(ms)
+        if self._started and not self._seen_playing:      # Gerät lädt noch: springen, sobald es spielt
+            self._seek_pending = ms
+            return
+        self._call("seek", self._av, "Seek", [("Unit", "REL_TIME"), ("Target", _hms(ms))])
+
+    def position(self):
+        return int(self._pos)
+
+    def duration(self):
+        return int(self._dur)
+
+    def playbackState(self):
+        return self._state
+
+    def mediaStatus(self):
+        return self._status
+
+    def source(self):
+        return QUrl.fromLocalFile(self._src) if self._src and "://" not in self._src else QUrl(self._src)
+
+    def metaData(self):
+        return _MpvMeta({})
+
+    def hasVideo(self):
+        return False                                 # das Bild zeigt das Gerät
+
+    def audioTracks(self):
+        return []
+
+    def subtitleTracks(self):
+        return []
+
+    def activeAudioTrack(self):
+        return 0
+
+    def activeSubtitleTrack(self):
+        return -1
+
+    def setActiveAudioTrack(self, i):
+        pass
+
+    def setActiveSubtitleTrack(self, i):
+        pass
+
+    def add_subtitle_file(self, path):
+        pass
+
+    def chapters(self):
+        return []
+
+    def current_chapter(self):
+        return -1
+
+    def set_next(self, src):
+        pass
+
+    def set_fade(self, f):
+        pass
+
+    def set_output(self, *a):
+        pass
+
+    def set_surround(self, on):
+        pass
+
+    def set_speed(self, x):
+        pass
+
+    def set_bands(self, on):
+        pass
+
+    def bands(self):
+        return None
+
+    def level(self):
+        return None
+
+    def set_volume(self, gain, muted):
+        """NeoNotes Lautstärkeregler steuert die Lautstärke des Geräts (gebremst, damit es nicht ruckelt)."""
+        if not self.dev.rc_url:
+            return
+        lin = max(0.0, gain) ** 0.5                 # NeoNote regelt quadratisch, Geräte erwarten 0–100 linear
+        self._vol_pending = (0 if muted else max(0, min(100, int(round(lin * 100)))), muted)
+        self._vol_timer.start()
+
+    def _send_volume(self):
+        if self._vol_pending is None:
+            return
+        vol, muted = self._vol_pending
+        self._vol_pending = None
+        self._call("volume", self._rc, "SetVolume", [("Channel", "Master"), ("DesiredVolume", vol)])
+
+    # ── Zustand vom Gerät ─────────────────────────────────────────────────
+    def _poll_tick(self):
+        if self._polling:
+            return
+        self._polling = True
+        self._call("poll", lambda: (self._av("GetPositionInfo"), self._av("GetTransportInfo")))
+
+    def _interp(self):
+        if self._started and not self._paused and self._seen_playing:
+            now = time.monotonic()
+            pos = self._pos + (now - self._pos_t) * 1000
+            if self._dur:
+                pos = min(pos, self._dur)
+            self._pos, self._pos_t = int(pos), now
+            self.positionChanged.emit(self._pos)
+
+    def _on_res(self, tag, payload):
+        gen, r = payload
+        if tag in ("poll", "error:poll"):
+            self._polling = False
+        if tag.startswith("error:"):
+            what = tag[6:]
+            if what == "poll":
+                self._fails += 1
+                if self._fails == 6 and self._started:
+                    self.lost.emit(str(r))
+                return
+            if what in ("volume", "volume?", "stop"):
+                return
+            if gen != self._gen:
+                return
+            crash_note(f"Casting ({self.dev.name}): {r}")
+            if what in ("load", "play"):
+                self._started = False
+                self._update_state()
+                self._set_status(QMediaPlayer.InvalidMedia)
+            self.errorOccurred.emit(QMediaPlayer.ResourceError,
+                                    tr_("{0} kann das nicht abspielen ({1})").format(self.dev.name, r))
+            return
+        self._fails = 0 if tag == "poll" else self._fails
+        if tag == "volume?":
+            try:
+                self.deviceVolume.emit(int(r.get("CurrentVolume", "")))
+            except (ValueError, TypeError):
+                pass
+            return
+        if gen != self._gen:
+            return
+        if tag == "load":
+            self._set_status(QMediaPlayer.LoadedMedia)
+        elif tag == "poll":
+            pi, ti = r
+            state = (ti.get("CurrentTransportState") or "").upper()
+            dur = _hms_ms(pi.get("TrackDuration", ""))
+            if dur > 0 and abs(dur - self._dur) > 1000:
+                self._dur = dur
+                self.durationChanged.emit(dur)
+            if state == "PLAYING":
+                first = not self._seen_playing
+                self._seen_playing = True
+                rel = _hms_ms(pi.get("RelTime", ""))
+                if rel or first:
+                    self._pos, self._pos_t = rel, time.monotonic()
+                    self.positionChanged.emit(self._pos)
+                if first:
+                    self._set_status(QMediaPlayer.BufferedMedia)
+                    if self._seek_pending:
+                        ms, self._seek_pending = self._seek_pending, None
+                        self.setPosition(ms)
+                if self._paused and self._started:           # am Gerät fortgesetzt
+                    self._paused = False; self._update_state()
+            elif state == "PAUSED_PLAYBACK" and self._started and not self._paused and self._seen_playing:
+                self._paused = True; self._update_state()     # am Gerät pausiert
+            elif (state in ("STOPPED", "NO_MEDIA_PRESENT") and self._started and not self._paused
+                  and self._seen_playing and not self._ended):
+                self._ended, self._started = True, False      # Titel zu Ende (oder am Gerät beendet)
+                if self._dur:
+                    self._pos = self._dur
+                    self.positionChanged.emit(self._pos)
+                self._update_state()
+                self._set_status(QMediaPlayer.EndOfMedia)
+
+    def shutdown(self, stop_device=True):
+        self._poll.stop(); self._tick.stop(); self._vol_timer.stop()
+        self._gen += 1
+        if stop_device:
+            self._call("stop", self._av, "Stop")
+        self._ex.shutdown(wait=False)
+
+
+class CastDiscovery(QThread):
+    found = Signal(list)
+
+    def run(self):
+        try:
+            devs = dlna_discover()
+        except Exception as e:
+            crash_note(f"Casting: Suche fehlgeschlagen: {type(e).__name__}: {e}")
+            devs = []
+        self.found.emit(devs)
+
+
 class EngineAudio:
     """Lautstärke für beide Wiedergabewege."""
 
@@ -3454,6 +4116,8 @@ class EngineAudio:
     def apply_all(self):
         for be in self.e.mpv_backends():
             self.apply(be)
+        if getattr(self.e, "cast", None) is not None:
+            self.e.cast.set_volume(self.gain, self.muted)
 
     def setVolume(self, g):
         self.gain = g
@@ -3497,6 +4161,7 @@ class Engine(QObject):
         self.video_hwdec = "auto-safe"
         self._mv_failed = False
         self.mp2 = None                 # zweites mpv für Musik: Überblenden
+        self.cast = None                # CastBackend, solange auf ein Gerät im Heimnetz gestreamt wird
         self.crossfade_ms = 0
         self.speed = 1.0
         self.device, self.bitperfect = "auto", False
@@ -3719,13 +4384,15 @@ class Engine(QObject):
         return self.mv is not None and self.b is self.mv
 
     def uses_mpv_for(self, src):
-        if not self.mp:
+        if not self.mp or self.cast is not None:
             return False
         if src.startswith(("http://", "https://")):
             return True
         return Path(src).suffix.lower() not in VIDEO_EXT
 
     def _target_for(self, src):
+        if self.cast is not None:
+            return self.cast
         if self.uses_mpv_for(src):
             return self.mp
         is_video = not src.startswith(("http://", "https://")) and Path(src).suffix.lower() in VIDEO_EXT
@@ -3737,6 +4404,33 @@ class Engine(QObject):
 
     def on_mpv(self):
         return self.mp is not None and self.b is self.mp
+
+    def start_cast(self, device, server, meta_cb):
+        """Ab jetzt auf dem Gerät abspielen. Den aktuellen Titel startet MainWindow danach neu."""
+        self._xf_cancel()
+        old = self.b
+        old.stop()
+        if old is self.qt:
+            self.qt.setSource(QUrl())
+        elif old is self.mp:
+            self.mp.set_next(None)
+        if old is self.qt or (old is not None and old is self.mv):
+            self.hasVideoChanged.emit(False)
+        if self.cast is not None:
+            self.cast.shutdown(stop_device=old is not self.cast)
+        self.cast = CastBackend(self, device, server, meta_cb)
+        self._connect(self.cast)
+        self.b = self.cast
+        return self.cast
+
+    def stop_cast(self):
+        c, self.cast = self.cast, None
+        if c is None:
+            return
+        if self.b is c:
+            self.b = self.mp or self.qt
+        c.shutdown()
+        c.deleteLater()
 
     def setSource(self, url):
         src = url.toLocalFile() if url.isLocalFile() else url.toString()
@@ -3791,6 +4485,8 @@ class Engine(QObject):
         return getattr(self.b, name)
 
     def shutdown(self):
+        if self.cast is not None:
+            self.cast.shutdown()
         if self.mv:
             if self.video_widget is not None:
                 self.video_widget.release()
@@ -6080,6 +6776,16 @@ def make_icon(name, size=20, color=None):
     elif name == "plus":
         lp = QPen(c, 1.6); lp.setCapStyle(Qt.RoundCap); p.setPen(lp)
         p.drawLine(P(.5, .24), P(.5, .76)); p.drawLine(P(.24, .5), P(.76, .5))
+    elif name in ("cast", "casting"):                     # Bildschirm mit Funkwellen: auf ein Gerät streamen
+        p.setPen(pen); p.setBrush(Qt.NoBrush)
+        frame = QPainterPath(P(.14, .36)); frame.lineTo(P(.14, .24)); frame.lineTo(P(.86, .24))
+        frame.lineTo(P(.86, .76)); frame.lineTo(P(.56, .76)); p.drawPath(frame)
+        if name == "casting":                              # aktiv: Bildschirm gefüllt
+            p.setPen(Qt.NoPen); p.setBrush(QColor(T.accent))
+            p.drawRect(QRectF(.24 * s, .32 * s, .54 * s, .36 * s)); p.setPen(pen); p.setBrush(Qt.NoBrush)
+        p.drawArc(QRectF(-.02 * s, .5 * s, .52 * s, .52 * s), 0, 90 * 16)
+        p.drawArc(QRectF(.06 * s, .58 * s, .36 * s, .36 * s), 0, 90 * 16)
+        p.setPen(Qt.NoPen); p.setBrush(c); p.drawEllipse(P(.15, .85), .05 * s, .05 * s)
     elif name in ("pin", "pinned"):                       # Stecknadel: immer im Vordergrund
         p.save(); p.translate(.5 * s, .5 * s); p.rotate(40); p.translate(-.5 * s, -.5 * s)
         p.setPen(QPen(c, 1.2)); p.setBrush(c if name == "pinned" else Qt.NoBrush)
@@ -12378,6 +13084,8 @@ class MainWindow(QMainWindow):
         self.btn_mute.setToolTip(tr_("Stumm")); self.btn_mute.clicked.connect(self.toggle_mute)
         self.vol = JumpSlider(Qt.Horizontal); self.vol.setObjectName("vol"); self.vol.setRange(0, 100); self.vol.setFixedWidth(96)
         self.vol.valueChanged.connect(self._set_volume)
+        self.btn_cast = self._icon_btn("cast", 20, tr_("Auf einem Gerät im Heimnetz abspielen (Fernseher, "
+                                                      "AV-Receiver, Lautsprecher)"), self._cast_menu, obj="ctl")
         # Zeitanzeige wie im WMP12: „33:44 / 58:35“ – Klick wechselt auf Restzeit
         self.lbl_time = QToolButton(); self.lbl_time.setObjectName("timeBtn")
         self.lbl_time.setToolTip(tr_("Klicken: verstrichene Zeit / Restzeit / nur Restzeit"))
@@ -12397,6 +13105,7 @@ class MainWindow(QMainWindow):
         for w in (self.btn_stop, self.btn_prev, self.btn_play, self.btn_next):
             cl.addWidget(w)
         cl.addSpacing(12); cl.addWidget(self.btn_mute); cl.addWidget(self.vol)
+        cl.addSpacing(4); cl.addWidget(self.btn_cast)
         # Gegengewicht: Knöpfe + Lautstärke sind rechts breiter als Zeit + Zufall/Wiederholen links
         self._ctl_pad = QWidget(); self._ctl_pad.setFixedWidth(0); cl.addWidget(self._ctl_pad)
         row.addWidget(ctr)
@@ -13856,6 +14565,136 @@ class MainWindow(QMainWindow):
         self._show_now_playing(t)
         self._next_entry = None
         self._prepare_next()
+
+    # ── Casting ───────────────────────────────────────────────────────────
+    def _cast_menu(self):
+        m = QMenu(self)
+        self._cast_menu_obj = m
+        self._fill_cast_menu(m)
+        if not getattr(self, "_cast_search", None) or not self._cast_search.isRunning():
+            self._cast_search = CastDiscovery(self)
+            self._cast_search.found.connect(self._cast_found)
+            self._cast_searching = True
+            self._cast_search.start()
+            self._fill_cast_menu(m)
+        m.aboutToHide.connect(lambda: setattr(self, "_cast_menu_obj", None))
+        m.exec(self.btn_cast.mapToGlobal(QPoint(0, 0)) - QPoint(0, m.sizeHint().height() + 4))
+
+    def _cast_found(self, devs):
+        self._cast_searching = False
+        self._cast_devices = devs
+        m = getattr(self, "_cast_menu_obj", None)
+        if m is not None:
+            try:
+                self._fill_cast_menu(m)
+                m.adjustSize()
+                m.move(self.btn_cast.mapToGlobal(QPoint(0, 0)) - QPoint(0, m.sizeHint().height() + 4))
+            except RuntimeError:
+                pass
+
+    def _fill_cast_menu(self, m):
+        m.clear()
+        cur = getattr(self, "_cast_dev", None)
+        if cur is not None:
+            a = m.addAction(tr_("Wiedergabe auf „{0}“").format(cur.name)); a.setEnabled(False)
+            m.addAction(tr_("Auf diesem PC weiterhören"), self._stop_cast)
+            m.addSeparator()
+        devs = getattr(self, "_cast_devices", None) or []
+        if not devs:
+            if getattr(self, "_cast_searching", False):
+                a = m.addAction(tr_("Suche nach Geräten im Heimnetz …")); a.setEnabled(False)
+            else:
+                a = m.addAction(tr_("Keine Geräte gefunden")); a.setEnabled(False)
+                a = m.addAction(tr_("Gerät eingeschaltet und im selben Netz? Firewall: Ports 47900 (TCP) und "
+                                    "47901 (UDP) freigeben.")); a.setEnabled(False)
+        for d in devs:
+            a = m.addAction(make_icon("cast", 16), d.name + (f"  ({d.model})" if d.model and d.model != d.name else ""))
+            a.setCheckable(True); a.setChecked(cur is not None and d.key == cur.key)
+            if a.isChecked():
+                f = a.font(); f.setBold(True); a.setFont(f)
+            a.triggered.connect(lambda _=False, d=d: self._start_cast(d))
+        if devs and getattr(self, "_cast_searching", False):
+            a = m.addAction(tr_("Suche läuft …")); a.setEnabled(False)
+
+    def _cast_meta(self, src):
+        """Titel, Interpret, Album, Länge und Cover für die Anzeige am Gerät."""
+        t = self.cur["t"] if self.cur else {}
+        if not t:
+            return {}
+        meta = {"title": disp(t.get("title")), "artist": disp(t.get("artist")), "album": disp(t.get("album"))}
+        if t.get("stream"):
+            meta["album"] = ""
+            return meta
+        if t.get("length"):
+            meta["duration"] = int(float(t["length"]) * 1000)
+        try:
+            cp = cover_path(t.get("cover")) if t.get("cover") else None
+            if cp is not None and cp.exists() and cp.stat().st_size < 4_000_000:
+                meta["cover"] = cp.read_bytes()
+            elif t.get("path") and os.path.exists(t["path"]):
+                data = embedded_cover(t["path"])
+                if data and len(data) < 4_000_000:
+                    meta["cover"] = bytes(data)
+        except Exception:
+            pass
+        return meta
+
+    def _restart_current(self, pos, playing):
+        """Aktuellen Titel auf dem neuen Wiedergabeweg an derselben Stelle fortsetzen."""
+        if self.cur is None:
+            return
+        self._pending_pos = pos if pos > 1500 and not self.cur["t"].get("stream") else None
+        self.play_entry(self.cur)
+        if not playing:
+            self.player.pause()
+
+    def _start_cast(self, dev):
+        if getattr(self, "_cast_server", None) is None:
+            try:
+                self._cast_server = CastServer()
+            except Exception as e:
+                self.flash(tr_("Casting nicht möglich: {0}").format(e)); return
+        pos = self.player.position()
+        playing = self.player.playbackState() == QMediaPlayer.PlayingState
+        if getattr(self, "_cast_dev", None) is None:
+            self._vol_before_cast = self.vol.value()
+        cast = self.player.start_cast(dev, self._cast_server, self._cast_meta)
+        cast.lost.connect(lambda _m, n=dev.name: (self.flash(tr_("Verbindung zu „{0}“ verloren").format(n)),
+                                                  self._stop_cast()))
+        cast.deviceVolume.connect(self._cast_device_volume)
+        self._cast_dev = dev
+        crash_note(f"Casting an {dev.name} ({dev.model}, {dev.host})")
+        self._update_cast_btn()
+        self.flash(tr_("Wiedergabe auf „{0}“").format(dev.name), 8000)
+        self._restart_current(pos, playing)
+
+    def _stop_cast(self):
+        if getattr(self, "_cast_dev", None) is None:
+            return
+        pos = self.player.position()
+        playing = self.player.playbackState() == QMediaPlayer.PlayingState
+        self.player.stop_cast()
+        self._cast_dev = None
+        self._update_cast_btn()
+        if getattr(self, "_vol_before_cast", None) is not None:
+            self.vol.setValue(self._vol_before_cast)
+            self._vol_before_cast = None
+        self.flash(tr_("Wiedergabe wieder auf diesem PC"))
+        self._restart_current(pos, playing)
+
+    def _cast_device_volume(self, v):
+        self.vol.blockSignals(True)
+        self.vol.setValue(v)
+        self.vol.blockSignals(False)
+        self.player.audio.gain = (v / 100.0) ** 2   # Regler zeigt jetzt die Lautstärke des Geräts
+
+    def _update_cast_btn(self):
+        dev = getattr(self, "_cast_dev", None)
+        name = "casting" if dev else "cast"
+        self._icons = [(b, name if b is self.btn_cast else n, sz) for b, n, sz in self._icons]
+        self.btn_cast.setIcon(make_icon(name, 20))
+        self.btn_cast.setToolTip(tr_("Wiedergabe auf „{0}“ – klicken für weitere Geräte").format(dev.name) if dev else
+                                 tr_("Auf einem Gerät im Heimnetz abspielen (Fernseher, AV-Receiver, Lautsprecher)"))
 
     def _show_now_playing(self, t):
         if getattr(self, "_rating_queue", None):
