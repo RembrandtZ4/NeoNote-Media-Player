@@ -15800,9 +15800,11 @@ class SetupWindow(QWidget):
         self.btn_close.show(); self.update()
 
     def _launch(self):
-        exe = str(Path(self.path.text().strip()) / "NeoNote.exe")
-        # über den Explorer starten: so läuft NeoNote nicht mit Administratorrechten weiter
-        subprocess.Popen(["explorer.exe", exe])
+        folder = Path(self.path.text().strip())
+        exe = str(folder / "NeoNote.exe")
+        # über den Explorer starten: so läuft NeoNote nicht mit Administratorrechten weiter.
+        # Arbeitsordner = Installationsordner, nicht der Entpack-Ordner des Installers (der soll gelöscht werden)
+        subprocess.Popen(["explorer.exe", exe], cwd=str(folder) if folder.is_dir() else None)
         self.close()
 
     def closeEvent(self, e):

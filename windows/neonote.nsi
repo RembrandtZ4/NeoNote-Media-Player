@@ -101,6 +101,9 @@ Section
   StrCpy $1 "--silent --update"
   ; Das Startbild des Programmstarters hier unterdrücken – das Installer-Startfenster ist ja schon da
   System::Call 'kernel32::SetEnvironmentVariable(t "PYINSTALLER_SUPPRESS_SPLASH_SCREEN", t "1")'
+  ; Arbeitsordner NICHT im Entpack-Ordner: sonst „steht“ das Setup (und das danach gestartete NeoNote) darin,
+  ; und Windows lässt den Ordner am Ende nicht löschen (übrig blieb „NeoNote-Setup.tmp“)
+  SetOutPath "$TEMP"
   ExecWait '"$8\NeoNote.exe" --setup --version ${VERSION} $1' $0
   FindWindow $2 "NeoNoteSplash"
   ${If} $2 != 0
@@ -112,8 +115,17 @@ Section
       WriteUninstaller "$INSTDIR\Uninstall.exe"
     ${EndIf}
   ${EndIf}
-  SetOutPath "$TEMP"
-  RMDir /r "$8"
+  ; Entpack-Ordner entfernen – kurz warten, falls Windows (z. B. der Virenscanner) die Dateien noch festhält
+  StrCpy $5 0
+  ${Do}
+    RMDir /r "$8"
+    ${IfNot} ${FileExists} "$8\*.*"
+      ${ExitDo}
+    ${EndIf}
+    Sleep 500
+    IntOp $5 $5 + 1
+  ${LoopUntil} $5 >= 10
+  RMDir /r /REBOOTOK "$8"          ; notfalls beim nächsten Neustart
 SectionEnd
 
 Function un.onInit
@@ -137,6 +149,7 @@ Section "Uninstall"
   Delete "$INSTDIR\NeoNote.exe"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
+  RMDir /r "$PROGRAMFILES64\NeoNote-Setup.tmp"   ; Rest älterer Installer (bis 1.3.1.98)
   ; Vorladen beim Anmelden entfernen
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "NeoNote"
   ; NeoNote als Standard für Formate ohne Nutzerauswahl (HKCU) wieder austragen
