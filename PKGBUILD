@@ -35,4 +35,6 @@ package() {
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/neonote/LICENSE"
   install -Dm644 THIRD_PARTY_NOTICES.md "$pkgdir/usr/share/licenses/neonote/THIRD_PARTY_NOTICES.md"
   install -Dm644 README.md          "$pkgdir/usr/share/doc/neonote/README.md"
+  # woher das Paket stammt – der Updater in NeoNote richtet sich danach
+  echo zip | install -Dm644 /dev/stdin "$pkgdir/usr/share/neonote/package-source"
 }

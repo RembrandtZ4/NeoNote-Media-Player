@@ -4581,6 +4581,14 @@ def arch_package_install():
             and shutil.which("pacman") is not None and shutil.which("makepkg") is not None)
 
 
+def arch_package_source():
+    """„zip“ (Arch-Zip/makepkg) oder „aur“ – steht in /usr/share/neonote/package-source (ältere Zips: keine Datei)."""
+    try:
+        return (Path(__file__).resolve().parent / "package-source").read_text().strip() or "zip"
+    except OSError:
+        return "zip"
+
+
 def linux_terminal(script):
     """Befehl für ein Terminalfenster, das „script“ (bash) ausführt – None, wenn keins gefunden wird."""
     cands = []
@@ -9606,6 +9614,9 @@ class SettingsDialog(QDialog):
         urow.addWidget(ubtn); urow.addWidget(ulbl, 1); sv.addLayout(urow)
         uh = QLabel(tr_("NeoNote fragt dafür nur die Release-Seite des Projekts auf GitHub ab – es werden keine Daten übertragen.")
                     if IS_WIN or not installed_by_package() else
+                    tr_("Aus dem AUR installiert: Aktualisiert wird mit „yay -Syu“. Testversionen (Beta) lädt NeoNote "
+                        "selbst und installiert sie in einem Terminalfenster.")
+                    if arch_package_install() and arch_package_source() == "aur" else
                     tr_("Arch-Paket: NeoNote lädt neue Versionen selbst und installiert sie in einem Terminalfenster "
                         "(dort wird nach deinem Passwort gefragt).") if arch_package_install() else
                     tr_("NeoNote zeigt neue Versionen nur an. Aktualisiert wird über die Paketverwaltung (z. B. „yay -Syu“ oder Discover)."))
@@ -14648,7 +14659,10 @@ class MainWindow(QMainWindow):
         th.start()
 
     def _update_can_install(self, info):
-        """Kann NeoNote das Update selbst installieren? Windows-Installer oder Arch-Zip."""
+        """Kann NeoNote das Update selbst installieren? Windows-Installer oder Arch-Zip.
+        Aus dem AUR installiert: reguläre Versionen kommen per yay, Testversionen (nur als Zip) holt NeoNote selbst."""
+        if arch_package_install() and arch_package_source() == "aur" and not is_beta(info["version"]):
+            return False
         return bool(((IS_WIN and getattr(sys, "frozen", False)) or arch_package_install())
                     and self._update_asset(info)[0])
 
