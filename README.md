@@ -15,7 +15,7 @@
   <a href="https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest"><img alt="Download for Linux (Flatpak)" src="https://img.shields.io/badge/Download%20for%20Linux%20(Flatpak)-1d99f3?style=for-the-badge&logo=linux&logoColor=white"></a>
 </p>
 
-A music and video player for Linux and Windows inspired by Windows Media Player 12: a flat design with transparency, customizable colors, the WMP12 track list with album art, a “Now playing” mode, playlists, internet radio, Jellyfin support and system media controls. The interface is available in English and German.
+A music and video player for Linux and Windows inspired by Windows Media Player 12: a flat design with transparency, customizable colors, the WMP12 track list with album art, a “Now playing” mode, playlists, internet radio, Jellyfin support and system media controls. The interface is available in 10 languages.
 
 ![Track list with album art](docs/screenshots/songs.png)
 
@@ -81,7 +81,7 @@ Get the ready-to-use files from the **[releases page](https://github.com/Rembran
 - Custom title bar or system frame – dialogs too get the same translucent look with their own title bar
 - Freely configurable navigation bar, resizable panes
 - Mouse back/forward buttons, keyboard shortcuts like in WMP
-- English and German (automatically follows the system language)
+- 10 languages: English, German, French, Spanish, Italian, Dutch, Polish, Portuguese (Brazil), Russian and Turkish (automatically follows the system language)
 
 **System**
 - Linux: KDE Plasma media controls (MPRIS), media keys, lock screen
@@ -235,7 +235,7 @@ Under **Settings ▸ Jellyfin** you connect NeoNote to your Jellyfin server (add
 
 ## Language
 
-Under **Settings ▸ Appearance ▸ Language**: English, German or automatic (system language). The change takes effect after a restart (“Restart now”). Translations are JSON files in the `i18n` folder next to the program – adding a new language only takes one more file.
+Under **Settings ▸ Appearance ▸ Language**: English, German, French, Spanish, Italian, Dutch, Polish, Portuguese (Brazil), Russian, Turkish or automatic (system language). The change takes effect after a restart (“Restart now”). Translations are JSON files in the `i18n` folder next to the program – adding a new language only takes one more file. The translations other than German and English were made with AI – corrections from native speakers are very welcome.
 
 ## Mini player and system tray
 

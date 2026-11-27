@@ -213,12 +213,14 @@ JF_CACHE_FILE = DATA_DIR / "jellyfin.json"
 SMART_FILE = DATA_DIR / "smart_playlists.json"
 JF_OFFLINE_DIR = DATA_DIR / "jellyfin-offline"
 PLAYLIST_DIR = DATA_DIR / "playlists"
-APP_VERSION = "1.3.2"
-APP_DATE = "2026-11-26"
+APP_VERSION = "1.3.3"
+APP_DATE = "2026-11-27"
 APP_AUTHOR = "RembrandtZ4"
 
 # ── Sprache ───────────────────────────────────────────────────────────────
-LANGUAGES = [("auto", "Automatisch (Systemsprache)"), ("de", "Deutsch"), ("en", "English")]
+LANGUAGES = [("auto", "Automatisch (Systemsprache)"), ("de", "Deutsch"), ("en", "English"), ("es", "Español"),
+             ("fr", "Français"), ("it", "Italiano"), ("nl", "Nederlands"), ("pl", "Polski"), ("pt", "Português (Brasil)"),
+             ("ru", "Русский"), ("tr", "Türkçe")]
 
 
 def _lang_dirs():
@@ -234,7 +236,8 @@ def _tr_init():
         choice = "auto"
     if choice == "auto":
         from PySide6.QtCore import QLocale
-        choice = "de" if QLocale.system().name().lower().startswith("de") else "en"
+        sys_lang = QLocale.system().name().lower()[:2]
+        choice = sys_lang if any(c == sys_lang for c, _ in LANGUAGES[1:]) else "en"
     table = {}
     if choice != "de":
         for d in _lang_dirs():
@@ -11434,7 +11437,7 @@ class SettingsDialog(QDialog):
         th = QLabel(tr_("Klick auf das Symbol zeigt oder versteckt das Fenster, Mittelklick startet bzw. pausiert. "
                     "Über das Menü des Symbols kannst du den Player jederzeit ganz beenden."))
         th.setObjectName("hint"); th.setWordWrap(True); sv.addWidget(th)
-        sv.addWidget(QLabel(tr_("<b>Casting</b>")))
+        sv.addWidget(QLabel(tr_("<b>Streamen im Heimnetz</b>")))
         fwrow = QHBoxLayout()
         self.s_fw = QLabel(tr_("Firewall wird geprüft …")); self.s_fw.setWordWrap(True)
         fwb = QPushButton(tr_("Firewall freigeben"))
@@ -11451,10 +11454,10 @@ class SettingsDialog(QDialog):
                 self.s_fw.setText(tr_("Keine Firewall aktiv – Geräte im Heimnetz sind erreichbar."))
                 fwb.setEnabled(False)
             elif not win._cast_fw_needed():
-                self.s_fw.setText(tr_("Firewall ({0}): für Casting freigegeben ✓").format(kind))
+                self.s_fw.setText(tr_("Firewall ({0}): fürs Streamen freigegeben ✓").format(kind))
                 fwb.setEnabled(True)
             else:
-                self.s_fw.setText(tr_("Firewall ({0}) aktiv – Casting ist noch nicht freigegeben.").format(kind))
+                self.s_fw.setText(tr_("Firewall ({0}) aktiv – Streamen ist noch nicht freigegeben.").format(kind))
                 fwb.setEnabled(True)
         fwb.clicked.connect(lambda: (win._cast_firewall_fix(), QTimer.singleShot(3500, fw_show)))
         self._after_show.append(fw_show)
@@ -15814,8 +15817,8 @@ class MainWindow(QMainWindow):
             self.settings.setValue("cast/fw_asked", True)
             kind = {"windows": "Windows", "ufw": "ufw", "firewalld": "firewalld"}.get(self._fw[0], "")
             if QMessageBox.question(self, tr_("Firewall"), tr_(
-                    "Deine Firewall ({0}) blockiert vermutlich die Geräte im Heimnetz.\n\nSoll NeoNote sie für das "
-                    "Casting freigeben? Das gilt nur für Geräte in deinem Heimnetz – dafür wird einmal dein "
+                    "Deine Firewall ({0}) blockiert vermutlich die Geräte im Heimnetz.\n\nSoll NeoNote sie fürs "
+                    "Streamen freigeben? Das gilt nur für Geräte in deinem Heimnetz – dafür wird einmal dein "
                     "Passwort abgefragt.").format(kind)) == QMessageBox.Yes:
                 self._cast_firewall_fix()
         m = QMenu(self)
@@ -15866,7 +15869,7 @@ class MainWindow(QMainWindow):
 
             def recheck():
                 self._fw = cast_firewall_status()
-                self.flash(tr_("Firewall für Casting freigegeben ✓") if self._fw[1] else
+                self.flash(tr_("Firewall fürs Streamen freigegeben ✓") if self._fw[1] else
                            tr_("Firewall-Freigabe hat nicht geklappt"))
             QTimer.singleShot(3000, recheck)
             return
@@ -15881,7 +15884,7 @@ class MainWindow(QMainWindow):
             if code == 0:
                 self.settings.setValue(f"cast/fw_ok_{kind}", True)
                 self._fw = (kind, True)
-                self.flash(tr_("Firewall für Casting freigegeben ✓"))
+                self.flash(tr_("Firewall fürs Streamen freigegeben ✓"))
                 crash_note(f"Casting: Firewall ({kind}) freigegeben")
             elif code in (126, 127):
                 self.flash(tr_("Firewall-Freigabe abgebrochen"))
@@ -15894,7 +15897,7 @@ class MainWindow(QMainWindow):
 
     def _cast_firewall_dialog(self, kind, cmds):
         """Wenn NeoNote es nicht selbst darf (Flatpak) oder kann: Befehle zum Kopieren anzeigen."""
-        d = QDialog(self); d.setWindowTitle(tr_("Firewall für Casting freigeben"))
+        d = QDialog(self); d.setWindowTitle(tr_("Firewall fürs Streamen freigeben"))
         lay = QVBoxLayout(d); lay.setContentsMargins(18, 16, 18, 14)
         lab = QLabel(tr_("Damit NeoNote Geräte im Heimnetz findet, diese Befehle einmal im Terminal ausführen "
                          "({0}):").format(kind)); lab.setWordWrap(True); lay.addWidget(lab)
@@ -15918,7 +15921,7 @@ class MainWindow(QMainWindow):
             m.addAction(tr_("Auf diesem PC weiterhören"), self._stop_cast)
             m.addSeparator()
         if self._cast_fw_needed():
-            m.addAction(tr_("Firewall für Casting freigeben …"), self._cast_firewall_fix)
+            m.addAction(tr_("Firewall fürs Streamen freigeben …"), self._cast_firewall_fix)
             m.addSeparator()
         devs = getattr(self, "_cast_devices", None) or []
         if not devs:
@@ -15982,7 +15985,7 @@ class MainWindow(QMainWindow):
             try:
                 self._cast_server = CastServer()
             except Exception as e:
-                self.flash(tr_("Casting nicht möglich: {0}").format(e)); return
+                self.flash(tr_("Streamen nicht möglich: {0}").format(e)); return
         pos = self.player.position()
         playing = self.player.playbackState() == QMediaPlayer.PlayingState
         if getattr(self, "_cast_dev", None) is None:

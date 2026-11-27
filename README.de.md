@@ -15,7 +15,7 @@
   <a href="https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest"><img alt="Download für Linux (Flatpak)" src="https://img.shields.io/badge/Download%20für%20Linux%20(Flatpak)-1d99f3?style=for-the-badge&logo=linux&logoColor=white"></a>
 </p>
 
-Ein Musik- und Videoplayer für Linux und Windows, angelehnt an Windows Media Player 12: flaches Design mit Transparenz, anpassbaren Farben, WMP12-Titelliste mit Albumcovern, „Wird gespielt“-Modus, Wiedergabelisten, Internetradio, Jellyfin-Anbindung und Mediensteuerung. Oberfläche auf Deutsch und Englisch.
+Ein Musik- und Videoplayer für Linux und Windows, angelehnt an Windows Media Player 12: flaches Design mit Transparenz, anpassbaren Farben, WMP12-Titelliste mit Albumcovern, „Wird gespielt“-Modus, Wiedergabelisten, Internetradio, Jellyfin-Anbindung und Mediensteuerung. Oberfläche in 10 Sprachen.
 
 ![Titelliste mit Albumcovern](docs/screenshots/songs.png)
 
@@ -81,7 +81,7 @@ Die fertigen Dateien gibt es auf der **[Release-Seite](https://github.com/Rembra
 - Eigene Fensterleiste oder Systemrahmen – auch die Dialoge bekommen denselben durchscheinenden Look mit eigener Titelleiste
 - Frei konfigurierbare Navigationsleiste, ziehbare Bereiche
 - Maustasten Zurück/Vor, Tastenkürzel wie im WMP
-- Deutsch und Englisch (automatisch nach Systemsprache)
+- 10 Sprachen: Deutsch, Englisch, Französisch, Spanisch, Italienisch, Niederländisch, Polnisch, Portugiesisch (Brasilien), Russisch und Türkisch (automatisch nach Systemsprache)
 
 **System**
 - Linux: Mediensteuerung von KDE Plasma (MPRIS), Medientasten, Sperrbildschirm
@@ -235,7 +235,7 @@ Unter **Einstellungen ▸ Jellyfin** verbindest du NeoNote mit deinem Jellyfin-S
 
 ## Sprache
 
-Unter **Einstellungen ▸ Darstellung ▸ Sprache**: Deutsch, Englisch oder automatisch nach der Systemsprache. Die Änderung gilt nach einem Neustart („Jetzt neu starten“). Übersetzungen liegen als JSON-Dateien im Ordner `i18n` neben dem Programm.
+Unter **Einstellungen ▸ Darstellung ▸ Sprache**: Deutsch, Englisch, Französisch, Spanisch, Italienisch, Niederländisch, Polnisch, Portugiesisch (Brasilien), Russisch, Türkisch oder automatisch nach der Systemsprache. Die Änderung gilt nach einem Neustart („Jetzt neu starten“). Übersetzungen liegen als JSON-Dateien im Ordner `i18n` neben dem Programm. Die Sprachen außer Deutsch und Englisch wurden mit KI übersetzt – Korrekturen von Muttersprachlern sind sehr willkommen.
 
 ## Mini-Player und Systemleiste
 

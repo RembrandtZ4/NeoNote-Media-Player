@@ -32,6 +32,10 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [x] **Safe mode and crash report** – if something goes wrong at start, NeoNote helps itself and shows a report to copy
 - [x] **What's new after an update**, animated dialogs, and the uninstaller can remove personal data on request
 
+## Version 1.3.3 – released 2026-11-27
+- [x] **Casting** to DLNA/UPnP, Chromecast and AirPlay devices (TVs, speakers, AV receivers), with one-click firewall setup
+- [x] **8 new languages:** French, Spanish, Italian, Dutch, Polish, Portuguese (Brazil), Russian, Turkish
+
 ## Next
 - [ ] **Jellyfin security:** store the access token in the system's password store (Windows Credential Manager, KWallet) and warn before signing in over unencrypted `http://` outside the home network
 - [ ] **AUR package** – install with `yay -S neonote` (ready; waiting for AUR registration to reopen)
@@ -39,7 +43,7 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [ ] **Flathub** listing
 
 ## Later
-- [x] **Casting** to Chromecast, AirPlay and DLNA/UPnP devices (TVs, speakers, AV receivers) – in the next version; AirPlay 2 pairing and format conversion later
+- [ ] **Casting extras:** AirPlay 2 pairing and format conversion for devices that can't play a file
 - [ ] **Remote control** – control NeoNote on the PC from your phone via a simple web page on the home network (no app needed)
 
 ## Earlier
@@ -79,6 +83,10 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [x] **Sicherer Modus und Absturzbericht** – geht beim Start etwas schief, hilft sich NeoNote selbst und zeigt einen Bericht zum Kopieren
 - [x] **Neuerungen nach einem Update**, animierte Dialoge, und der Deinstaller entfernt auf Wunsch die persönlichen Daten
 
+## Version 1.3.3 – erschienen am 27.11.2026
+- [x] **Streamen** zu DLNA/UPnP-, Chromecast- und AirPlay-Geräten (Fernseher, Lautsprecher, AV-Receiver), Firewall-Freigabe per Klick
+- [x] **8 neue Sprachen:** Französisch, Spanisch, Italienisch, Niederländisch, Polnisch, Portugiesisch (Brasilien), Russisch, Türkisch
+
 ## Als Nächstes
 - [ ] **Jellyfin-Sicherheit:** den Zugangsschlüssel im Passwortspeicher des Systems ablegen (Windows-Anmeldeinformationsverwaltung, KWallet) und vor einer Anmeldung über unverschlüsseltes `http://` außerhalb des Heimnetzes warnen
 - [ ] **AUR-Paket** – Installation mit `yay -S neonote` (fertig vorbereitet; wartet darauf, dass das AUR die Registrierung wieder öffnet)
@@ -86,7 +94,7 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [ ] **Aufnahme in Flathub**
 
 ## Später
-- [x] **Streamen (Cast)** zu Chromecast, AirPlay und DLNA/UPnP-Geräten (Fernseher, Lautsprecher, AV-Receiver) – in der nächsten Version; AirPlay-2-Kopplung und Formatumwandlung später
+- [ ] **Streamen, Ausbau:** AirPlay-2-Kopplung und Formatumwandlung für Geräte, die eine Datei nicht abspielen können
 - [ ] **Fernbedienung** – NeoNote am PC vom Handy aus steuern, über eine einfache Webseite im Heimnetz (ohne App)
 
 ## Früher

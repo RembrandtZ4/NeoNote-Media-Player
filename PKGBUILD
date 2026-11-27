@@ -3,7 +3,7 @@
 # Entfernen:     sudo pacman -R neonote
 
 pkgname=neonote
-pkgver=1.3.2
+pkgver=1.3.3
 pkgrel=1
 epoch=1
 pkgdesc="NeoNote Media Player – Musik- und Videoplayer im Stil von Windows Media Player 12"
@@ -23,15 +23,17 @@ depends=(
 optdepends=(
   'xdg-utils: Ordner öffnen, falls kein Dateimanager über D-Bus erreichbar ist'
 )
-source=('neonote.py' 'neonote.sh' 'neonote.desktop' 'neonote.png' 'README.md' 'en.json' 'LICENSE' 'THIRD_PARTY_NOTICES.md')
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+source=('neonote.py' 'neonote.sh' 'neonote.desktop' 'neonote.png' 'README.md' 'en.json' 'es.json' 'fr.json' 'it.json' 'nl.json' 'pl.json' 'pt.json' 'ru.json' 'tr.json' 'LICENSE' 'THIRD_PARTY_NOTICES.md')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
   install -Dm644 neonote.py      "$pkgdir/usr/share/neonote/neonote.py"
   install -Dm755 neonote.sh      "$pkgdir/usr/bin/neonote"
   install -Dm644 neonote.desktop "$pkgdir/usr/share/applications/neonote.desktop"
   install -Dm644 neonote.png     "$pkgdir/usr/share/icons/hicolor/256x256/apps/neonote.png"
-  install -Dm644 en.json        "$pkgdir/usr/share/neonote/i18n/en.json"
+  for f in en.json es.json fr.json it.json nl.json pl.json pt.json ru.json tr.json; do
+    install -Dm644 "$f" "$pkgdir/usr/share/neonote/i18n/$f"
+  done
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/neonote/LICENSE"
   install -Dm644 THIRD_PARTY_NOTICES.md "$pkgdir/usr/share/licenses/neonote/THIRD_PARTY_NOTICES.md"
   install -Dm644 README.md          "$pkgdir/usr/share/doc/neonote/README.md"

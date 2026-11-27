@@ -115,7 +115,7 @@ modules:
     buildsystem: simple
     build-commands:
       - install -Dm644 neonote.py ${FLATPAK_DEST}/share/neonote/neonote.py
-      - install -Dm644 i18n/en.json ${FLATPAK_DEST}/share/neonote/i18n/en.json
+      - for f in i18n/*.json; do install -Dm644 $f ${FLATPAK_DEST}/share/neonote/$f; done
       - install -Dm755 flatpak/neonote.sh ${FLATPAK_DEST}/bin/neonote
       - install -Dm644 neonote.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - desktop-file-edit --set-icon=${FLATPAK_ID} --set-key=StartupWMClass --set-value=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop

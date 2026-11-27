@@ -1,7 +1,7 @@
 # Maintainer: RembrandtZ4 <RembrandtZ4 at users dot noreply dot github dot com>
 
 pkgname=neonote
-pkgver=1.3.2
+pkgver=1.3.3
 pkgrel=1
 epoch=1
 pkgdesc="Music and video player inspired by Windows Media Player 12 (Qt 6, mpv, lyrics, Jellyfin)"
@@ -27,7 +27,9 @@ sha256sums=('SKIP')   # setzt der Release-Workflow (updpkgsums)
 package() {
   cd "NeoNote-Media-Player-$pkgver"
   install -Dm644 neonote.py             "$pkgdir/usr/share/neonote/neonote.py"
-  install -Dm644 i18n/en.json           "$pkgdir/usr/share/neonote/i18n/en.json"
+  for f in i18n/*.json; do
+    install -Dm644 "$f" "$pkgdir/usr/share/neonote/$f"
+  done
   install -Dm755 neonote.sh             "$pkgdir/usr/bin/neonote"
   install -Dm644 neonote.desktop        "$pkgdir/usr/share/applications/neonote.desktop"
   install -Dm644 neonote.png            "$pkgdir/usr/share/icons/hicolor/256x256/apps/neonote.png"
