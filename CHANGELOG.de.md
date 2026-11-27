@@ -4,6 +4,9 @@
 
 ## Nächste Version (in Arbeit)
 
+### ⚡ Verbesserungen
+- **Bildqualität** (Einstellungen ▸ Video): „Hoch“ nutzt schärfere Skalierfilter, glättet Streifen in Farbverläufen und rechnet HDR genauer um – für Videos über mpv, wirkt sofort. Voreingestellt bleibt „Standard“, weil „Hoch“ eine stärkere Grafikkarte braucht.
+
 ### 🐞 Behobene Fehler
 - Kurzinfos mit längerem Text (z. B. an den Knöpfen für Infos und Streamen) wurden am rechten Rand abgeschnitten. Behoben.
 

@@ -891,5 +891,8 @@
  "Immer im Vordergrund: an": "Sempre no topo: ligado",
  "Immer im Vordergrund: aus": "Sempre no topo: desligado",
  "Immer im Vordergrund\tStrg+Alt+T": "Sempre no topo\tCtrl+Alt+T",
- "<b>Streamen im Heimnetz</b>": "<b>Transmissão na rede doméstica</b>"
+ "<b>Streamen im Heimnetz</b>": "<b>Transmissão na rede doméstica</b>",
+ "<b>Bildqualität</b>": "<b>Qualidade de imagem</b>",
+ "Hoch (braucht eine stärkere Grafikkarte)": "Alta (requer uma placa de vídeo mais potente)",
+ "„Hoch“ nutzt schärfere Filter beim Vergrößern und Verkleinern, glättet Streifen in Farbverläufen (z. B. Himmel bei stark komprimierten Videos) und rechnet HDR genauer um. Das Bild wird dabei nicht verfälscht. Ruckelt ein Video, zurück auf „Standard“ stellen. Gilt nur für Videos über mpv und wirkt sofort.": "«Alta» usa filtros mais nítidos ao ampliar e reduzir, suaviza faixas em degradês (ex.: o céu em vídeos muito comprimidos) e converte HDR com mais precisão. A imagem não é alterada. Se um vídeo travar, volte para «Padrão». Vale só para vídeos reproduzidos com o mpv e tem efeito imediato."
 }

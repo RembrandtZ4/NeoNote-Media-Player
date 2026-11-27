@@ -891,5 +891,8 @@
  "Immer im Vordergrund: an": "Zawsze na wierzchu: wł.",
  "Immer im Vordergrund: aus": "Zawsze na wierzchu: wył.",
  "Immer im Vordergrund\tStrg+Alt+T": "Zawsze na wierzchu\tCtrl+Alt+T",
- "<b>Streamen im Heimnetz</b>": "<b>Strumieniowanie w sieci domowej</b>"
+ "<b>Streamen im Heimnetz</b>": "<b>Strumieniowanie w sieci domowej</b>",
+ "<b>Bildqualität</b>": "<b>Jakość obrazu</b>",
+ "Hoch (braucht eine stärkere Grafikkarte)": "Wysoka (wymaga mocniejszej karty graficznej)",
+ "„Hoch“ nutzt schärfere Filter beim Vergrößern und Verkleinern, glättet Streifen in Farbverläufen (z. B. Himmel bei stark komprimierten Videos) und rechnet HDR genauer um. Das Bild wird dabei nicht verfälscht. Ruckelt ein Video, zurück auf „Standard“ stellen. Gilt nur für Videos über mpv und wirkt sofort.": "„Wysoka” używa ostrzejszych filtrów przy powiększaniu i pomniejszaniu, wygładza pasy w przejściach kolorów (np. niebo w mocno skompresowanych wideo) i dokładniej przelicza HDR. Obraz nie jest zniekształcany. Jeśli wideo się zacina, wróć do „Domyślny”. Dotyczy tylko wideo odtwarzanych przez mpv i działa od razu."
 }

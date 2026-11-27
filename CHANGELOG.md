@@ -4,6 +4,9 @@
 
 ## Next version (in progress)
 
+### ⚡ Improvements
+- **Picture quality** (Settings ▸ Video): “High” uses sharper scaling filters, smooths banding in color gradients and converts HDR more accurately – for videos played with mpv, takes effect immediately. Default stays “Default”, as it needs a stronger graphics card.
+
 ### 🐞 Bug fixes
 - Tooltips with longer text (e.g. on the info and casting buttons) were cut off at the right edge. Fixed.
 

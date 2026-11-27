@@ -891,5 +891,8 @@
  "Immer im Vordergrund: an": "Always on top: on",
  "Immer im Vordergrund: aus": "Always on top: off",
  "Immer im Vordergrund\tStrg+Alt+T": "Always on top\tCtrl+Alt+T",
- "<b>Streamen im Heimnetz</b>": "<b>Casting</b>"
+ "<b>Streamen im Heimnetz</b>": "<b>Casting</b>",
+ "<b>Bildqualität</b>": "<b>Picture quality</b>",
+ "Hoch (braucht eine stärkere Grafikkarte)": "High (needs a stronger graphics card)",
+ "„Hoch“ nutzt schärfere Filter beim Vergrößern und Verkleinern, glättet Streifen in Farbverläufen (z. B. Himmel bei stark komprimierten Videos) und rechnet HDR genauer um. Das Bild wird dabei nicht verfälscht. Ruckelt ein Video, zurück auf „Standard“ stellen. Gilt nur für Videos über mpv und wirkt sofort.": "“High” uses sharper filters for scaling up and down, smooths banding in color gradients (e.g. skies in heavily compressed videos) and converts HDR more accurately. The picture is not altered. If a video stutters, switch back to “Default”. Only applies to videos played with mpv and takes effect immediately."
 }

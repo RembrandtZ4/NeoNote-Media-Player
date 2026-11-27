@@ -891,5 +891,8 @@
  "Immer im Vordergrund: an": "Her zaman üstte: açık",
  "Immer im Vordergrund: aus": "Her zaman üstte: kapalı",
  "Immer im Vordergrund\tStrg+Alt+T": "Her zaman üstte\tCtrl+Alt+T",
- "<b>Streamen im Heimnetz</b>": "<b>Ev ağında yayın</b>"
+ "<b>Streamen im Heimnetz</b>": "<b>Ev ağında yayın</b>",
+ "<b>Bildqualität</b>": "<b>Görüntü kalitesi</b>",
+ "Hoch (braucht eine stärkere Grafikkarte)": "Yüksek (daha güçlü bir ekran kartı gerekir)",
+ "„Hoch“ nutzt schärfere Filter beim Vergrößern und Verkleinern, glättet Streifen in Farbverläufen (z. B. Himmel bei stark komprimierten Videos) und rechnet HDR genauer um. Das Bild wird dabei nicht verfälscht. Ruckelt ein Video, zurück auf „Standard“ stellen. Gilt nur für Videos über mpv und wirkt sofort.": "«Yüksek», büyütme ve küçültmede daha keskin filtreler kullanır, renk geçişlerindeki bantlanmayı yumuşatır (ör. çok sıkıştırılmış videolarda gökyüzü) ve HDR'yi daha doğru dönüştürür. Görüntü bozulmaz. Bir video takılırsa «Varsayılan»a geri dönün. Yalnızca mpv ile oynatılan videolar için geçerlidir ve hemen etkili olur."
 }

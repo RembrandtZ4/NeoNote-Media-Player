@@ -891,5 +891,8 @@
  "Immer im Vordergrund: an": "Sempre in primo piano: attivo",
  "Immer im Vordergrund: aus": "Sempre in primo piano: disattivato",
  "Immer im Vordergrund\tStrg+Alt+T": "Sempre in primo piano\tCtrl+Alt+T",
- "<b>Streamen im Heimnetz</b>": "<b>Trasmissione nella rete domestica</b>"
+ "<b>Streamen im Heimnetz</b>": "<b>Trasmissione nella rete domestica</b>",
+ "<b>Bildqualität</b>": "<b>Qualità dell'immagine</b>",
+ "Hoch (braucht eine stärkere Grafikkarte)": "Alta (richiede una scheda grafica più potente)",
+ "„Hoch“ nutzt schärfere Filter beim Vergrößern und Verkleinern, glättet Streifen in Farbverläufen (z. B. Himmel bei stark komprimierten Videos) und rechnet HDR genauer um. Das Bild wird dabei nicht verfälscht. Ruckelt ein Video, zurück auf „Standard“ stellen. Gilt nur für Videos über mpv und wirkt sofort.": "«Alta» usa filtri più nitidi per ingrandire e ridurre, attenua le bande nelle sfumature (ad es. il cielo nei video molto compressi) e converte l'HDR in modo più preciso. L'immagine non viene alterata. Se un video scatta, torna a «Predefinito». Vale solo per i video riprodotti con mpv e ha effetto subito."
 }

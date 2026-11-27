@@ -1081,10 +1081,16 @@ class GlassDialogs(QObject):
                     g.moveLeft(max(g.left(), a.left())); g.moveTop(max(g.top(), a.top()))
                 tip.setGeometry(g)
 
+        if t != QEvent.Show:                       # Form und Weichzeichner erst, wenn das Fenster wirklich erscheint
+            return
+
         def shape():
-            if tip.isVisible():
-                set_window_blur(tip, blur, r)
-                win_popup_shape(tip, r)
+            try:
+                if tip.isVisible():
+                    set_window_blur(tip, blur, r)
+                    win_popup_shape(tip, r)
+            except RuntimeError:                   # Menü/Kurzinfo inzwischen gelöscht
+                pass
         QTimer.singleShot(0, shape)
 
     @staticmethod
@@ -3370,6 +3376,29 @@ class MpvBackend(QObject):
         except Exception:
             pass
 
+    # „Bildqualität: Hoch“ – entspricht mpvs Profil „high-quality“: schärfere Skalierfilter, Debanding gegen
+    # Streifen in Verläufen, genauere HDR-Umrechnung. Kostet Grafikleistung, darum nur auf Wunsch.
+    QUALITY_HIGH = (("scale", "ewa_lanczossharp"), ("cscale", "ewa_lanczossharp"), ("dscale", "mitchell"),
+                    ("deband", "yes"), ("hdr_peak_percentile", "99.995"), ("hdr_contrast_recovery", "0.30"))
+
+    def set_video_quality(self, level):
+        defaults = getattr(self, "_q_defaults", None)
+        if defaults is None:
+            defaults = {}
+            for name, _v in self.QUALITY_HIGH:
+                try:
+                    defaults[name] = self.m[name.replace("_", "-")]
+                except Exception:
+                    pass
+            self._q_defaults = defaults
+        for name, val in self.QUALITY_HIGH:
+            if name not in defaults:
+                continue                       # ältere mpv-Version kennt die Option nicht
+            try:
+                self.m[name.replace("_", "-")] = val if level == "high" else defaults[name]
+            except Exception:
+                pass
+
     def set_speed(self, x):
         try:
             self.m.speed = float(x)
@@ -5356,6 +5385,7 @@ class Engine(QObject):
         self.video_widget = None        # MpvVideoRenderer, setzt MainWindow
         self.video_mpv = False          # Videos über mpv abspielen?
         self.video_hwdec = "auto-safe"
+        self.video_quality = "standard"
         self._mv_failed = False
         self.mp2 = None                 # zweites mpv für Musik: Überblenden
         self.cast = None                # CastBackend, solange auf ein Gerät im Heimnetz gestreamt wird
@@ -5556,6 +5586,7 @@ class Engine(QObject):
                 self._connect(self.mv)
                 self._setup_backend(self.mv, video=True)
                 self.mv.set_surround(getattr(self, "surround", False))
+                self.mv.set_video_quality(self.video_quality)
                 if self.video_widget is not None:
                     self.video_widget.attach(self.mv)
             except Exception as e:
@@ -11839,6 +11870,10 @@ class SettingsDialog(QDialog):
             except Exception:
                 pass
         w.settings.setValue("video/hwtex", self.v_tex.isChecked())
+        w.settings.setValue("video/quality", self.v_quality.currentData())
+        w.player.video_quality = "standard" if SAFE_MODE else self.v_quality.currentData()
+        if w.player.mv is not None:
+            w.player.mv.set_video_quality(w.player.video_quality)
         w.settings.setValue("video/audio_lang", self.v_alang.currentData())
         w.settings.setValue("video/sub_lang", self.v_slang.currentData())
         w.settings.setValue("video/subs", self.v_subs.currentData())
@@ -11881,6 +11916,20 @@ class SettingsDialog(QDialog):
                         "auf normalen Bildschirmen, Bild-Untertitel von Blu-rays und DVDs sowie Kapitel. Ohne Häkchen "
                         "spielt NeoNote Videos wie bisher über Qt Multimedia ab. Wirkt ab dem nächsten Video."))
         mh.setObjectName("hint"); mh.setWordWrap(True); v.addWidget(mh)
+        v.addSpacing(8)
+        v.addWidget(QLabel(tr_("<b>Bildqualität</b>")))
+        gq = QGridLayout(); gq.setHorizontalSpacing(12); gq.setVerticalSpacing(6)
+        self.v_quality = QComboBox()
+        self.v_quality.addItem(tr_("Standard"), "standard")
+        self.v_quality.addItem(tr_("Hoch (braucht eine stärkere Grafikkarte)"), "high")
+        self.v_quality.setCurrentIndex(max(0, self.v_quality.findData(st.value("video/quality", "standard"))))
+        gq.addWidget(self.v_quality, 0, 0); gq.setColumnStretch(1, 1)
+        v.addLayout(gq)
+        qh = QLabel(tr_("„Hoch“ nutzt schärfere Filter beim Vergrößern und Verkleinern, glättet Streifen in Farbverläufen "
+                        "(z. B. Himmel bei stark komprimierten Videos) und rechnet HDR genauer um. Das Bild wird dabei "
+                        "nicht verfälscht. Ruckelt ein Video, zurück auf „Standard“ stellen. Gilt nur für Videos über mpv "
+                        "und wirkt sofort."))
+        qh.setObjectName("hint"); qh.setWordWrap(True); v.addWidget(qh)
         v.addSpacing(8)
         v.addWidget(QLabel(tr_("<b>Hardwarebeschleunigung</b>")))
         g = QGridLayout(); g.setHorizontalSpacing(12); g.setVerticalSpacing(6)
@@ -14431,6 +14480,7 @@ class MainWindow(QMainWindow):
         self.player.video_mpv = use_mpv and self.settings.value("video/mpv", True, type=bool)
         self.player.video_hwdec = "no" if SAFE_MODE else mpv_hwdec(self.settings.value("video/hwdec", "auto"))
         self.player.surround = self.settings.value("video/surround", False, type=bool)
+        self.player.video_quality = "standard" if SAFE_MODE else self.settings.value("video/quality", "standard")
         crash_note(f"mpv: Musik {'ja' if self.player.mp else 'nein'}, Videos "
                    f"{'ja' if self.player.video_mpv else 'nein (Einstellungen ▸ Video)'}, hwdec={self.player.video_hwdec}")
         self.player.video_needed.connect(self._video_needed)

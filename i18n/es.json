@@ -891,5 +891,8 @@
  "Immer im Vordergrund: an": "Siempre visible: activado",
  "Immer im Vordergrund: aus": "Siempre visible: desactivado",
  "Immer im Vordergrund\tStrg+Alt+T": "Siempre visible\tCtrl+Alt+T",
- "<b>Streamen im Heimnetz</b>": "<b>Transmitir en la red doméstica</b>"
+ "<b>Streamen im Heimnetz</b>": "<b>Transmitir en la red doméstica</b>",
+ "<b>Bildqualität</b>": "<b>Calidad de imagen</b>",
+ "Hoch (braucht eine stärkere Grafikkarte)": "Alta (requiere una tarjeta gráfica más potente)",
+ "„Hoch“ nutzt schärfere Filter beim Vergrößern und Verkleinern, glättet Streifen in Farbverläufen (z. B. Himmel bei stark komprimierten Videos) und rechnet HDR genauer um. Das Bild wird dabei nicht verfälscht. Ruckelt ein Video, zurück auf „Standard“ stellen. Gilt nur für Videos über mpv und wirkt sofort.": "«Alta» usa filtros más nítidos al ampliar y reducir, suaviza las bandas en los degradados (p. ej. el cielo en vídeos muy comprimidos) y convierte el HDR con más precisión. La imagen no se altera. Si un vídeo se entrecorta, vuelve a «Predeterminado». Solo se aplica a los vídeos con mpv y surte efecto al instante."
 }
