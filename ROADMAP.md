@@ -46,6 +46,12 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [ ] **Casting extras:** AirPlay 2 pairing and format conversion for devices that can't play a file
 - [ ] **Remote control** – control NeoNote on the PC from your phone via a simple web page on the home network (no app needed)
 
+## Ideas
+- [ ] **Podcasts** – subscribe, download new episodes automatically, resume where you left off
+- [ ] **Rip CDs** like in WMP12, with track names from MusicBrainz
+- [ ] **Listening stats** – top artists, listening time per week, a small year in review
+- [ ] **Calculate ReplayGain** values yourself instead of only using existing ones
+
 ## Earlier
 - [x] **Updater for Windows** – install new versions right from NeoNote *(since 1.1.8)*
 
@@ -96,6 +102,12 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 ## Später
 - [ ] **Streamen, Ausbau:** AirPlay-2-Kopplung und Formatumwandlung für Geräte, die eine Datei nicht abspielen können
 - [ ] **Fernbedienung** – NeoNote am PC vom Handy aus steuern, über eine einfache Webseite im Heimnetz (ohne App)
+
+## Ideen
+- [ ] **Podcasts** – abonnieren, neue Folgen automatisch laden, an der letzten Stelle weiterhören
+- [ ] **CDs rippen** wie im WMP12, mit Titeln von MusicBrainz
+- [ ] **Hör-Statistik** – meistgehörte Interpreten, Hörzeit pro Woche, ein kleiner Jahresrückblick
+- [ ] **ReplayGain selbst berechnen**, statt nur vorhandene Werte zu nutzen
 
 ## Früher
 - [x] **Updater für Windows** – neue Versionen direkt aus NeoNote installieren *(seit 1.1.8)*
