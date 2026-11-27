@@ -3446,7 +3446,18 @@ class MpvBackend(QObject):
 # NeoNote stellt die Datei über einen kleinen HTTP-Server bereit, das Gerät (Fernseher, AV-Receiver, Yamaha
 # MusicCast, Sonos …) holt sie sich und spielt sie selbst ab. NeoNote wird dabei zur Fernbedienung.
 CAST_HTTP_PORT = 47900          # feste Ports, damit man sie in einer Firewall freigeben kann
-CAST_SSDP_PORT = 47901
+CAST_SSDP_PORT = 47901           # Antworten der DLNA-Suche
+CAST_MDNS_PORT = 47902           # Antworten der Chromecast-/AirPlay-Suche
+CAST_AP_CONTROL_PORT = 47903     # AirPlay: Steuerung und Zeitabgleich (das Gerät schickt Anfragen hierher)
+CAST_AP_TIMING_PORT = 47904
+
+
+def _bind_udp(sock, port):
+    """Festen Port nehmen (für Firewall-Freigaben), sonst irgendeinen freien."""
+    try:
+        sock.bind(("", port))
+    except OSError:
+        sock.bind(("", 0))
 _UPNP_RENDERER = "urn:schemas-upnp-org:device:MediaRenderer:1"
 _DLNA_FLAGS = "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"
 _CAST_MIME = {
@@ -3735,8 +3746,9 @@ class CastServer:
             pass
 
 
-class CastBackend(QObject):
-    """Wiedergabe auf einem DLNA-Gerät – mit derselben Schnittstelle wie QMediaPlayer/MpvBackend."""
+class _CastBase(QObject):
+    """Gemeinsame Grundlage der Cast-Wege: dieselbe Schnittstelle wie QMediaPlayer/MpvBackend,
+    damit Wiedergabeleiste, Fortschritt und „nächster Titel“ ohne Sonderfälle funktionieren."""
     positionChanged = Signal(int)
     durationChanged = Signal(int)
     playbackStateChanged = Signal(object)
@@ -3762,6 +3774,7 @@ class CastBackend(QObject):
         self._started = self._paused = self._seen_playing = self._ended = False
         self._polling, self._fails, self._gen = False, 0, 0
         self._vol_pending = self._seek_pending = None
+        self._closed = False
         self._poll = QTimer(self, interval=1000); self._poll.timeout.connect(self._poll_tick)
         self._tick = QTimer(self, interval=250); self._tick.timeout.connect(self._interp)
         self._vol_timer = QTimer(self, singleShot=True, interval=150); self._vol_timer.timeout.connect(self._send_volume)
@@ -3769,8 +3782,6 @@ class CastBackend(QObject):
             self.ip = lan_ip_for(device.host)
         except OSError:
             self.ip = ""
-        if device.rc_url:
-            self._call("volume?", self._rc, "GetVolume", [("Channel", "Master")])
 
     # ── Hilfen ─────────────────────────────────────────────────────────────
     def _call(self, tag, fn, *a):
@@ -3786,12 +3797,6 @@ class CastBackend(QObject):
             self._ex.submit(run)
         except RuntimeError:
             pass                                    # schon beendet
-
-    def _av(self, action, args=()):
-        return dlna_soap(self.dev.av_url, self.dev.av_type, action, [("InstanceID", 0)] + list(args))
-
-    def _rc(self, action, args=()):
-        return dlna_soap(self.dev.rc_url, self.dev.rc_type, action, [("InstanceID", 0)] + list(args))
 
     def _set_status(self, st):
         self._status = st
@@ -3810,8 +3815,8 @@ class CastBackend(QObject):
         else:
             self._tick.stop(); self._poll.stop()
 
-    def _prepare(self, src):
-        """Adresse fürs Gerät und Beschreibung (DIDL-Lite) mit Titel, Interpret, Album und Cover."""
+    def _media(self, src):
+        """Gemeinsame Vorbereitung: Adresse fürs Gerät, MIME-Typ, Video?, Metadaten, Cover-Adresse."""
         meta = {}
         if self.meta_cb:
             try:
@@ -3820,100 +3825,48 @@ class CastBackend(QObject):
                 meta = {}
         if src.startswith(("http://", "https://")):
             uri, mime, video = src, meta.get("mime") or "audio/mpeg", False
-            cls = "object.item.audioItem.audioBroadcast"
         else:
             if not self.ip:
                 raise RuntimeError(tr_("Keine Verbindung ins Heimnetz"))
             ext = Path(src).suffix.lower()
             mime = _CAST_MIME.get(ext) or mimetypes.guess_type(src)[0] or "application/octet-stream"
             video = mime.startswith("video/")
-            uri = self.server.url(self.ip, self.server.publish(src, mime, "media" + ext))
-            cls = "object.item.videoItem" if video else "object.item.audioItem.musicTrack"
+            uri = self.server.url(self.ip, self.server.publish(src, mime, "media" + ext)) if self.server else ""
         art = ""
-        if meta.get("cover"):
+        if meta.get("cover") and self.server and self.ip:
             art = self.server.url(self.ip, self.server.publish(meta["cover"], "image/jpeg", "cover.jpg"))
-        e = lambda x: html.escape(str(x or ""), quote=True)
-        dur = f' duration="{_hms(meta["duration"])}.000"' if meta.get("duration") else ""
-        didl = ('<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" '
-                'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" '
-                'xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/">'
-                f'<item id="0" parentID="-1" restricted="1"><dc:title>{e(meta.get("title") or Path(src).stem)}</dc:title>'
-                + (f'<upnp:artist>{e(meta["artist"])}</upnp:artist><dc:creator>{e(meta["artist"])}</dc:creator>'
-                   if meta.get("artist") else "")
-                + (f'<upnp:album>{e(meta["album"])}</upnp:album>' if meta.get("album") else "")
-                + (f'<upnp:albumArtURI dlna:profileID="JPEG_TN">{e(art)}</upnp:albumArtURI>' if art else "")
-                + f'<upnp:class>{cls}</upnp:class>'
-                f'<res protocolInfo="http-get:*:{e(mime)}:{_DLNA_FLAGS}"{dur}>{e(uri)}</res></item></DIDL-Lite>')
-        return uri, didl, meta
+        return uri, mime, video, meta, art
 
-    def _load(self, uri, didl):
-        try:
-            self._av("Stop")
-        except Exception:
-            pass
-        self._av("SetAVTransportURI", [("CurrentURI", uri), ("CurrentURIMetaData", didl)])
-        return True
+    def _interp(self):
+        if self._started and not self._paused and self._seen_playing:
+            now = time.monotonic()
+            pos = self._pos + (now - self._pos_t) * 1000
+            if self._dur:
+                pos = min(pos, self._dur)
+            self._pos, self._pos_t = int(pos), now
+            self.positionChanged.emit(self._pos)
 
-    # ── QMediaPlayer-Schnittstelle ────────────────────────────────────────
-    def setSource(self, url):
-        src = url.toLocalFile() if url.isLocalFile() else url.toString()
-        self._gen += 1                               # Antworten zum vorigen Titel verwerfen
-        self._src, self._pos, self._dur = src, 0, 0
-        self._started = self._paused = self._seen_playing = self._ended = False
-        self._seek_pending = None
-        self._update_state()
-        self.positionChanged.emit(0)
-        if not src:
-            self._set_status(QMediaPlayer.NoMedia)
-            self._call("stop", self._av, "Stop")
+    def _finished(self):
+        """Titel ist am Gerät zu Ende – MainWindow schaltet dann weiter."""
+        if self._ended:
             return
-        try:
-            uri, didl, meta = self._prepare(src)
-        except Exception as e:
+        self._ended, self._started = True, False
+        if self._dur:
+            self._pos = self._dur
+            self.positionChanged.emit(self._pos)
+        self._update_state()
+        self._set_status(QMediaPlayer.EndOfMedia)
+
+    def _failed(self, what, err):
+        crash_note(f"Casting ({self.dev.name}, {self.dev.kind}): {what}: {err}")
+        if what in ("load", "play"):
+            self._started = False
+            self._update_state()
             self._set_status(QMediaPlayer.InvalidMedia)
-            self.errorOccurred.emit(QMediaPlayer.ResourceError, str(e))
-            return
-        if meta.get("duration"):
-            self._dur = int(meta["duration"])
-            self.durationChanged.emit(self._dur)
-        self._set_status(QMediaPlayer.LoadingMedia)
-        self._call("load", self._load, uri, didl)
+        self.errorOccurred.emit(QMediaPlayer.ResourceError,
+                                tr_("{0} kann das nicht abspielen ({1})").format(self.dev.name, err))
 
-    def play(self):
-        if not self._src:
-            return
-        if self._ended:                              # zu Ende: von vorn
-            self.setSource(QUrl.fromLocalFile(self._src) if "://" not in self._src else QUrl(self._src))
-        self._started, self._paused = True, False
-        self._pos_t = time.monotonic()
-        self._update_state()
-        self._call("play", self._av, "Play", [("Speed", "1")])
-
-    def pause(self):
-        if not self._started:
-            return
-        self._interp()
-        self._paused = True
-        self._update_state()
-        self._call("pause", self._av, "Pause")
-
-    def stop(self):
-        self._gen += 1
-        self._started = self._paused = False
-        self._pos = 0
-        self._update_state()
-        self.positionChanged.emit(0)
-        self._call("stop", self._av, "Stop")
-
-    def setPosition(self, ms):
-        ms = max(0, int(ms))
-        self._pos, self._pos_t = ms, time.monotonic()
-        self.positionChanged.emit(ms)
-        if self._started and not self._seen_playing:      # Gerät lädt noch: springen, sobald es spielt
-            self._seek_pending = ms
-            return
-        self._call("seek", self._av, "Seek", [("Unit", "REL_TIME"), ("Target", _hms(ms))])
-
+    # ── QMediaPlayer-Schnittstelle (gemeinsam) ────────────────────────────
     def position(self):
         return int(self._pos)
 
@@ -3988,9 +3941,7 @@ class CastBackend(QObject):
 
     def set_volume(self, gain, muted):
         """NeoNotes Lautstärkeregler steuert die Lautstärke des Geräts (gebremst, damit es nicht ruckelt)."""
-        if not self.dev.rc_url:
-            return
-        lin = max(0.0, gain) ** 0.5                 # NeoNote regelt quadratisch, Geräte erwarten 0–100 linear
+        lin = max(0.0, gain) ** 0.5                 # NeoNote regelt quadratisch, Geräte erwarten linear
         self._vol_pending = (0 if muted else max(0, min(100, int(round(lin * 100)))), muted)
         self._vol_timer.start()
 
@@ -3999,23 +3950,135 @@ class CastBackend(QObject):
             return
         vol, muted = self._vol_pending
         self._vol_pending = None
-        self._call("volume", self._rc, "SetVolume", [("Channel", "Master"), ("DesiredVolume", vol)])
+        self._apply_volume(vol, muted)
 
-    # ── Zustand vom Gerät ─────────────────────────────────────────────────
+    def _apply_volume(self, vol, muted):
+        pass
+
+    def _poll_tick(self):
+        pass
+
+    def _on_res(self, tag, payload):
+        pass
+
+    def shutdown(self, stop_device=True):
+        self._closed = True
+        self._poll.stop(); self._tick.stop(); self._vol_timer.stop()
+        self._gen += 1
+        self._ex.shutdown(wait=False)
+
+
+class CastBackend(_CastBase):
+    """Wiedergabe auf einem DLNA/UPnP-Gerät (Fernseher, AV-Receiver, Netzwerklautsprecher)."""
+
+    def __init__(self, parent, device, server, meta_cb=None):
+        super().__init__(parent, device, server, meta_cb)
+        if device.rc_url:
+            self._call("volume?", self._rc, "GetVolume", [("Channel", "Master")])
+
+    def _av(self, action, args=()):
+        return dlna_soap(self.dev.av_url, self.dev.av_type, action, [("InstanceID", 0)] + list(args))
+
+    def _rc(self, action, args=()):
+        return dlna_soap(self.dev.rc_url, self.dev.rc_type, action, [("InstanceID", 0)] + list(args))
+
+    def _prepare(self, src):
+        """Adresse fürs Gerät und Beschreibung (DIDL-Lite) mit Titel, Interpret, Album und Cover."""
+        uri, mime, video, meta, art = self._media(src)
+        if src.startswith(("http://", "https://")):
+            cls = "object.item.audioItem.audioBroadcast"
+        else:
+            cls = "object.item.videoItem" if video else "object.item.audioItem.musicTrack"
+        e = lambda x: html.escape(str(x or ""), quote=True)
+        dur = f' duration="{_hms(meta["duration"])}.000"' if meta.get("duration") else ""
+        didl = ('<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" '
+                'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" '
+                'xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/">'
+                f'<item id="0" parentID="-1" restricted="1"><dc:title>{e(meta.get("title") or Path(src).stem)}</dc:title>'
+                + (f'<upnp:artist>{e(meta["artist"])}</upnp:artist><dc:creator>{e(meta["artist"])}</dc:creator>'
+                   if meta.get("artist") else "")
+                + (f'<upnp:album>{e(meta["album"])}</upnp:album>' if meta.get("album") else "")
+                + (f'<upnp:albumArtURI dlna:profileID="JPEG_TN">{e(art)}</upnp:albumArtURI>' if art else "")
+                + f'<upnp:class>{cls}</upnp:class>'
+                f'<res protocolInfo="http-get:*:{e(mime)}:{_DLNA_FLAGS}"{dur}>{e(uri)}</res></item></DIDL-Lite>')
+        return uri, didl, meta
+
+    def _load(self, uri, didl):
+        try:
+            self._av("Stop")
+        except Exception:
+            pass
+        self._av("SetAVTransportURI", [("CurrentURI", uri), ("CurrentURIMetaData", didl)])
+        return True
+
+    def setSource(self, url):
+        src = url.toLocalFile() if url.isLocalFile() else url.toString()
+        self._gen += 1                               # Antworten zum vorigen Titel verwerfen
+        self._src, self._pos, self._dur = src, 0, 0
+        self._started = self._paused = self._seen_playing = self._ended = False
+        self._seek_pending = None
+        self._update_state()
+        self.positionChanged.emit(0)
+        if not src:
+            self._set_status(QMediaPlayer.NoMedia)
+            self._call("stop", self._av, "Stop")
+            return
+        try:
+            uri, didl, meta = self._prepare(src)
+        except Exception as e:
+            self._set_status(QMediaPlayer.InvalidMedia)
+            self.errorOccurred.emit(QMediaPlayer.ResourceError, str(e))
+            return
+        if meta.get("duration"):
+            self._dur = int(meta["duration"])
+            self.durationChanged.emit(self._dur)
+        self._set_status(QMediaPlayer.LoadingMedia)
+        self._call("load", self._load, uri, didl)
+
+    def play(self):
+        if not self._src:
+            return
+        if self._ended:                              # zu Ende: von vorn
+            self.setSource(self.source())
+        self._started, self._paused = True, False
+        self._pos_t = time.monotonic()
+        self._update_state()
+        self._call("play", self._av, "Play", [("Speed", "1")])
+
+    def pause(self):
+        if not self._started:
+            return
+        self._interp()
+        self._paused = True
+        self._update_state()
+        self._call("pause", self._av, "Pause")
+
+    def stop(self):
+        self._gen += 1
+        self._started = self._paused = False
+        self._pos = 0
+        self._update_state()
+        self.positionChanged.emit(0)
+        self._call("stop", self._av, "Stop")
+
+    def setPosition(self, ms):
+        ms = max(0, int(ms))
+        self._pos, self._pos_t = ms, time.monotonic()
+        self.positionChanged.emit(ms)
+        if self._started and not self._seen_playing:      # Gerät lädt noch: springen, sobald es spielt
+            self._seek_pending = ms
+            return
+        self._call("seek", self._av, "Seek", [("Unit", "REL_TIME"), ("Target", _hms(ms))])
+
+    def _apply_volume(self, vol, muted):
+        if self.dev.rc_url:
+            self._call("volume", self._rc, "SetVolume", [("Channel", "Master"), ("DesiredVolume", vol)])
+
     def _poll_tick(self):
         if self._polling:
             return
         self._polling = True
         self._call("poll", lambda: (self._av("GetPositionInfo"), self._av("GetTransportInfo")))
-
-    def _interp(self):
-        if self._started and not self._paused and self._seen_playing:
-            now = time.monotonic()
-            pos = self._pos + (now - self._pos_t) * 1000
-            if self._dur:
-                pos = min(pos, self._dur)
-            self._pos, self._pos_t = int(pos), now
-            self.positionChanged.emit(self._pos)
 
     def _on_res(self, tag, payload):
         gen, r = payload
@@ -4028,17 +4091,9 @@ class CastBackend(QObject):
                 if self._fails == 6 and self._started:
                     self.lost.emit(str(r))
                 return
-            if what in ("volume", "volume?", "stop"):
+            if what in ("volume", "volume?", "stop") or gen != self._gen:
                 return
-            if gen != self._gen:
-                return
-            crash_note(f"Casting ({self.dev.name}): {r}")
-            if what in ("load", "play"):
-                self._started = False
-                self._update_state()
-                self._set_status(QMediaPlayer.InvalidMedia)
-            self.errorOccurred.emit(QMediaPlayer.ResourceError,
-                                    tr_("{0} kann das nicht abspielen ({1})").format(self.dev.name, r))
+            self._failed(what, r)
             return
         self._fails = 0 if tag == "poll" else self._fails
         if tag == "volume?":
@@ -4075,31 +4130,1090 @@ class CastBackend(QObject):
             elif state == "PAUSED_PLAYBACK" and self._started and not self._paused and self._seen_playing:
                 self._paused = True; self._update_state()     # am Gerät pausiert
             elif (state in ("STOPPED", "NO_MEDIA_PRESENT") and self._started and not self._paused
-                  and self._seen_playing and not self._ended):
-                self._ended, self._started = True, False      # Titel zu Ende (oder am Gerät beendet)
-                if self._dur:
-                    self._pos = self._dur
-                    self.positionChanged.emit(self._pos)
-                self._update_state()
-                self._set_status(QMediaPlayer.EndOfMedia)
+                  and self._seen_playing):
+                self._finished()                              # Titel zu Ende (oder am Gerät beendet)
 
     def shutdown(self, stop_device=True):
-        self._poll.stop(); self._tick.stop(); self._vol_timer.stop()
-        self._gen += 1
-        if stop_device:
+        if stop_device and not self._closed:
             self._call("stop", self._av, "Stop")
-        self._ex.shutdown(wait=False)
+        super().shutdown(stop_device)
+
+
+DlnaBackend = CastBackend
+
+
+# ── mDNS: Chromecast- und AirPlay-Geräte finden (ohne zusätzliche Bibliotheken) ──────────────────────────
+_MDNS_SERVICES = ("_googlecast._tcp.local", "_raop._tcp.local")
+
+
+def _dns_name(data, off):
+    labels, jumps, end = [], 0, None
+    while True:
+        if off >= len(data):
+            raise ValueError("DNS-Name abgeschnitten")
+        n = data[off]
+        if n == 0:
+            off += 1
+            break
+        if n & 0xC0 == 0xC0:                        # Zeiger (Namenskompression)
+            if end is None:
+                end = off + 2
+            off = ((n & 0x3F) << 8) | data[off + 1]
+            jumps += 1
+            if jumps > 30:
+                raise ValueError("DNS-Zeigerschleife")
+            continue
+        labels.append(data[off + 1:off + 1 + n].decode("utf-8", "replace"))
+        off += 1 + n
+    return ".".join(labels), (end if end is not None else off)
+
+
+def _dns_encode(name):
+    out = b""
+    for part in name.rstrip(".").split("."):
+        b = part.encode("utf-8")
+        out += bytes([len(b)]) + b
+    return out + b"\x00"
+
+
+def _dns_records(data):
+    """Antwort-, Autoritäts- und Zusatzeinträge einer mDNS-Antwort: [(name, typ, wert)]."""
+    import socket
+    import struct
+    _id, flags, qd, an, ns, ar = struct.unpack("!HHHHHH", data[:12])
+    off, out = 12, []
+    for _ in range(qd):
+        _n, off = _dns_name(data, off)
+        off += 4
+    for _ in range(an + ns + ar):
+        name, off = _dns_name(data, off)
+        t, _cls, _ttl, rdl = struct.unpack("!HHIH", data[off:off + 10])
+        off += 10
+        rd, rdo = data[off:off + rdl], off
+        off += rdl
+        if t == 12:
+            out.append((name, t, _dns_name(data, rdo)[0]))
+        elif t == 33 and rdl >= 7:
+            port = struct.unpack("!H", rd[4:6])[0]
+            out.append((name, t, (_dns_name(data, rdo + 6)[0], port)))
+        elif t == 16:
+            txt, i = {}, 0
+            while i < len(rd):
+                n = rd[i]
+                k, _, v = rd[i + 1:i + 1 + n].decode("utf-8", "replace").partition("=")
+                if k:
+                    txt[k.lower()] = v
+                i += 1 + n
+            out.append((name, t, txt))
+        elif t == 1 and rdl == 4:
+            out.append((name, t, socket.inet_ntoa(rd)))
+    return out
+
+
+def mdns_browse(services=_MDNS_SERVICES, timeout=2.5):
+    """Geräte per mDNS suchen. Rückgabe: [{service, instance, host, ip, port, txt}]."""
+    import socket
+    import struct
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    ptr, srv, txt, addr, src_ip = {}, {}, {}, {}, {}
+    try:
+        _bind_udp(s, CAST_MDNS_PORT)                 # „Legacy Unicast“: Geräte antworten direkt an diesen Port
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
+        s.settimeout(0.25)
+
+        def query(qs):
+            if not qs:
+                return
+            pkt = struct.pack("!HHHHHH", 0, 0, len(qs), 0, 0, 0)
+            pkt += b"".join(_dns_encode(n) + struct.pack("!HH", t, 0x8001) for n, t in qs)
+            try:
+                s.sendto(pkt, ("224.0.0.251", 5353))
+            except OSError:
+                pass
+
+        query([(svc, 12) for svc in services])
+        start, asked = time.monotonic(), False
+        while time.monotonic() - start < timeout:
+            if not asked and time.monotonic() - start > 1.0:
+                asked = True                         # fehlende Angaben gezielt nachfragen
+                missing = [(i, 33) for il in ptr.values() for i in il if i.lower() not in srv]
+                missing += [(i, 16) for il in ptr.values() for i in il if i.lower() not in txt]
+                missing += [(h, 1) for h, _p in srv.values() if h.lower() not in addr]
+                query(missing[:30] or [(svc, 12) for svc in services])
+            try:
+                data, (ip, _port) = s.recvfrom(9000)
+            except (socket.timeout, OSError):
+                continue
+            try:
+                recs = _dns_records(data)
+            except Exception:
+                continue
+            for name, t, val in recs:
+                key = name.lower()
+                if t == 12 and key in [x.lower() for x in services]:
+                    ptr.setdefault(key, [])
+                    if val not in ptr[key]:
+                        ptr[key].append(val)
+                elif t == 33:
+                    srv[key] = val
+                    src_ip[key] = ip
+                elif t == 16:
+                    txt[key] = val
+                elif t == 1:
+                    addr[key] = val
+    finally:
+        s.close()
+    found = []
+    for svc, insts in ptr.items():
+        for inst in insts:
+            k = inst.lower()
+            if k not in srv:
+                continue
+            host, port = srv[k]
+            ip = addr.get(host.lower()) or src_ip.get(k)
+            if not ip:
+                continue
+            found.append({"service": svc, "instance": inst[:-len(svc) - 1] if inst.lower().endswith(svc) else inst,
+                          "host": host, "ip": ip, "port": port, "txt": txt.get(k, {})})
+    return found
+
+
+def mdns_devices(timeout=2.5):
+    """Chromecast- und AirPlay-Geräte als CastDevice."""
+    devs = []
+    for r in mdns_browse(timeout=timeout):
+        t = r["txt"]
+        if r["service"].startswith("_googlecast"):
+            d = CastDevice(t.get("fn") or r["instance"], r["ip"], "", "", "", model=t.get("md", ""),
+                           udn="cc:" + (t.get("id") or r["instance"]))
+            d.kind, d.port = "chromecast", r["port"]
+            devs.append(d)
+        elif r["service"].startswith("_raop"):
+            name = r["instance"].split("@", 1)[-1]
+            et = [x.strip() for x in t.get("et", "0").split(",")]
+            cn = [x.strip() for x in t.get("cn", "0,1").split(",")]
+            d = CastDevice(name, r["ip"], "", "", "", model=t.get("am") or t.get("md", ""),
+                           udn="ap:" + r["instance"].split("@", 1)[0])
+            d.kind, d.port, d.txt = "airplay", r["port"], t
+            # unterstützt: unverschlüsselt (et=0), Audio als ALAC (cn=1) oder PCM (cn=0), ohne Passwort
+            d.supported = "0" in et and ("1" in cn or "0" in cn) and t.get("pw", "false").lower() != "true"
+            devs.append(d)
+    return devs
+
+
+# ── Chromecast (Google Cast, Protokoll CASTV2) ─────────────────────────────────────────────────────────
+_CC_CONN = "urn:x-cast:com.google.cast.tp.connection"
+_CC_HEART = "urn:x-cast:com.google.cast.tp.heartbeat"
+_CC_RECV = "urn:x-cast:com.google.cast.receiver"
+_CC_MEDIA = "urn:x-cast:com.google.cast.media"
+_CC_APP = "CC1AD845"                     # „Default Media Receiver“ von Google
+
+
+def _pb_varint(n):
+    out = b""
+    while True:
+        b = n & 0x7F
+        n >>= 7
+        if n:
+            out += bytes([b | 0x80])
+        else:
+            return out + bytes([b])
+
+
+def _cc_encode(src, dst, ns, payload):
+    def s(field, text):
+        b = text.encode("utf-8")
+        return bytes([(field << 3) | 2]) + _pb_varint(len(b)) + b
+    msg = b"\x08\x00" + s(2, src) + s(3, dst) + s(4, ns) + b"\x28\x00" + s(6, payload)
+    return len(msg).to_bytes(4, "big") + msg
+
+
+def _cc_decode(buf):
+    out, i = {}, 0
+    while i < len(buf):
+        key, shift = 0, 0
+        while True:
+            b = buf[i]; i += 1
+            key |= (b & 0x7F) << shift; shift += 7
+            if not b & 0x80:
+                break
+        field, wt = key >> 3, key & 7
+        if wt == 0:
+            v, shift = 0, 0
+            while True:
+                b = buf[i]; i += 1
+                v |= (b & 0x7F) << shift; shift += 7
+                if not b & 0x80:
+                    break
+            out[field] = v
+        elif wt == 2:
+            n, shift = 0, 0
+            while True:
+                b = buf[i]; i += 1
+                n |= (b & 0x7F) << shift; shift += 7
+                if not b & 0x80:
+                    break
+            out[field] = buf[i:i + n]; i += n
+        else:
+            raise ValueError("unbekannter Protobuf-Typ")
+    return {"src": out.get(2, b"").decode(), "dst": out.get(3, b"").decode(), "ns": out.get(4, b"").decode(),
+            "payload": out.get(6, b"").decode("utf-8", "replace")}
+
+
+class _CastV2:
+    """TLS-Verbindung zum Chromecast mit Herzschlag und Anfrage/Antwort-Zuordnung."""
+
+    def __init__(self, host, port, on_message):
+        import socket
+        import ssl
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE              # Chromecasts nutzen selbstsignierte Zertifikate
+        raw = socket.create_connection((host, port), timeout=6)
+        self.sock = ctx.wrap_socket(raw)
+        # Lesen und Schreiben nie gleichzeitig: eine TLS-Verbindung verträgt keinen parallelen Zugriff
+        self.sock.settimeout(0.1)
+        self._buf = b""
+        self.on_message = on_message
+        self._lock = threading.Lock()
+        self._req, self._waiting, self.alive = 0, {}, True
+        self.last_rx = time.monotonic()
+        threading.Thread(target=self._reader, name="NeoNote-Cast-RX", daemon=True).start()
+        threading.Thread(target=self._heartbeat, name="NeoNote-Cast-HB", daemon=True).start()
+        self.send("receiver-0", _CC_CONN, {"type": "CONNECT"})
+
+    def send(self, dst, ns, obj, src="sender-0"):
+        data = _cc_encode(src, dst, ns, json.dumps(obj))
+        with self._lock:
+            self.sock.settimeout(6)
+            try:
+                self.sock.sendall(data)
+            finally:
+                self.sock.settimeout(0.1)
+
+    def request(self, dst, ns, obj, timeout=8.0):
+        with self._lock:
+            self._req += 1
+            rid = self._req
+        ev = threading.Event()
+        self._waiting[rid] = [ev, None]
+        obj = dict(obj, requestId=rid)
+        self.send(dst, ns, obj)
+        if not ev.wait(timeout):
+            self._waiting.pop(rid, None)
+            raise TimeoutError(f"{obj.get('type')}: keine Antwort")
+        return self._waiting.pop(rid)[1]
+
+    def _recv_exact(self, n):
+        import socket
+        while len(self._buf) < n:
+            if not self.alive:
+                raise ConnectionError("Verbindung geschlossen")
+            with self._lock:
+                try:
+                    chunk = self.sock.recv(65536)
+                except (socket.timeout, TimeoutError):
+                    chunk = None
+            if chunk is None:
+                time.sleep(0.01)                    # Senden kurz Vorrang geben
+                continue
+            if not chunk:
+                raise ConnectionError("Verbindung geschlossen")
+            self._buf += chunk
+        out, self._buf = self._buf[:n], self._buf[n:]
+        return out
+
+    def _reader(self):
+        try:
+            while self.alive:
+                n = int.from_bytes(self._recv_exact(4), "big")
+                if n > 1_000_000:
+                    raise ValueError("Nachricht zu groß")
+                m = _cc_decode(self._recv_exact(n))
+                self.last_rx = time.monotonic()
+                try:
+                    p = json.loads(m["payload"]) if m["payload"] else {}
+                except ValueError:
+                    continue
+                if m["ns"] == _CC_HEART and p.get("type") == "PING":
+                    self.send(m["src"], _CC_HEART, {"type": "PONG"})
+                    continue
+                rid = p.get("requestId")
+                if rid in self._waiting:
+                    self._waiting[rid][1] = p
+                    self._waiting[rid][0].set()
+                self.on_message(m["ns"], m["src"], p)
+        except Exception as e:
+            if self.alive:
+                self.alive = False
+                self.on_message("closed", "", {"error": str(e)})
+
+    def _heartbeat(self):
+        while self.alive:
+            time.sleep(5)
+            try:
+                self.send("receiver-0", _CC_HEART, {"type": "PING"})
+            except Exception:
+                break
+
+    def close(self):
+        self.alive = False
+        try:
+            self.sock.close()
+        except Exception:
+            pass
+
+
+class ChromecastBackend(_CastBase):
+    """Wiedergabe auf einem Chromecast bzw. Google-Cast-Gerät (Fernseher, Lautsprecher)."""
+    _msg = Signal(str, str, object)
+
+    def __init__(self, parent, device, server, meta_cb=None):
+        super().__init__(parent, device, server, meta_cb)
+        self._msg.connect(self._on_msg)
+        self.conn, self.transport, self.session, self.msid = None, None, None, None
+        self._call("connect", self._connect)
+
+    def _connect(self):
+        def relay(ns, src, p):
+            if self._closed:
+                return
+            try:                                      # Empfangszeit mitgeben: alte Meldungen erkennen
+                self._msg.emit(ns, src, dict(p, _t=time.monotonic()))
+            except RuntimeError:
+                pass                                  # Backend schon gelöscht
+        self.conn = _CastV2(self.dev.host, getattr(self.dev, "port", 8009) or 8009, relay)
+        st = self.conn.request("receiver-0", _CC_RECV, {"type": "GET_STATUS"})
+        self._recv_status(st, emit=True)
+        return True
+
+    def _recv_status(self, p, emit=False):
+        st = p.get("status") or {}
+        vol = st.get("volume") or {}
+        if emit and "level" in vol:
+            lvl = 0 if vol.get("muted") else float(vol.get("level") or 0)
+            self.deviceVolume.emit(int(round(lvl * 100)))
+        for app in st.get("applications") or []:
+            if app.get("appId") == _CC_APP:
+                return app
+        return None
+
+    def _ensure_app(self):
+        if self.transport and self.conn and self.conn.alive:
+            return
+        app = self._recv_status(self.conn.request("receiver-0", _CC_RECV, {"type": "GET_STATUS"}))
+        if app is None:
+            r = self.conn.request("receiver-0", _CC_RECV, {"type": "LAUNCH", "appId": _CC_APP}, timeout=20)
+            app = self._recv_status(r)
+            t0 = time.monotonic()
+            while app is None and time.monotonic() - t0 < 15:        # manche melden die App erst später
+                time.sleep(0.5)
+                app = self._recv_status(self.conn.request("receiver-0", _CC_RECV, {"type": "GET_STATUS"}))
+            if app is None:
+                raise RuntimeError(tr_("Cast-Empfänger startet nicht"))
+        self.transport, self.session = app.get("transportId"), app.get("sessionId")
+        self._session_t = time.monotonic()
+        self.conn.send(self.transport, _CC_CONN, {"type": "CONNECT"})
+
+    def _media_cmd(self, kind, **extra):
+        if not self.msid:
+            return None
+        return self.conn.request(self.transport, _CC_MEDIA, dict(type=kind, mediaSessionId=self.msid, **extra))
+
+    def _load(self, uri, mime, meta, art, autoplay, start_s):
+        self._ensure_app()
+        md = {"metadataType": 3, "title": meta.get("title") or ""}
+        if meta.get("artist"):
+            md["artist"] = meta["artist"]
+        if meta.get("album"):
+            md["albumName"] = meta["album"]
+        if art:
+            md["images"] = [{"url": art}]
+        media = {"contentId": uri, "contentType": mime, "metadata": md,
+                 "streamType": "LIVE" if uri == self._src and "://" in self._src else "BUFFERED"}
+        r = self.conn.request(self.transport, _CC_MEDIA, {"type": "LOAD", "media": media, "autoplay": autoplay,
+                                                          "currentTime": start_s}, timeout=20)
+        if r.get("type") in ("LOAD_FAILED", "LOAD_CANCELLED", "INVALID_REQUEST"):
+            raise RuntimeError(r.get("type"))
+        return r
+
+    def setSource(self, url):
+        src = url.toLocalFile() if url.isLocalFile() else url.toString()
+        self._gen += 1
+        self._src, self._pos, self._dur = src, 0, 0
+        self._started = self._paused = self._seen_playing = self._ended = False
+        self._seek_pending, self.msid, self._loaded = None, None, None
+        self._update_state()
+        self.positionChanged.emit(0)
+        if not src:
+            self._set_status(QMediaPlayer.NoMedia)
+            return
+        try:
+            uri, mime, video, meta, art = self._media(src)
+        except Exception as e:
+            self._set_status(QMediaPlayer.InvalidMedia)
+            self.errorOccurred.emit(QMediaPlayer.ResourceError, str(e))
+            return
+        if meta.get("duration"):
+            self._dur = int(meta["duration"])
+            self.durationChanged.emit(self._dur)
+        self._loaded = (uri, mime, meta, art)
+        self._set_status(QMediaPlayer.LoadedMedia)
+
+    def play(self):
+        if not self._src:
+            return
+        if self._ended:
+            self.setSource(self.source())
+        self._started, self._paused = True, False
+        self._pos_t = time.monotonic()
+        self._update_state()
+        if self.msid is None and self._loaded:
+            start = (self._seek_pending or 0) / 1000.0
+            self._seek_pending = None
+            self._call("load", self._load, *self._loaded, True, start)
+        else:
+            self._call("play", self._media_cmd, "PLAY")
+
+    def pause(self):
+        if not self._started:
+            return
+        self._interp()
+        self._paused = True
+        self._update_state()
+        self._call("pause", self._media_cmd, "PAUSE")
+
+    def stop(self):
+        self._gen += 1
+        self._started = self._paused = False
+        self._pos = 0
+        self._update_state()
+        self.positionChanged.emit(0)
+        self._call("stop", self._media_cmd, "STOP")
+
+    def setPosition(self, ms):
+        ms = max(0, int(ms))
+        self._pos, self._pos_t = ms, time.monotonic()
+        self.positionChanged.emit(ms)
+        if self.msid is None:                         # noch nicht geladen: beim Laden gleich dort beginnen
+            self._seek_pending = ms
+            return
+        self._call("seek", lambda: self._media_cmd("SEEK", currentTime=ms / 1000.0))
+
+    def _apply_volume(self, vol, muted):
+        if self.conn is not None:
+            self._call("volume", self.conn.request, "receiver-0", _CC_RECV,
+                       {"type": "SET_VOLUME", "volume": {"level": vol / 100.0}})
+
+    def _poll_tick(self):
+        if self._polling or not self.msid or self.conn is None:
+            return
+        self._polling = True
+        self._call("poll", self.conn.request, self.transport, _CC_MEDIA, {"type": "GET_STATUS"})
+
+    def _on_msg(self, ns, src, p):
+        """Nachrichten vom Gerät (auch unaufgefordert, z. B. bei Bedienung am Fernseher)."""
+        if self._closed:
+            return
+        if ns == "closed":
+            if self._started:
+                self.lost.emit(p.get("error", ""))
+            return
+        if ns == _CC_MEDIA and p.get("type") == "MEDIA_STATUS":
+            self._media_status(p)
+        elif (ns == _CC_RECV and p.get("type") == "RECEIVER_STATUS" and self.session
+              and p.get("_t", 0) > getattr(self, "_session_t", 0) + 0.5 and self._seen_playing):
+            apps = (p.get("status") or {}).get("applications") or []
+            if not any(a.get("sessionId") == self.session for a in apps) and self._started:
+                self.session = self.transport = None          # andere App hat übernommen
+                self.lost.emit(tr_("Ein anderes Gerät hat die Wiedergabe übernommen"))
+
+    def _media_status(self, p):
+        sts = p.get("status") or []
+        if not sts:
+            return
+        st = sts[0]
+        if self.msid is None and st.get("mediaSessionId"):
+            self.msid = st["mediaSessionId"]
+        elif st.get("mediaSessionId") and st["mediaSessionId"] != self.msid:
+            return                                    # Status zu einem anderen Titel
+        dur = int(float((st.get("media") or {}).get("duration") or 0) * 1000)
+        if dur > 0 and abs(dur - self._dur) > 1000:
+            self._dur = dur
+            self.durationChanged.emit(dur)
+        state = st.get("playerState", "")
+        if "currentTime" in st and state in ("PLAYING", "PAUSED", "BUFFERING"):
+            self._pos, self._pos_t = int(float(st["currentTime"]) * 1000), time.monotonic()
+            self.positionChanged.emit(self._pos)
+        if state == "PLAYING":
+            if not self._seen_playing:
+                self._seen_playing = True
+                self._set_status(QMediaPlayer.BufferedMedia)
+            if self._paused and self._started:
+                self._paused = False; self._update_state()
+        elif state == "PAUSED" and self._started and not self._paused and self._seen_playing:
+            self._paused = True; self._update_state()
+        elif state == "IDLE" and self._started and self._seen_playing:
+            reason = st.get("idleReason", "")
+            if reason == "ERROR":
+                self._failed("play", "ERROR")
+            elif reason in ("FINISHED", ""):
+                self._finished()
+            else:                                      # am Gerät beendet oder unterbrochen
+                self._started = False; self._update_state()
+
+    def _on_res(self, tag, payload):
+        gen, r = payload
+        if tag in ("poll", "error:poll"):
+            self._polling = False
+        if tag.startswith("error:"):
+            what = tag[6:]
+            if what == "connect":
+                self.lost.emit(str(r)); return
+            if what == "poll":
+                self._fails += 1
+                if self._fails == 6 and self._started:
+                    self.lost.emit(str(r))
+                return
+            if what in ("volume", "stop") or gen != self._gen:
+                return
+            self._failed(what, r)
+            return
+        if tag == "poll":
+            self._fails = 0
+            if isinstance(r, dict) and r.get("type") == "MEDIA_STATUS":
+                self._media_status(r)
+        elif tag == "load" and gen == self._gen and isinstance(r, dict):
+            self._media_status(r)
+
+    def shutdown(self, stop_device=True):
+        conn, sess = self.conn, self.session
+        self._closed = True
+        if conn is not None:
+            def bye():
+                try:
+                    if stop_device and sess:
+                        conn.send("receiver-0", _CC_RECV, {"type": "STOP", "sessionId": sess, "requestId": 0})
+                finally:
+                    conn.close()
+            self._call("bye", bye)
+        super().shutdown(stop_device)
+
+
+# ── AirPlay (Audio, Protokoll RAOP) ───────────────────────────────────────────────────────────────────
+# NeoNote dekodiert den Titel mit mpv zu rohem Ton (44,1 kHz, 16 Bit, Stereo) und schickt ihn in
+# ALAC-Rahmen per RTP an das Gerät – so wie früher iTunes. Unterstützt werden Geräte, die unverschlüsselte
+# Übertragung annehmen (et=0); Geräte mit Kopplung/Passwort (reines AirPlay 2) lehnen ab.
+_AP_RATE, _AP_FRAMES = 44100, 352
+_AP_BYTES = _AP_FRAMES * 4                     # 352 Stereo-Abtastwerte à 2 × 16 Bit
+_AP_LATENCY = 88200                            # 2 s Puffer im Gerät (Standard bei RAOP)
+
+
+def _ntp_now():
+    t = time.time() + 2208988800               # NTP zählt ab 1900
+    sec = int(t)
+    return sec, int((t - sec) * 4294967296)
+
+
+def _alac_frame(pcm):
+    """Unkomprimierter ALAC-Rahmen aus 16-Bit-Stereo-PCM (Little Endian) – 23 Kopfbits, dann Big Endian."""
+    import array
+    a = array.array("h", pcm)
+    if sys.byteorder == "little":
+        a.byteswap()
+    body = a.tobytes()
+    head = (1 << 20) | 1                       # Kanäle-1 = 1 (Stereo) … „nicht komprimiert“ = 1
+    total = 23 + len(body) * 8
+    pad = (-total) % 8
+    val = ((head << (len(body) * 8)) | int.from_bytes(body, "big")) << pad
+    return val.to_bytes((total + pad) // 8, "big")
+
+
+class _PcmDecoder:
+    """Titel per libmpv in eine temporäre Rohdatei dekodieren (schneller als Echtzeit) und stückweise lesen."""
+
+    def __init__(self, src, start_s=0.0):
+        import mpv
+        import tempfile
+        fd, self.path = tempfile.mkstemp(prefix="neonote-airplay-", suffix=".pcm")
+        os.close(fd)
+        self.done = False
+        self.m = mpv.MPV(ao="pcm", ao_pcm_file=self.path, ao_pcm_waveheader=False, audio_format="s16",
+                         audio_samplerate=_AP_RATE, audio_channels="stereo", vid="no", video=False,
+                         terminal=False, input_default_bindings=False, ytdl=False)
+        if start_s > 0:
+            self.m["start"] = f"{start_s:.3f}"
+
+        @self.m.event_callback("end-file")
+        def _end(ev):
+            self.done = True
+        self.m.play(src)
+        self.f = open(self.path, "rb")
+
+    def read(self, n, stop):
+        """n Bytes lesen; wartet, solange mpv noch schreibt. Am Ende: Rest (evtl. kürzer) oder b""."""
+        buf = b""
+        while len(buf) < n and not stop.is_set():
+            chunk = self.f.read(n - len(buf))
+            if chunk:
+                buf += chunk
+                continue
+            if self.done:
+                chunk = self.f.read(n - len(buf))
+                if not chunk:
+                    break
+                buf += chunk
+                continue
+            time.sleep(0.01)
+        return buf
+
+    def close(self):
+        try:
+            self.m.terminate()
+        except Exception:
+            pass
+        try:
+            self.f.close()
+        except Exception:
+            pass
+        try:
+            os.unlink(self.path)
+        except OSError:
+            pass
+
+
+class _Rtsp:
+    def __init__(self, host, port, local_ip):
+        import socket
+        import secrets
+        self.sock = socket.create_connection((host, port), timeout=8)
+        self.cseq, self.session = 0, None
+        self.local_ip = local_ip
+        self.sid = str(secrets.randbelow(2 ** 31))
+        self.uri = f"rtsp://{local_ip}/{self.sid}"
+        self.instance = secrets.token_hex(8).upper()
+        self.active_remote = str(secrets.randbelow(2 ** 31))
+        self._rx = b""
+
+    def request(self, method, uri=None, headers=None, body=b""):
+        self.cseq += 1
+        h = {"CSeq": str(self.cseq), "User-Agent": f"NeoNote/{APP_VERSION}", "Client-Instance": self.instance,
+             "DACP-ID": self.instance, "Active-Remote": self.active_remote}
+        if self.session:
+            h["Session"] = self.session
+        h.update(headers or {})
+        if body:
+            h["Content-Length"] = str(len(body))
+        msg = f"{method} {uri or self.uri} RTSP/1.0\r\n" + "".join(f"{k}: {v}\r\n" for k, v in h.items()) + "\r\n"
+        self.sock.sendall(msg.encode() + body)
+        while b"\r\n\r\n" not in self._rx:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                raise ConnectionError(f"{method}: Verbindung geschlossen")
+            self._rx += chunk
+        head, self._rx = self._rx.split(b"\r\n\r\n", 1)
+        lines = head.decode("latin-1").split("\r\n")
+        parts = lines[0].split(" ", 2)
+        code = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+        rh = {}
+        for line in lines[1:]:
+            k, _, v = line.partition(":")
+            rh[k.strip().lower()] = v.strip()
+        n = int(rh.get("content-length", "0") or 0)
+        while len(self._rx) < n:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                break
+            self._rx += chunk
+        rbody, self._rx = self._rx[:n], self._rx[n:]
+        if code >= 400 or code == 0:
+            raise RuntimeError(f"{method}: {code} {parts[2] if len(parts) > 2 else ''}".strip())
+        return code, rh, rbody
+
+    def close(self):
+        try:
+            self.sock.close()
+        except Exception:
+            pass
+
+
+class _RaopSession:
+    """Eine Übertragung: RTSP-Aufbau, RTP-Ton, Zeitabgleich, Nachsenden verlorener Pakete."""
+
+    def __init__(self, host, port, local_ip):
+        import socket
+        import secrets
+        self.host = host
+        self.rtsp = _Rtsp(host, port, local_ip)
+        self.audio = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.control = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.timing = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.audio.bind(("", 0))
+        _bind_udp(self.control, CAST_AP_CONTROL_PORT)
+        _bind_udp(self.timing, CAST_AP_TIMING_PORT)
+        self.seq = secrets.randbelow(65536)
+        self.rtptime = secrets.randbelow(2 ** 32)
+        self.ssrc = secrets.randbelow(2 ** 32)
+        self.latency = _AP_LATENCY
+        self.sent = {}                          # seq → Paket (zum Nachsenden)
+        self.closed = threading.Event()
+        threading.Thread(target=self._timing_loop, name="NeoNote-AirPlay-Timing", daemon=True).start()
+        threading.Thread(target=self._control_loop, name="NeoNote-AirPlay-Control", daemon=True).start()
+        r = self.rtsp
+        r.request("OPTIONS", "*")
+        sdp = (f"v=0\r\no=iTunes {r.sid} 0 IN IP4 {local_ip}\r\ns=iTunes\r\nc=IN IP4 {host}\r\nt=0 0\r\n"
+               "m=audio 0 RTP/AVP 96\r\na=rtpmap:96 AppleLossless\r\n"
+               f"a=fmtp:96 {_AP_FRAMES} 0 16 40 10 14 2 255 0 0 {_AP_RATE}\r\n").encode()
+        r.request("ANNOUNCE", headers={"Content-Type": "application/sdp"}, body=sdp)
+        cport, tport = self.control.getsockname()[1], self.timing.getsockname()[1]
+        _c, h, _b = r.request("SETUP", headers={
+            "Transport": f"RTP/AVP/UDP;unicast;interleaved=0-1;mode=record;control_port={cport};timing_port={tport}"})
+        tr = dict(p.split("=", 1) for p in h.get("transport", "").split(";") if "=" in p)
+        self.server_port = int(tr.get("server_port", 0) or 0)
+        self.remote_control = int(tr.get("control_port", 0) or 0)
+        if not self.server_port:
+            raise RuntimeError("SETUP: kein Audio-Port")
+        r.session = (h.get("session") or "1").split(";")[0]
+        _c, h, _b = r.request("RECORD", headers={"Range": "npt=0-",
+                                                 "RTP-Info": f"seq={self.seq};rtptime={self.rtptime}"})
+        try:
+            self.latency = int(h.get("audio-latency") or _AP_LATENCY) or _AP_LATENCY
+        except ValueError:
+            pass
+        self.first = True
+
+    def _timing_loop(self):
+        import struct
+        self.timing.settimeout(0.5)
+        while not self.closed.is_set():
+            try:
+                data, addr = self.timing.recvfrom(128)
+            except OSError:
+                continue
+            if len(data) >= 32 and data[1] & 0x7F == 0x52:         # Zeitanfrage → Antwort mit unserer Uhr
+                rs, rf = _ntp_now()
+                ts, tf = _ntp_now()
+                reply = b"\x80\xd3\x00\x07" + b"\x00" * 4 + data[24:32] + struct.pack("!IIII", rs, rf, ts, tf)
+                try:
+                    self.timing.sendto(reply, addr)
+                except OSError:
+                    pass
+
+    def _control_loop(self):
+        import struct
+        self.control.settimeout(0.5)
+        while not self.closed.is_set():
+            try:
+                data, addr = self.control.recvfrom(128)
+            except OSError:
+                continue
+            if len(data) >= 8 and data[1] & 0x7F == 0x55:          # Nachsendewunsch für verlorene Pakete
+                first, count = struct.unpack("!HH", data[4:8])
+                for i in range(min(count, 64)):
+                    pkt = self.sent.get((first + i) & 0xFFFF)
+                    if pkt:
+                        try:
+                            self.control.sendto(b"\x80\xd6" + pkt[2:4] + pkt, addr)
+                        except OSError:
+                            pass
+
+    def send_sync(self):
+        import struct
+        if not self.remote_control:
+            return
+        s, f = _ntp_now()
+        head = b"\x90\xd4\x00\x07" if self.first_sync else b"\x80\xd4\x00\x07"
+        self.first_sync = False
+        pkt = head + struct.pack("!IIII", (self.rtptime - self.latency) & 0xFFFFFFFF, s, f, self.rtptime)
+        try:
+            self.control.sendto(pkt, (self.host, self.remote_control))
+        except OSError:
+            pass
+
+    def send_frame(self, pcm):
+        import struct
+        if len(pcm) < _AP_BYTES:
+            pcm += b"\x00" * (_AP_BYTES - len(pcm))
+        mark = 0xE0 if self.first else 0x60
+        self.first = False
+        pkt = struct.pack("!BBHII", 0x80, mark, self.seq, self.rtptime, self.ssrc) + _alac_frame(pcm)
+        self.audio.sendto(pkt, (self.host, self.server_port))
+        self.sent[self.seq] = pkt
+        if len(self.sent) > 1000:
+            self.sent.pop(next(iter(self.sent)))
+        self.seq = (self.seq + 1) & 0xFFFF
+        self.rtptime = (self.rtptime + _AP_FRAMES) & 0xFFFFFFFF
+
+    def flush(self):
+        """Puffer im Gerät leeren (Pause/Springen) – danach geht es mit neuer Folge weiter."""
+        self.rtsp.request("FLUSH", headers={"RTP-Info": f"seq={self.seq};rtptime={self.rtptime}"})
+        self.first = True
+        self.first_sync = True
+
+    def set_volume(self, vol, muted):
+        db = -144.0 if muted or vol <= 0 else -30.0 + 30.0 * (vol / 100.0)
+        self.rtsp.request("SET_PARAMETER", headers={"Content-Type": "text/parameters"},
+                          body=f"volume: {db:.6f}\r\n".encode())
+
+    def set_progress(self, start_rtp, now_rtp, end_rtp):
+        try:
+            self.rtsp.request("SET_PARAMETER", headers={"Content-Type": "text/parameters"},
+                              body=f"progress: {start_rtp}/{now_rtp}/{end_rtp}\r\n".encode())
+        except Exception:
+            pass
+
+    def close(self):
+        self.closed.set()
+        try:
+            self.rtsp.request("TEARDOWN")
+        except Exception:
+            pass
+        self.rtsp.close()
+        for s in (self.audio, self.control, self.timing):
+            try:
+                s.close()
+            except Exception:
+                pass
+
+    first_sync = True
+
+
+class AirPlayBackend(_CastBase):
+    """Wiedergabe auf einem AirPlay-Gerät (nur Ton; Videos laufen weiter am PC nicht – NeoNote meldet das)."""
+    _evt = Signal(str, object)
+
+    def __init__(self, parent, device, server, meta_cb=None):
+        super().__init__(parent, device, server, meta_cb)
+        self._evt.connect(self._on_evt)
+        self.sess = None
+        self._stream_stop = threading.Event()
+        self._stream_thread = None
+        self._frames = 0                        # gesendete Abtastwerte seit Beginn dieses Abschnitts
+        self._base_ms = 0                       # Titelposition, an der der Abschnitt begann
+        self._t0 = None
+        self._vol = None
+        self._call("connect", self._connect)
+
+    def _connect(self):
+        self.sess = _RaopSession(self.dev.host, getattr(self.dev, "port", 7000) or 7000, self.ip)
+        return True
+
+    # ── Übertragung ───────────────────────────────────────────────────────
+    def _stop_stream(self):
+        self._stream_stop.set()
+        t = self._stream_thread
+        if t is not None and t is not threading.current_thread():
+            t.join(timeout=3)
+        self._stream_thread = None
+
+    def _start_stream(self, start_ms):
+        """In einem eigenen Thread: dekodieren und in Echtzeit senden (erste 0,5 s schneller als Vorrat)."""
+        self._stop_stream()
+        self._stream_stop = threading.Event()
+        stop, gen, src = self._stream_stop, self._gen, self._src
+        self._base_ms, self._frames = start_ms, 0
+
+        def run():
+            dec = None
+            try:
+                dec = _PcmDecoder(src, start_ms / 1000.0)
+                sess = self.sess
+                if sess is None:
+                    raise RuntimeError(tr_("Keine Verbindung zum Gerät"))
+                if self._vol is not None:
+                    sess.set_volume(*self._vol)
+                t0 = time.monotonic()
+                self._t0 = t0
+                next_sync = 0
+                self._evt.emit("started", gen)
+                while not stop.is_set():
+                    pcm = dec.read(_AP_BYTES, stop)
+                    if not pcm or stop.is_set():
+                        break
+                    sess.send_frame(pcm)
+                    self._frames += _AP_FRAMES
+                    now = time.monotonic()
+                    if now >= next_sync:
+                        sess.send_sync(); next_sync = now + 1.0
+                    ahead = self._frames / _AP_RATE - (now - t0) - 0.5        # 0,5 s Vorsprung
+                    if ahead > 0:
+                        stop.wait(ahead)
+                if not stop.is_set():                                    # Datei zu Ende → Rest abspielen lassen
+                    left = self._frames / _AP_RATE - (time.monotonic() - t0) + sess.latency / _AP_RATE
+                    if not stop.wait(max(0.0, left)):
+                        self._evt.emit("finished", gen)
+            except Exception as e:
+                self._evt.emit("error", (gen, e))
+            finally:
+                if dec is not None:
+                    dec.close()
+
+        self._stream_thread = threading.Thread(target=run, name="NeoNote-AirPlay-Stream", daemon=True)
+        self._stream_thread.start()
+
+    def _played_ms(self):
+        """Was am Gerät schon zu hören war: gesendet minus Pufferzeit."""
+        if self._t0 is None or self.sess is None:
+            return self._base_ms
+        heard = (time.monotonic() - self._t0) - self.sess.latency / _AP_RATE + 0.5
+        heard = min(heard, self._frames / _AP_RATE)
+        return int(self._base_ms + max(0.0, heard) * 1000)
+
+    def _on_evt(self, kind, data):
+        if self._closed:
+            return
+        if kind == "started" and data == self._gen:
+            self._seen_playing = True
+            self._set_status(QMediaPlayer.BufferedMedia)
+        elif kind == "finished" and data == self._gen:
+            self._finished()
+        elif kind == "error":
+            gen, err = data
+            if gen == self._gen:
+                self._failed("play", err)
+
+    # ── QMediaPlayer-Schnittstelle ────────────────────────────────────────
+    def setSource(self, url):
+        src = url.toLocalFile() if url.isLocalFile() else url.toString()
+        self._needs_flush = self._started and not self._ended   # Titel per Hand gewechselt: alten Ton verwerfen
+        self._stop_stream()
+        self._gen += 1
+        self._src, self._pos, self._dur = src, 0, 0
+        self._started = self._paused = self._seen_playing = self._ended = False
+        self._t0, self._base_ms, self._frames = None, 0, 0
+        self._update_state()
+        self.positionChanged.emit(0)
+        if not src:
+            self._set_status(QMediaPlayer.NoMedia)
+            return
+        if src.startswith(("http://", "https://")) or Path(src).suffix.lower() in VIDEO_EXT:
+            self._set_status(QMediaPlayer.InvalidMedia)
+            self.errorOccurred.emit(QMediaPlayer.ResourceError,
+                                    tr_("Über AirPlay kann NeoNote nur Musikdateien abspielen"))
+            return
+        meta = {}
+        try:
+            meta = self.meta_cb(src) or {} if self.meta_cb else {}
+        except Exception:
+            pass
+        if meta.get("duration"):
+            self._dur = int(meta["duration"])
+            self.durationChanged.emit(self._dur)
+        self._set_status(QMediaPlayer.LoadedMedia)
+
+    def play(self):
+        if not self._src or self._status == QMediaPlayer.InvalidMedia:
+            return
+        if self._ended:
+            self.setSource(self.source())
+        start = self._seek_pending if self._seek_pending is not None else (self._pos if self._paused else self._base_ms)
+        self._seek_pending = None
+        self._started, self._paused = True, False
+        self._pos_t = time.monotonic()
+        self._update_state()
+        self._call("play", self._flush_and_start, start)
+
+    def _flush_and_start(self, start_ms):
+        if self.sess is None:
+            raise RuntimeError(tr_("Keine Verbindung zum Gerät"))
+        if getattr(self, "_needs_flush", False):
+            self._needs_flush = False
+            self.sess.flush()
+        self._start_stream(start_ms)
+        return True
+
+    def pause(self):
+        if not self._started:
+            return
+        self._pos = self._played_ms()
+        self._paused = True
+        self._update_state()
+        self.positionChanged.emit(self._pos)
+        self._call("pause", self._pause_stream)
+
+    def _pause_stream(self):
+        self._stop_stream()
+        if self.sess is not None:
+            self.sess.flush()
+        return True
+
+    def stop(self):
+        self._gen += 1
+        self._started = self._paused = False
+        self._pos, self._base_ms = 0, 0
+        self._update_state()
+        self.positionChanged.emit(0)
+        self._call("stop", self._pause_stream)
+
+    def setPosition(self, ms):
+        ms = max(0, int(ms))
+        self._pos, self._pos_t = ms, time.monotonic()
+        self.positionChanged.emit(ms)
+        if not self._started or self._paused:
+            self._seek_pending = ms
+            return
+        self._gen += 1                                   # Meldungen des alten Abschnitts verwerfen
+        self._seen_playing = False
+        self._call("seek", lambda: (self._pause_stream(), self._start_stream(ms)))
+
+    def _interp(self):
+        if self._started and not self._paused and self._seen_playing:
+            p = self._played_ms()
+            if self._dur:
+                p = min(p, self._dur)
+            self._pos = p
+            self.positionChanged.emit(p)
+
+    def _apply_volume(self, vol, muted):
+        self._vol = (vol, muted)
+        if self.sess is not None:
+            self._call("volume", self.sess.set_volume, vol, muted)
+
+    def _on_res(self, tag, payload):
+        gen, r = payload
+        if tag.startswith("error:"):
+            what = tag[6:]
+            if what == "connect":
+                msg = str(r)
+                if any(c in msg for c in ("401", "403", "453", "470")):
+                    msg = tr_("{0} verlangt eine Kopplung oder ein Passwort (AirPlay 2) – das unterstützt "
+                              "NeoNote noch nicht").format(self.dev.name)
+                self.lost.emit(msg)
+                return
+            if what in ("volume", "stop", "pause"):
+                return
+            self._failed(what, r)
+
+    def shutdown(self, stop_device=True):
+        self._stream_stop.set()
+        sess = self.sess
+
+        def bye():
+            self._stop_stream()
+            if sess is not None:
+                sess.close()
+        self._call("bye", bye)
+        super().shutdown(stop_device)
+
+
+def cast_backend_for(device):
+    return {"chromecast": ChromecastBackend, "airplay": AirPlayBackend}.get(device.kind, CastBackend)
 
 
 class CastDiscovery(QThread):
     found = Signal(list)
 
     def run(self):
-        try:
-            devs = dlna_discover()
-        except Exception as e:
-            crash_note(f"Casting: Suche fehlgeschlagen: {type(e).__name__}: {e}")
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            jobs = {"DLNA": ex.submit(dlna_discover), "mDNS": ex.submit(mdns_devices)}
             devs = []
+            for what, job in jobs.items():
+                try:
+                    devs += job.result()
+                except Exception as e:
+                    crash_note(f"Casting: Suche ({what}) fehlgeschlagen: {type(e).__name__}: {e}")
+        devs.sort(key=lambda d: (d.name.lower(), d.kind))
         self.found.emit(devs)
 
 
@@ -4417,8 +5531,8 @@ class Engine(QObject):
         if old is self.qt or (old is not None and old is self.mv):
             self.hasVideoChanged.emit(False)
         if self.cast is not None:
-            self.cast.shutdown(stop_device=old is not self.cast)
-        self.cast = CastBackend(self, device, server, meta_cb)
+            self.cast.shutdown()
+        self.cast = cast_backend_for(device)(self, device, server, meta_cb)
         self._connect(self.cast)
         self.b = self.cast
         return self.cast
@@ -14606,9 +15720,17 @@ class MainWindow(QMainWindow):
             else:
                 a = m.addAction(tr_("Keine Geräte gefunden")); a.setEnabled(False)
                 a = m.addAction(tr_("Gerät eingeschaltet und im selben Netz? Firewall: Ports 47900 (TCP) und "
-                                    "47901 (UDP) freigeben.")); a.setEnabled(False)
+                                    "47901–47904 (UDP) freigeben.")); a.setEnabled(False)
+        kinds = {"dlna": "DLNA", "chromecast": "Chromecast", "airplay": "AirPlay"}
         for d in devs:
-            a = m.addAction(make_icon("cast", 16), d.name + (f"  ({d.model})" if d.model and d.model != d.name else ""))
+            label = f"{d.name}  ·  {kinds.get(d.kind, d.kind)}"
+            if d.model and d.model != d.name:
+                label += f"  ({d.model})"
+            a = m.addAction(make_icon("cast", 16), label)
+            if not getattr(d, "supported", True):
+                a.setText(label + "  – " + tr_("nicht unterstützt (verlangt Kopplung)"))
+                a.setEnabled(False)
+                continue
             a.setCheckable(True); a.setChecked(cur is not None and d.key == cur.key)
             if a.isChecked():
                 f = a.font(); f.setBold(True); a.setFont(f)
@@ -14662,6 +15784,8 @@ class MainWindow(QMainWindow):
         cast.lost.connect(lambda _m, n=dev.name: (self.flash(tr_("Verbindung zu „{0}“ verloren").format(n)),
                                                   self._stop_cast()))
         cast.deviceVolume.connect(self._cast_device_volume)
+        if dev.kind == "airplay":                    # AirPlay meldet keine Lautstärke: NeoNotes Wert mitgeben
+            cast.set_volume(self.player.audio.gain, self.player.audio.muted)
         self._cast_dev = dev
         crash_note(f"Casting an {dev.name} ({dev.model}, {dev.host})")
         self._update_cast_btn()

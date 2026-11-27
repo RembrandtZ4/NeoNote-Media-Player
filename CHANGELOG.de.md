@@ -5,7 +5,7 @@
 ## Nächste Version (in Arbeit)
 
 ### ✨ Neue Funktionen
-- **Casting (DLNA/UPnP):** Der neue Cast-Knopf neben der Lautstärke spielt Musik und Videos auf Geräten im Heimnetz ab – AV-Receiver (z. B. Yamaha MusicCast), Smart-TVs, Netzwerklautsprecher. NeoNote wird zur Fernbedienung: Play/Pause, Weiter, Springen und Lautstärke steuern das Gerät, der nächste Titel folgt automatisch, Titel, Interpret und Cover erscheinen am Gerät. „Auf diesem PC weiterhören“ schaltet an derselben Stelle zurück. Firewall: Werden keine Geräte gefunden, die Ports 47900 (TCP) und 47901 (UDP) freigeben. Ein Wunsch von Holgi aus dem Deskmodder-Forum.
+- **Casting – DLNA, Chromecast und AirPlay:** Der neue Cast-Knopf neben der Lautstärke spielt Musik und Videos auf Geräten im Heimnetz ab – AV-Receiver (z. B. Yamaha MusicCast), Smart-TVs, Chromecast/Google TV, Netzwerk- und AirPlay-Lautsprecher. NeoNote findet sie selbst und wird zur Fernbedienung: Play/Pause, Weiter, Springen und Lautstärke steuern das Gerät, der nächste Titel folgt automatisch, Titel, Interpret und Cover erscheinen am Gerät. „Auf diesem PC weiterhören“ schaltet an derselben Stelle zurück. AirPlay: nur Musik, für Geräte, die unverschlüsselte Übertragung annehmen (Geräte mit Pflicht-Kopplung werden als nicht unterstützt angezeigt). Firewall: Werden keine Geräte gefunden, die Ports 47900 (TCP) und 47901–47904 (UDP) freigeben. Ein Wunsch von Holgi aus dem Deskmodder-Forum.
 
 ### ⚡ Verbesserungen
 - Kurzinfos lassen sich jetzt getrennt schalten: über Knöpfen und Symbolen (standardmäßig an) und über Titeln und Alben in Listen (standardmäßig aus) – Einstellungen ▸ Darstellung.

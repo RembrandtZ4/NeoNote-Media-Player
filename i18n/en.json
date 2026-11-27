@@ -860,12 +860,18 @@
  "Auf diesem PC weiterhören": "Continue on this PC",
  "Suche nach Geräten im Heimnetz …": "Searching for devices in your home network …",
  "Keine Geräte gefunden": "No devices found",
- "Gerät eingeschaltet und im selben Netz? Firewall: Ports 47900 (TCP) und 47901 (UDP) freigeben.": "Is the device switched on and in the same network? Firewall: allow ports 47900 (TCP) and 47901 (UDP).",
  "Suche läuft …": "Searching …",
  "Casting nicht möglich: {0}": "Casting not possible: {0}",
  "Verbindung zu „{0}“ verloren": "Lost connection to “{0}”",
  "Wiedergabe wieder auf diesem PC": "Playing on this PC again",
  "Wiedergabe auf „{0}“ – klicken für weitere Geräte": "Playing on “{0}” – click for more devices",
  "Keine Verbindung ins Heimnetz": "No connection to the home network",
- "{0} kann das nicht abspielen ({1})": "{0} can't play this ({1})"
+ "{0} kann das nicht abspielen ({1})": "{0} can't play this ({1})",
+ "Gerät eingeschaltet und im selben Netz? Firewall: Ports 47900 (TCP) und 47901–47904 (UDP) freigeben.": "Is the device switched on and in the same network? Firewall: allow ports 47900 (TCP) and 47901–47904 (UDP).",
+ "nicht unterstützt (verlangt Kopplung)": "not supported (requires pairing)",
+ "Cast-Empfänger startet nicht": "The cast receiver does not start",
+ "Ein anderes Gerät hat die Wiedergabe übernommen": "Another device took over playback",
+ "Keine Verbindung zum Gerät": "No connection to the device",
+ "Über AirPlay kann NeoNote nur Musikdateien abspielen": "NeoNote can only play music files via AirPlay",
+ "{0} verlangt eine Kopplung oder ein Passwort (AirPlay 2) – das unterstützt NeoNote noch nicht": "{0} requires pairing or a password (AirPlay 2) – NeoNote doesn't support that yet"
 }

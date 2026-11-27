@@ -39,7 +39,7 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [ ] **Flathub** listing
 
 ## Later
-- [ ] **Casting** to Chromecast, AirPlay and DLNA/UPnP devices (TVs, speakers, AV receivers)
+- [x] **Casting** to Chromecast, AirPlay and DLNA/UPnP devices (TVs, speakers, AV receivers) – in the next version; AirPlay 2 pairing and format conversion later
 - [ ] **Remote control** – control NeoNote on the PC from your phone via a simple web page on the home network (no app needed)
 
 ## Earlier
@@ -86,7 +86,7 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [ ] **Aufnahme in Flathub**
 
 ## Später
-- [ ] **Streamen (Cast)** zu Chromecast, AirPlay und DLNA/UPnP-Geräten (Fernseher, Lautsprecher, AV-Receiver)
+- [x] **Streamen (Cast)** zu Chromecast, AirPlay und DLNA/UPnP-Geräten (Fernseher, Lautsprecher, AV-Receiver) – in der nächsten Version; AirPlay-2-Kopplung und Formatumwandlung später
 - [ ] **Fernbedienung** – NeoNote am PC vom Handy aus steuern, über eine einfache Webseite im Heimnetz (ohne App)
 
 ## Früher
