@@ -894,5 +894,6 @@
  "<b>Streamen im Heimnetz</b>": "<b>Трансляция в домашней сети</b>",
  "<b>Bildqualität</b>": "<b>Качество изображения</b>",
  "Hoch (braucht eine stärkere Grafikkarte)": "Высокое (нужна более мощная видеокарта)",
- "„Hoch“ nutzt schärfere Filter beim Vergrößern und Verkleinern, glättet Streifen in Farbverläufen (z. B. Himmel bei stark komprimierten Videos) und rechnet HDR genauer um. Das Bild wird dabei nicht verfälscht. Ruckelt ein Video, zurück auf „Standard“ stellen. Gilt nur für Videos über mpv und wirkt sofort.": "«Высокое» использует более чёткие фильтры при увеличении и уменьшении, сглаживает полосы в цветовых переходах (например, небо в сильно сжатых видео) и точнее преобразует HDR. Изображение не искажается. Если видео подтормаживает, верните «По умолчанию». Действует только для видео через mpv и применяется сразу."
+ "„Hoch“ nutzt schärfere Filter beim Vergrößern und Verkleinern, glättet Streifen in Farbverläufen (z. B. Himmel bei stark komprimierten Videos) und rechnet HDR genauer um. Das Bild wird dabei nicht verfälscht. Ruckelt ein Video, zurück auf „Standard“ stellen. Gilt nur für Videos über mpv und wirkt sofort.": "«Высокое» использует более чёткие фильтры при увеличении и уменьшении, сглаживает полосы в цветовых переходах (например, небо в сильно сжатых видео) и точнее преобразует HDR. Изображение не искажается. Если видео подтормаживает, верните «По умолчанию». Действует только для видео через mpv и применяется сразу.",
+ "Keine Treffer für „{0}“": "Ничего не найдено по запросу «{0}»"
 }

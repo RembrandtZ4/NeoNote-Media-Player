@@ -5,6 +5,7 @@
 ## Nächste Version (in Arbeit)
 
 ### ⚡ Verbesserungen
+- **Bessere Suche:** In den Ansichten Interpret, Album, Genre und Ordner findet die Suche jetzt auch Songs (vorher nur Namen von Interpreten und Alben). Mehrere Wörter lassen sich über Felder hinweg kombinieren („queen bohemian“), Akzente und Satzzeichen spielen keine Rolle mehr („beyonce“ findet Beyoncé, „acdc“ findet AC/DC, „sweet child o mine“ findet „Sweet Child o' Mine“), und statt einer leeren Ansicht erscheint „Keine Treffer“.
 - **Bildqualität** (Einstellungen ▸ Video): „Hoch“ nutzt schärfere Skalierfilter, glättet Streifen in Farbverläufen und rechnet HDR genauer um – für Videos über mpv, wirkt sofort. Voreingestellt bleibt „Standard“, weil „Hoch“ eine stärkere Grafikkarte braucht.
 
 ### 🐞 Behobene Fehler

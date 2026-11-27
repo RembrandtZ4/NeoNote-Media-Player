@@ -432,6 +432,48 @@ def sort_name(name):
     return s.lower()
 
 
+_SEARCH_DROP = re.compile(r"[\u2019'`´]")
+_SEARCH_SPLIT = re.compile(r"[^\w]+")
+
+
+def search_norm(s):
+    """Text für die Suche vereinheitlichen: Groß/klein, Akzente (Beyoncé = Beyonce, Motörhead = Motorhead),
+    ß = ss, Apostrophe weg (Don't = Dont), übrige Satzzeichen wie Leerzeichen (AC/DC = AC DC)."""
+    s = unicodedata.normalize("NFKD", (s or "").casefold())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return " ".join(_SEARCH_SPLIT.sub(" ", _SEARCH_DROP.sub("", s)).split())
+
+
+def search_words(q):
+    return search_norm(q).split()
+
+
+_HAY = {}
+
+
+def track_matches(t, words):
+    """Alle Suchwörter müssen vorkommen – egal ob im Titel, Interpreten, Album oder Komponisten
+    („queen bohemian“ findet „Bohemian Rhapsody“ von Queen)."""
+    if not words:
+        return True
+    raw = (t.get("title") or "", t.get("artist") or "", t.get("albumartist") or "", t.get("album") or "",
+           t.get("composer") or "")
+    hit = _HAY.get(id(t))
+    if hit is None or hit[0] != raw:
+        if len(_HAY) > 300000:                      # nach vielen Neu-Einlesungen alte Einträge verwerfen
+            _HAY.clear()
+        hay = " " + search_norm(" ".join(raw)) + " "
+        hay2 = hay.replace(" ", "")                 # „acdc“ findet „AC/DC“, „pinkfloyd“ findet „Pink Floyd“
+        hit = _HAY[id(t)] = (raw, hay, hay2)
+    return all(w in hit[1] or w in hit[2] for w in words)
+
+
+def text_matches(texts, words):
+    hay = " ".join(search_norm(x) for x in texts)
+    hay2 = hay.replace(" ", "")
+    return all(w in hay or w in hay2 for w in words)
+
+
 def index_letter(name):
     s = sort_name(name)
     c = unicodedata.normalize("NFKD", s[:1]).encode("ascii", "ignore").decode().upper() if s else ""
@@ -14724,7 +14766,7 @@ class MainWindow(QMainWindow):
         st = self.state
         # Jellyfin-Ansichten heißen „jf:…“ und zeigen die zweite Bibliothek mit denselben Ansichten
         self._src = "jf" if st.startswith("jf:") else "local"
-        q = self.search.text().strip().lower()
+        q = search_words(self.search.text())          # Liste der Suchwörter (leer = keine Suche)
         self._render_crumbs()
         self.btn_back.setEnabled(self.hpos > 0)
         self.btn_fwd.setEnabled(self.hpos < len(self.history) - 1)
@@ -14744,8 +14786,7 @@ class MainWindow(QMainWindow):
             byid = self.jf_lib.by_id()
             tracks = [byid[i] for i in (pl["items"] if pl else []) if i in byid]
             if q:
-                tracks = [t for t in tracks if q in t["title"].lower() or q in t["artist"].lower()
-                          or q in t["album"].lower()]
+                tracks = [t for t in tracks if track_matches(t, q)]
             if self.sort_col is not None:
                 tracks = self._sorted(tracks)
             self.track_model.set_flat(tracks)
@@ -14777,8 +14818,7 @@ class MainWindow(QMainWindow):
             pl = self._smart(st[6:])
             tracks = self.smart_list_tracks(st[6:])
             if q:
-                tracks = [t for t in tracks if q in t["title"].lower() or q in t["artist"].lower()
-                          or q in t["album"].lower()]
+                tracks = [t for t in tracks if track_matches(t, q)]
             if self.sort_col is not None:
                 tracks = self._sorted(tracks)
             if not tracks and not q:
@@ -14796,8 +14836,7 @@ class MainWindow(QMainWindow):
         if st.startswith("auto:"):
             tracks = self.auto_tracks(st[5:])
             if q:
-                tracks = [t for t in tracks if q in t["title"].lower() or q in t["artist"].lower()
-                          or q in t["album"].lower()]
+                tracks = [t for t in tracks if track_matches(t, q)]
             if self.sort_col is not None:
                 tracks = self._sorted(tracks)
             if not tracks and not q:
@@ -14820,8 +14859,7 @@ class MainWindow(QMainWindow):
             orig = list(range(len(tracks)))
             pairs = list(zip(orig, tracks))
             if q:
-                pairs = [(i, t) for i, t in pairs if q in t["title"].lower() or q in t["artist"].lower()
-                         or q in t["album"].lower()]
+                pairs = [(i, t) for i, t in pairs if track_matches(t, q)]
             if self.sort_col is not None:
                 key = self._sort_key(COLUMNS[self.sort_col][0])
                 pairs.sort(key=lambda it: key(it[1]), reverse=self.sort_desc)
@@ -14853,6 +14891,16 @@ class MainWindow(QMainWindow):
         elif st.startswith("album:"):
             a = self.lib.albums.get(st[6:])
             albums = [a] if a else []
+        elif q:
+            # Suche in den Kachel-Ansichten (Interpret, Album, Genre, Jahr): die passenden Titel zeigen –
+            # sonst fände die Suche dort nur Namen von Interpreten und Alben, aber keine Songs
+            if st.startswith("genre:"):
+                albums = [a for a in self.lib.albums.values() if a["genre"] == st[6:]]
+            elif st.startswith("year:"):
+                albums = [a for a in self.lib.albums.values() if a["year"] == st[5:]]
+            else:
+                albums = sorted(self.lib.albums.values(), key=lambda a: (a["artist"].lower(), a["year"] or "9999",
+                                                                          a["title"].lower()))
         else:
             self._render_grid(st, q)
             return
@@ -14860,10 +14908,12 @@ class MainWindow(QMainWindow):
         for a in albums:
             tl = a["tracks"]
             if q:
-                tl = [t for t in tl if q in t["title"].lower() or q in t["artist"].lower()
-                      or q in t["album"].lower() or q in (t.get("composer") or "").lower()]
+                tl = [t for t in tl if track_matches(t, q)]
             if tl:
                 groups.append((a, tl))
+        if q and not groups:
+            self._no_hits()
+            return
         if self.sort_col is not None:
             self.track_model.set_flat(self._sorted([t for _a, tl in groups for t in tl]))
         else:
@@ -14874,6 +14924,11 @@ class MainWindow(QMainWindow):
         self._update_sort_indicator()
         self.stack.setCurrentWidget(self.tracks)
         self._update_count()
+
+    def _no_hits(self):
+        self.empty.setText(tr_("Keine Treffer für „{0}“").format(self.search.text().strip()))
+        self.stack.setCurrentWidget(self.empty)
+        self.count_label.setText(tr_("0 Titel"))
 
     def _update_count(self):
         if self.scanner:
@@ -14981,12 +15036,18 @@ class MainWindow(QMainWindow):
         path = st[7:] if st.startswith("folder:") else None
         subs = sorted(idx["top"] if path is None else idx["children"].get(path, ()), key=lambda d: self.folder_name(d).lower())
         files = idx["direct"].get(path, []) if path else []
-        if path is not None and not subs:                      # unterster Ordner: gleich die Titelliste
+        if q or (path is not None and not subs):               # unterster Ordner oder Suche: gleich die Titelliste
             self.state = st                                    # (Zustand bleibt „folder:“ für Zurück/Vor)
+            if q:                                              # Suche: alle Titel unterhalb dieses Ordners
+                scope = list(self.lib.tracks) if path is None else self.folder_tracks(path)
+                files = [t for t in scope if track_matches(t, q)]
             albums = self.folder_albums(files)
-            groups = [(a, [t for t in a["tracks"] if not q or q in t["title"].lower() or q in t["artist"].lower()])
+            groups = [(a, [t for t in a["tracks"] if track_matches(t, q)])
                       for a in albums]
             groups = [(a, tl) for a, tl in groups if tl]
+            if q and not groups:
+                self._no_hits()
+                return
             if self.sort_col is not None:
                 self.track_model.set_flat(self._sorted([t for _a, tl in groups for t in tl]))
             else:
@@ -15006,7 +15067,7 @@ class MainWindow(QMainWindow):
 
         def section(head, items):
             nonlocal n
-            items = [x for x in items if not q or q in x[1].lower()]
+            items = [x for x in items if not q or text_matches([x[1]], q)]
             if not items:
                 return
             sep = QStandardItem(head); sep.setEditable(False)
@@ -15075,7 +15136,7 @@ class MainWindow(QMainWindow):
         sep_w = max(TILE_W, self.grid.viewport().width() - 2)
         self._grid_seps, self._grid_sep_w = seps, sep_w
         for head, items in sections.items():
-            items = [x for x in items if not q or q in x[1].lower() or any(q in l.lower() for l in x[2])]
+            items = [x for x in items if not q or text_matches([x[1], *x[2]], q)]
             if not items:
                 continue
             sep = QStandardItem(head); sep.setEditable(False)
