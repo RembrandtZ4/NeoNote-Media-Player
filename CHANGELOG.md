@@ -10,6 +10,9 @@
 ### ⚡ Improvements
 - Tooltips can now be switched separately: on buttons and icons (on by default) and on tracks and albums in lists (off by default) – Settings ▸ Appearance.
 
+### 🐞 Bug fixes
+- “Always on top” is only restored a few seconds after startup, once NeoNote is running smoothly – if it froze at startup, a frozen window could otherwise cover everything. In safe mode it stays off. Reported by Holgi in the Deskmodder forum.
+
 ## 1.3.2 – 2026-11-26
 
 ### ✨ New features

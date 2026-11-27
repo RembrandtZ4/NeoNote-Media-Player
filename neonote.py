@@ -12314,7 +12314,13 @@ class MainWindow(QMainWindow):
         self._build_player()
         self.set_frameless(self.settings.value("window/frameless", True, type=bool), initial=True)
         if self.settings.value("ui/on_top", False, type=bool):
-            self.set_on_top(True, initial=True)
+            # „Immer im Vordergrund“ erst setzen, wenn NeoNote nach dem Start ein paar Sekunden flüssig läuft:
+            # friert es vorher ein, liegt sonst ein hängendes Fenster über allem (Windows Server/VM, Meldung von Holgi).
+            # Im sicheren Modus bleibt es ganz aus.
+            self.btn_pin.blockSignals(True); self.btn_pin.setChecked(True); self.btn_pin.blockSignals(False)
+            if not SAFE_MODE:
+                QTimer.singleShot(4000, lambda: self.settings.value("ui/on_top", False, type=bool)
+                                  and self.set_on_top(True, initial=True))
         splash_step(tr_("Wende das Design an …"), 44)
         self.apply_theme(self.theme_dict)
 

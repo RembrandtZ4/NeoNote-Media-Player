@@ -10,6 +10,9 @@
 ### ⚡ Verbesserungen
 - Kurzinfos lassen sich jetzt getrennt schalten: über Knöpfen und Symbolen (standardmäßig an) und über Titeln und Alben in Listen (standardmäßig aus) – Einstellungen ▸ Darstellung.
 
+### 🐞 Behobene Fehler
+- „Immer im Vordergrund“ wird beim Start erst nach ein paar Sekunden wiederhergestellt, wenn NeoNote flüssig läuft – fror es beim Start ein, lag sonst ein hängendes Fenster über allem. Im sicheren Modus bleibt es aus. Gemeldet von Holgi im Deskmodder-Forum.
+
 ## 1.3.2 – 26.11.2026
 
 ### ✨ Neue Funktionen
