@@ -6,6 +6,7 @@
   <a href="https://github.com/RembrandtZ4/NeoNote-Media-Player/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/RembrandtZ4/NeoNote-Media-Player?label=release&color=3d8fe0"></a>
   <a href="https://github.com/RembrandtZ4/NeoNote-Media-Player/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/RembrandtZ4/NeoNote-Media-Player/total?color=43b05c"></a>
   <img alt="Linux | Windows" src="https://img.shields.io/badge/Linux%20%7C%20Windows-b8bec7">
+  <a href="https://alternativeto.net/software/neonote-media-player/about/"><img alt="AlternativeTo" src="https://img.shields.io/badge/AlternativeTo-NeoNote-1e88e5"></a>
   <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/github/license/RembrandtZ4/NeoNote-Media-Player?color=8e6cf0"></a>
 </p>
 
