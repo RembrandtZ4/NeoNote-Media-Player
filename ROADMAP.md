@@ -47,6 +47,8 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [ ] **Remote control** – control NeoNote on the PC from your phone via a simple web page on the home network (no app needed)
 
 ## Ideas
+*Most of these will be optional and stay out of the way until you turn them on – NeoNote should keep its tidy WMP12 look.*
+
 - [ ] **Podcasts** – subscribe, download new episodes automatically, resume where you left off
 - [ ] **Rip CDs** like in WMP12, with track names from MusicBrainz
 - [ ] **Listening stats** – top artists, listening time per week, a small year in review
@@ -120,6 +122,8 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [ ] **Fernbedienung** – NeoNote am PC vom Handy aus steuern, über eine einfache Webseite im Heimnetz (ohne App)
 
 ## Ideen
+*Das meiste davon wird optional und bleibt unauffällig, bis man es einschaltet – NeoNote soll aufgeräumt bleiben wie der WMP12.*
+
 - [ ] **Podcasts** – abonnieren, neue Folgen automatisch laden, an der letzten Stelle weiterhören
 - [ ] **CDs rippen** wie im WMP12, mit Titeln von MusicBrainz
 - [ ] **Hör-Statistik** – meistgehörte Interpreten, Hörzeit pro Woche, ein kleiner Jahresrückblick
