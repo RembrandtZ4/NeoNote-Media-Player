@@ -60,6 +60,13 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [ ] **Custom keyboard shortcuts**
 - [ ] **Customizable “Now playing”** – cover size, lyrics left or right, choice of visualization
 - [ ] **Mini player variants** – cover only, slim bar, or with lyrics
+- [ ] **Media streaming (server)** – share the library in the home network so TVs and receivers can browse and play it, like WMP12
+- [ ] **Sync** music to phone, USB stick or MP3 player – optionally automatic by playlist
+- [ ] **Convert files** – e.g. FLAC to MP3/Opus for phone or car, whole albums at once
+- [ ] **Headphone correction (AutoEQ)** – pick your headphone model and the equalizer evens out its sound
+- [ ] **Advanced search** – filters like genre, year range and rating right in the search box
+- [ ] **Sound analysis** – BPM, mood and energy; similar-sounding tracks and an Auto DJ that mixes by sound
+- [ ] **Audiobook mode** – bookmarks, chapters and progress per book
 
 ## Earlier
 - [x] **Updater for Windows** – install new versions right from NeoNote *(since 1.1.8)*
@@ -126,6 +133,13 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [ ] **Tastenkürzel selbst festlegen**
 - [ ] **„Wird gespielt“ gestalten** – Cover groß oder klein, Songtext links oder rechts, Visualisierung wählen
 - [ ] **Mini-Player-Varianten** – nur Cover, schmale Leiste oder mit Songtext
+- [ ] **Medienstreaming (Server)** – die Bibliothek im Heimnetz freigeben, damit Fernseher und Receiver darin stöbern und abspielen können, wie beim WMP12
+- [ ] **Synchronisieren** – Musik auf Handy, USB-Stick oder MP3-Player kopieren, auf Wunsch automatisch nach Wiedergabeliste
+- [ ] **Dateien umwandeln** – z. B. FLAC in MP3/Opus fürs Handy oder Auto, ganze Alben auf einmal
+- [ ] **Kopfhörer-Korrektur (AutoEQ)** – Kopfhörermodell wählen, der Equalizer gleicht dessen Klang aus
+- [ ] **Erweiterte Suche** – Filter wie Genre, Jahresbereich und Bewertung direkt im Suchfeld
+- [ ] **Klang-Analyse** – BPM, Stimmung und Energie; ähnlich klingende Titel und ein Auto-DJ, der nach Klang mischt
+- [ ] **Hörbuch-Modus** – Lesezeichen, Kapitel und Fortschritt pro Buch
 
 ## Früher
 - [x] **Updater für Windows** – neue Versionen direkt aus NeoNote installieren *(seit 1.1.8)*
