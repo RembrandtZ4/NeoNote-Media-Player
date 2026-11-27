@@ -49,6 +49,7 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 ## Ideas
 *Most of these will be optional and stay out of the way until you turn them on – NeoNote should keep its tidy WMP12 look.*
 
+- [ ] **Features page** in the settings – turn whole features on or off (Jellyfin, radio, casting, lyrics, visualization …); what's off disappears completely
 - [ ] **Podcasts** – subscribe, download new episodes automatically, resume where you left off
 - [ ] **Rip CDs** like in WMP12, with track names from MusicBrainz
 - [ ] **Listening stats** – top artists, listening time per week, a small year in review
@@ -124,6 +125,7 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 ## Ideen
 *Das meiste davon wird optional und bleibt unauffällig, bis man es einschaltet – NeoNote soll aufgeräumt bleiben wie der WMP12.*
 
+- [ ] **Seite „Funktionen“** in den Einstellungen – ganze Funktionen ein- und ausschalten (Jellyfin, Radio, Streamen, Songtexte, Visualisierung …); was aus ist, verschwindet komplett
 - [ ] **Podcasts** – abonnieren, neue Folgen automatisch laden, an der letzten Stelle weiterhören
 - [ ] **CDs rippen** wie im WMP12, mit Titeln von MusicBrainz
 - [ ] **Hör-Statistik** – meistgehörte Interpreten, Hörzeit pro Woche, ein kleiner Jahresrückblick
