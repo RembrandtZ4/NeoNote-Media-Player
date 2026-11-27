@@ -2,6 +2,11 @@
 
 🇬🇧 **English** | 🇩🇪 [Deutsch](CHANGELOG.de.md)
 
+## Next version (in progress)
+
+### 🐞 Bug fixes
+- Tooltips with longer text (e.g. on the info and casting buttons) were cut off at the right edge. Fixed.
+
 ## 1.3.3 – 2026-11-27
 
 ### ✨ New features

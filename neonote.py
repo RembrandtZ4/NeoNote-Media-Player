@@ -1046,7 +1046,8 @@ class GlassDialogs(QObject):
             tip.setAttribute(Qt.WA_TranslucentBackground)
             if created:
                 tip.windowHandle().destroy()      # neu anlegen, damit das Fenster einen Alphakanal bekommt
-            return
+            # Stil schon jetzt setzen: Qt misst die Kurzinfo vor dem Anzeigen – mit dem Glas-Stil (mehr Innenabstand)
+            # erst beim Anzeigen wäre sie ein paar Pixel zu schmal und lange Texte abgeschnitten
         if tip.property("nnTip") is not True:
             return
         if not self.tips_active():                 # abgeschaltet: wieder der schlichte, deckende Kasten
@@ -1057,15 +1058,28 @@ class GlassDialogs(QObject):
         if isinstance(tip, QMenu):
             r = GlassDialogs.RADIUS
             bg.setAlphaF(T.alpha if blur else max(T.alpha, 0.9))
-            tip.setStyleSheet(f"QMenu {{ background: {css(bg)}; color: {css(T.fg)}; border: 1px solid {css(T.ov(0.16))};"
-                              f" border-radius: {r}px; padding: 5px; }}")
+            ss = (f"QMenu {{ background: {css(bg)}; color: {css(T.fg)}; border: 1px solid {css(T.ov(0.16))};"
+                  f" border-radius: {r}px; padding: 5px; }}")
         else:
             # Kurzinfos zarter: durchscheinender als das Fenster, feiner Rand
             r = max(GlassDialogs.RADIUS - 4, 4)
             bg.setAlphaF(T.alpha * 0.82 if blur else max(T.alpha * 0.9, 0.8))
-            tip.setStyleSheet(f"QToolTip {{ background: {css(bg)}; color: {css(T.fg)}; border: 1px solid {css(T.ov(0.09))};"
-                              f" border-radius: {r}px; padding: 5px 9px; }}")
+            ss = (f"QToolTip {{ background: {css(bg)}; color: {css(T.fg)}; border: 1px solid {css(T.ov(0.09))};"
+                  f" border-radius: {r}px; padding: 1px 4px; }}")
+        if tip.styleSheet() != ss:                 # nur bei Änderung – ein neuer Stil löst sonst wieder ein Polish aus
+            tip.setStyleSheet(ss)
         tip._nn_r = r
+        if t == QEvent.Show and not isinstance(tip, QMenu):
+            hint = tip.sizeHint()
+            if tip.width() < hint.width() or tip.height() < hint.height():
+                g = tip.geometry()
+                g.setSize(g.size().expandedTo(hint))
+                scr = QGuiApplication.screenAt(g.center()) or tip.screen()
+                if scr is not None:                # nicht über den Bildschirmrand hinausragen
+                    a = scr.availableGeometry()
+                    g.moveRight(min(g.right(), a.right())); g.moveBottom(min(g.bottom(), a.bottom()))
+                    g.moveLeft(max(g.left(), a.left())); g.moveTop(max(g.top(), a.top()))
+                tip.setGeometry(g)
 
         def shape():
             if tip.isVisible():

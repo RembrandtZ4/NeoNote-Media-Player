@@ -2,6 +2,11 @@
 
 🇬🇧 [English](CHANGELOG.md) | 🇩🇪 **Deutsch**
 
+## Nächste Version (in Arbeit)
+
+### 🐞 Behobene Fehler
+- Kurzinfos mit längerem Text (z. B. an den Knöpfen für Infos und Streamen) wurden am rechten Rand abgeschnitten. Behoben.
+
 ## 1.3.3 – 27.11.2026
 
 ### ✨ Neue Funktionen
