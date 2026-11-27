@@ -51,6 +51,15 @@ Planned ideas for upcoming versions. The focus is on **Linux** (KDE Plasma). The
 - [ ] **Rip CDs** like in WMP12, with track names from MusicBrainz
 - [ ] **Listening stats** – top artists, listening time per week, a small year in review
 - [ ] **Calculate ReplayGain** values yourself instead of only using existing ones
+- [ ] **Custom background image** behind the glass – a photo, or the current album cover blurred
+- [ ] **Font and font size** for the interface
+- [ ] **Compact or roomy view** – row height and spacing in lists
+- [ ] **Adjustable corner rounding** – from square to strongly rounded
+- [ ] **Save and share themes** – keep your own color combinations as presets and pass them on as a file
+- [ ] **Customizable control bar** – which buttons are shown and in which order
+- [ ] **Custom keyboard shortcuts**
+- [ ] **Customizable “Now playing”** – cover size, lyrics left or right, choice of visualization
+- [ ] **Mini player variants** – cover only, slim bar, or with lyrics
 
 ## Earlier
 - [x] **Updater for Windows** – install new versions right from NeoNote *(since 1.1.8)*
@@ -108,6 +117,15 @@ Geplante Ideen für kommende Versionen. Der Schwerpunkt liegt auf **Linux** (KDE
 - [ ] **CDs rippen** wie im WMP12, mit Titeln von MusicBrainz
 - [ ] **Hör-Statistik** – meistgehörte Interpreten, Hörzeit pro Woche, ein kleiner Jahresrückblick
 - [ ] **ReplayGain selbst berechnen**, statt nur vorhandene Werte zu nutzen
+- [ ] **Eigenes Hintergrundbild** hinter dem Glas – ein Foto oder das aktuelle Albumcover verschwommen
+- [ ] **Schriftart und Schriftgröße** für die Oberfläche
+- [ ] **Kompakte oder großzügige Ansicht** – Zeilenhöhe und Abstände in den Listen
+- [ ] **Eckenrundung einstellbar** – von eckig bis stark gerundet
+- [ ] **Designs speichern und teilen** – eigene Farb-Kombinationen als Vorlage sichern und als Datei weitergeben
+- [ ] **Steuerleiste anpassen** – welche Knöpfe zu sehen sind und in welcher Reihenfolge
+- [ ] **Tastenkürzel selbst festlegen**
+- [ ] **„Wird gespielt“ gestalten** – Cover groß oder klein, Songtext links oder rechts, Visualisierung wählen
+- [ ] **Mini-Player-Varianten** – nur Cover, schmale Leiste oder mit Songtext
 
 ## Früher
 - [x] **Updater für Windows** – neue Versionen direkt aus NeoNote installieren *(seit 1.1.8)*
