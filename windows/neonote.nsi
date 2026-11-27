@@ -113,6 +113,11 @@ Section
     ReadRegStr $INSTDIR HKLM "Software\NeoNote" "InstallDir"
     ${If} $INSTDIR != ""
       WriteUninstaller "$INSTDIR\Uninstall.exe"
+      ; Casting: eingehende Verbindungen für NeoNote erlauben – nur aus dem eigenen Heimnetz (localsubnet)
+      nsExec::Exec 'netsh advfirewall firewall delete rule name="NeoNote Casting"'
+      Pop $5
+      nsExec::Exec 'netsh advfirewall firewall add rule name="NeoNote Casting" dir=in action=allow program="$INSTDIR\NeoNote.exe" enable=yes profile=any remoteip=localsubnet description="NeoNote: Musik und Videos an Geräte im Heimnetz streamen (DLNA, Chromecast, AirPlay)"'
+      Pop $5
     ${EndIf}
   ${EndIf}
   ; Entpack-Ordner entfernen – kurz warten, falls Windows (z. B. der Virenscanner) die Dateien noch festhält
@@ -150,6 +155,9 @@ Section "Uninstall"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
   RMDir /r "$PROGRAMFILES64\NeoNote-Setup.tmp"   ; Rest älterer Installer (bis 1.3.1.98)
+  ; Firewall-Freigabe fürs Casting wieder entfernen
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="NeoNote Casting"'
+  Pop $0
   ; Vorladen beim Anmelden entfernen
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "NeoNote"
   ; NeoNote als Standard für Formate ohne Nutzerauswahl (HKCU) wieder austragen

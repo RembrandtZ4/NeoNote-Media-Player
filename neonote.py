@@ -3452,6 +3452,52 @@ CAST_AP_CONTROL_PORT = 47903     # AirPlay: Steuerung und Zeitabgleich (das Ger�
 CAST_AP_TIMING_PORT = 47904
 
 
+CAST_FW_NAME = "NeoNote Casting"
+
+
+def cast_firewall_status():
+    """Welche Firewall ist aktiv und lässt sie Casting durch? → (art, ok). art: windows/ufw/firewalld/None;
+    ok: True/False, None = unbekannt (ufw verrät seine Regeln nur dem Administrator)."""
+    if IS_WIN:
+        try:
+            r = subprocess.run(["netsh", "advfirewall", "firewall", "show", "rule", f"name={CAST_FW_NAME}"],
+                               capture_output=True, timeout=8, creationflags=0x08000000)
+            return "windows", r.returncode == 0
+        except Exception:
+            return "windows", None
+    fw = shutil.which("firewall-cmd")
+    if fw and not FLATPAK_ID:
+        try:
+            r = subprocess.run([fw, "--state"], capture_output=True, text=True, timeout=5)
+            if r.returncode == 0:
+                ports = subprocess.run([fw, "--list-ports"], capture_output=True, text=True, timeout=5).stdout
+                return "firewalld", ("47900/tcp" in ports and "47901-47904/udp" in ports)
+        except Exception:
+            pass
+    for etc in ((Path("/run/host/etc"), Path("/etc")) if FLATPAK_ID else (Path("/etc"),)):
+        try:
+            conf = (etc / "ufw" / "ufw.conf").read_text(errors="replace")
+        except OSError:
+            continue
+        if re.search(r"^\s*ENABLED\s*=\s*yes", conf, re.M):
+            return "ufw", None
+    if FLATPAK_ID:
+        for etc in (Path("/run/host/etc"),):
+            if (etc / "firewalld" / "firewalld.conf").exists():
+                return "firewalld", None
+    return None, True
+
+
+def cast_firewall_commands(kind):
+    if kind == "ufw":
+        return ["sudo ufw allow 47900/tcp comment 'NeoNote Casting'",
+                "sudo ufw allow 47901:47904/udp comment 'NeoNote Casting'"]
+    if kind == "firewalld":
+        return ["sudo firewall-cmd --permanent --add-port=47900/tcp --add-port=47901-47904/udp",
+                "sudo firewall-cmd --reload"]
+    return []
+
+
 def _bind_udp(sock, port):
     """Festen Port nehmen (für Firewall-Freigaben), sonst irgendeinen freien."""
     try:
@@ -11368,6 +11414,30 @@ class SettingsDialog(QDialog):
         th = QLabel(tr_("Klick auf das Symbol zeigt oder versteckt das Fenster, Mittelklick startet bzw. pausiert. "
                     "Über das Menü des Symbols kannst du den Player jederzeit ganz beenden."))
         th.setObjectName("hint"); th.setWordWrap(True); sv.addWidget(th)
+        sv.addWidget(QLabel(tr_("<b>Casting</b>")))
+        fwrow = QHBoxLayout()
+        self.s_fw = QLabel(tr_("Firewall wird geprüft …")); self.s_fw.setWordWrap(True)
+        fwb = QPushButton(tr_("Firewall freigeben"))
+        fwrow.addWidget(self.s_fw, 1); fwrow.addWidget(fwb)
+        sv.addLayout(fwrow)
+
+        def fw_show():
+            try:
+                win._fw = cast_firewall_status()
+            except Exception:
+                win._fw = (None, True)
+            kind = win._fw[0]
+            if not kind:
+                self.s_fw.setText(tr_("Keine Firewall aktiv – Geräte im Heimnetz sind erreichbar."))
+                fwb.setEnabled(False)
+            elif not win._cast_fw_needed():
+                self.s_fw.setText(tr_("Firewall ({0}): für Casting freigegeben ✓").format(kind))
+                fwb.setEnabled(True)
+            else:
+                self.s_fw.setText(tr_("Firewall ({0}) aktiv – Casting ist noch nicht freigegeben.").format(kind))
+                fwb.setEnabled(True)
+        fwb.clicked.connect(lambda: (win._cast_firewall_fix(), QTimer.singleShot(3500, fw_show)))
+        self._after_show.append(fw_show)
         if IS_WIN:
             sv.addWidget(QLabel(tr_("<b>Standardplayer</b>")))
             sv.addWidget(QLabel(tr_("Diese Formate mit NeoNote öffnen:")))
@@ -15682,6 +15752,22 @@ class MainWindow(QMainWindow):
 
     # ── Casting ───────────────────────────────────────────────────────────
     def _cast_menu(self):
+        if getattr(self, "_fw", None) is None:          # einmal pro Sitzung: blockiert eine Firewall?
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                self._fw = cast_firewall_status()
+            except Exception:
+                self._fw = (None, True)
+            finally:
+                QApplication.restoreOverrideCursor()
+        if self._cast_fw_needed() and not self.settings.value("cast/fw_asked", False, type=bool):
+            self.settings.setValue("cast/fw_asked", True)
+            kind = {"windows": "Windows", "ufw": "ufw", "firewalld": "firewalld"}.get(self._fw[0], "")
+            if QMessageBox.question(self, tr_("Firewall"), tr_(
+                    "Deine Firewall ({0}) blockiert vermutlich die Geräte im Heimnetz.\n\nSoll NeoNote sie für das "
+                    "Casting freigeben? Das gilt nur für Geräte in deinem Heimnetz – dafür wird einmal dein "
+                    "Passwort abgefragt.").format(kind)) == QMessageBox.Yes:
+                self._cast_firewall_fix()
         m = QMenu(self)
         self._cast_menu_obj = m
         self._fill_cast_menu(m)
@@ -15706,12 +15792,83 @@ class MainWindow(QMainWindow):
             except RuntimeError:
                 pass
 
+    def _cast_fw_needed(self):
+        kind, ok = getattr(self, "_fw", None) or (None, True)
+        if not kind or ok:
+            return False
+        return ok is False or not self.settings.value(f"cast/fw_ok_{kind}", False, type=bool)
+
+    def _cast_firewall_fix(self):
+        """Firewall für Casting öffnen – nur für das Heimnetz. Linux: per pkexec (Passwort), Windows: per UAC."""
+        kind = (getattr(self, "_fw", None) or cast_firewall_status())[0]
+        if not kind:
+            self.flash(tr_("Keine Firewall aktiv – nichts zu tun")); return
+        if kind == "windows":
+            exe = sys.executable
+            args = (f'advfirewall firewall add rule name="{CAST_FW_NAME}" dir=in action=allow program="{exe}" '
+                    'enable=yes profile=any remoteip=localsubnet')
+            try:
+                ok = ctypes.windll.shell32.ShellExecuteW(None, "runas", "netsh", args, None, 0) > 32
+            except Exception:
+                ok = False
+            if not ok:
+                self.flash(tr_("Firewall-Freigabe abgebrochen")); return
+
+            def recheck():
+                self._fw = cast_firewall_status()
+                self.flash(tr_("Firewall für Casting freigegeben ✓") if self._fw[1] else
+                           tr_("Firewall-Freigabe hat nicht geklappt"))
+            QTimer.singleShot(3000, recheck)
+            return
+        cmds = cast_firewall_commands(kind)
+        pk = shutil.which("pkexec")
+        if FLATPAK_ID or not pk:
+            self._cast_firewall_dialog(kind, cmds); return
+        proc = QProcess(self)
+        script = " && ".join(c.replace("sudo ", "", 1) for c in cmds)
+
+        def done(code, _status=None):
+            if code == 0:
+                self.settings.setValue(f"cast/fw_ok_{kind}", True)
+                self._fw = (kind, True)
+                self.flash(tr_("Firewall für Casting freigegeben ✓"))
+                crash_note(f"Casting: Firewall ({kind}) freigegeben")
+            elif code in (126, 127):
+                self.flash(tr_("Firewall-Freigabe abgebrochen"))
+            else:
+                err = bytes(proc.readAllStandardError()).decode(errors="replace").strip()
+                crash_note(f"Casting: Firewall-Freigabe ({kind}) fehlgeschlagen: {code} {err}")
+                self._cast_firewall_dialog(kind, cmds)
+        proc.finished.connect(done)
+        proc.start(pk, ["sh", "-c", script])
+
+    def _cast_firewall_dialog(self, kind, cmds):
+        """Wenn NeoNote es nicht selbst darf (Flatpak) oder kann: Befehle zum Kopieren anzeigen."""
+        d = QDialog(self); d.setWindowTitle(tr_("Firewall für Casting freigeben"))
+        lay = QVBoxLayout(d); lay.setContentsMargins(18, 16, 18, 14)
+        lab = QLabel(tr_("Damit NeoNote Geräte im Heimnetz findet, diese Befehle einmal im Terminal ausführen "
+                         "({0}):").format(kind)); lab.setWordWrap(True); lay.addWidget(lab)
+        box = QPlainTextEdit("\n".join(cmds)); box.setReadOnly(True)
+        box.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont)); box.setFixedHeight(70); lay.addWidget(box)
+        bb = QDialogButtonBox()
+        cp = bb.addButton(tr_("Kopieren"), QDialogButtonBox.ActionRole)
+        done_b = bb.addButton(tr_("Erledigt"), QDialogButtonBox.AcceptRole)
+        bb.addButton(QDialogButtonBox.Close).clicked.connect(d.reject)
+        cp.clicked.connect(lambda: (QApplication.clipboard().setText("\n".join(cmds)), cp.setText(tr_("Kopiert ✓"))))
+        done_b.clicked.connect(lambda: (self.settings.setValue(f"cast/fw_ok_{kind}", True), d.accept()))
+        lay.addWidget(bb)
+        d.resize(620, 220)
+        d.exec()
+
     def _fill_cast_menu(self, m):
         m.clear()
         cur = getattr(self, "_cast_dev", None)
         if cur is not None:
             a = m.addAction(tr_("Wiedergabe auf „{0}“").format(cur.name)); a.setEnabled(False)
             m.addAction(tr_("Auf diesem PC weiterhören"), self._stop_cast)
+            m.addSeparator()
+        if self._cast_fw_needed():
+            m.addAction(tr_("Firewall für Casting freigeben …"), self._cast_firewall_fix)
             m.addSeparator()
         devs = getattr(self, "_cast_devices", None) or []
         if not devs:

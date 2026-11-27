@@ -873,5 +873,22 @@
  "Ein anderes Gerät hat die Wiedergabe übernommen": "Another device took over playback",
  "Keine Verbindung zum Gerät": "No connection to the device",
  "Über AirPlay kann NeoNote nur Musikdateien abspielen": "NeoNote can only play music files via AirPlay",
- "{0} verlangt eine Kopplung oder ein Passwort (AirPlay 2) – das unterstützt NeoNote noch nicht": "{0} requires pairing or a password (AirPlay 2) – NeoNote doesn't support that yet"
+ "{0} verlangt eine Kopplung oder ein Passwort (AirPlay 2) – das unterstützt NeoNote noch nicht": "{0} requires pairing or a password (AirPlay 2) – NeoNote doesn't support that yet",
+ "Firewall": "Firewall",
+ "Deine Firewall ({0}) blockiert vermutlich die Geräte im Heimnetz.\n\nSoll NeoNote sie für das Casting freigeben? Das gilt nur für Geräte in deinem Heimnetz – dafür wird einmal dein Passwort abgefragt.": "Your firewall ({0}) is probably blocking devices in your home network.\n\nShould NeoNote allow them for casting? This only applies to devices in your home network – you'll be asked for your password once.",
+ "Keine Firewall aktiv – nichts zu tun": "No firewall active – nothing to do",
+ "Firewall-Freigabe abgebrochen": "Firewall change cancelled",
+ "Firewall für Casting freigegeben ✓": "Firewall opened for casting ✓",
+ "Firewall-Freigabe hat nicht geklappt": "Opening the firewall didn't work",
+ "Firewall für Casting freigeben": "Open firewall for casting",
+ "Damit NeoNote Geräte im Heimnetz findet, diese Befehle einmal im Terminal ausführen ({0}):": "So NeoNote can find devices in your home network, run these commands once in a terminal ({0}):",
+ "Kopieren": "Copy",
+ "Erledigt": "Done",
+ "Firewall für Casting freigeben …": "Open firewall for casting …",
+ "Casting": "Casting",
+ "Firewall wird geprüft …": "Checking firewall …",
+ "Firewall freigeben": "Open firewall",
+ "Keine Firewall aktiv – Geräte im Heimnetz sind erreichbar.": "No firewall active – devices in your home network can be reached.",
+ "Firewall ({0}): für Casting freigegeben ✓": "Firewall ({0}): open for casting ✓",
+ "Firewall ({0}) aktiv – Casting ist noch nicht freigegeben.": "Firewall ({0}) active – casting is not allowed yet."
 }
