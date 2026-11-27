@@ -11,7 +11,8 @@
 - Kurzinfos lassen sich jetzt getrennt schalten: über Knöpfen und Symbolen (standardmäßig an) und über Titeln und Alben in Listen (standardmäßig aus) – Einstellungen ▸ Darstellung.
 
 ### 🐞 Behobene Fehler
-- „Immer im Vordergrund“ wird beim Start erst nach ein paar Sekunden wiederhergestellt, wenn NeoNote flüssig läuft – fror es beim Start ein, lag sonst ein hängendes Fenster über allem. Im sicheren Modus bleibt es aus. Gemeldet von Holgi im Deskmodder-Forum.
+- „Immer im Vordergrund“ wird beim Start erst nach ein paar Sekunden wiederhergestellt, wenn NeoNote flüssig läuft – fror es beim Start ein, lag sonst ein hängendes Fenster über allem. Im sicheren Modus bleibt es aus. Außerdem öffneten sich bei „Immer im Vordergrund“ Dialoge (Einstellungen, „Was ist neu?“ …) hinter dem Hauptfenster und sperrten es – NeoNote wirkte eingefroren. Dialoge erscheinen jetzt obenauf, und für die Windows-Einstellungen tritt NeoNote zurück, bis du wieder hineinklickst. Gemeldet von Holgi im Deskmodder-Forum.
+- Windows: „Standard-Apps ▸ NeoNote“ zeigt keine leere Seite mehr, wenn die Verknüpfungen aus sind – Reste früherer Installationen werden entfernt.
 
 ## 1.3.2 – 26.11.2026
 

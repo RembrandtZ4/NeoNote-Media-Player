@@ -899,6 +899,21 @@ class NeoStyle(QProxyStyle):
         return super().styleHint(hint, opt, widget, ret)
 
 
+def win_topmost(w, on):
+    """Windows: Fenster ganz nach oben legen (oder zurück), ohne es neu anzulegen. True bei Erfolg."""
+    if not IS_WIN:
+        return False
+    try:
+        import ctypes.wintypes as wt
+        swp = ctypes.windll.user32.SetWindowPos
+        swp.argtypes = [wt.HWND, wt.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wt.UINT]
+        swp.restype = wt.BOOL
+        after = ctypes.c_void_p(-1 if on else -2)          # HWND_TOPMOST / HWND_NOTOPMOST als 64-Bit-Zeiger
+        return bool(swp(wt.HWND(int(w.winId())), after, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010))
+    except Exception:
+        return False
+
+
 class GlassDialogs(QObject):
     """Dialoge im Look des Hauptfensters (bei eigener Fensterleiste): ohne Systemrahmen, mit eigener Titelleiste,
     durchscheinend mit Weichzeichner und runden Ecken. Gilt für alle Dialoge, auch Rückfragen (QMessageBox)."""
@@ -970,6 +985,11 @@ class GlassDialogs(QObject):
             key, default = ("ui/tips_lists", False) if in_list else ("ui/tips_buttons", True)
             if not self.win.settings.value(key, default, type=bool):
                 return True                         # abgeschaltet (Einstellungen ▸ Darstellung)
+        if (t == QEvent.Show and IS_WIN and obj.isWidgetType() and obj.isWindow() and obj is not self.win
+                and getattr(self.win, "on_top", False) and not getattr(self.win, "_ontop_suspended", False)
+                and obj.windowType() in (Qt.Dialog, Qt.Window, Qt.Sheet)):
+            # sonst öffnet sich das Fenster HINTER dem Hauptfenster – ist es modal, wirkt NeoNote eingefroren
+            QTimer.singleShot(0, lambda o=obj: win_topmost(o, True))
         if t in (QEvent.Polish, QEvent.Show, QEvent.Resize) and obj.isWidgetType() and (obj.inherits("QTipLabel") or isinstance(obj, QMenu)):
             if t == QEvent.Resize:
                 if obj.property("nnTip") is True and obj.isVisible() and self.tips_active():
@@ -12313,6 +12333,7 @@ class MainWindow(QMainWindow):
         splash_step(tr_("Bereite die Wiedergabe vor …"), 32)
         self._build_player()
         self.set_frameless(self.settings.value("window/frameless", True, type=bool), initial=True)
+        QGuiApplication.instance().applicationStateChanged.connect(self._resume_on_top)
         if self.settings.value("ui/on_top", False, type=bool):
             # „Immer im Vordergrund“ erst setzen, wenn NeoNote nach dem Start ein paar Sekunden flüssig läuft:
             # friert es vorher ein, liegt sonst ein hängendes Fenster über allem (Windows Server/VM, Meldung von Holgi).
@@ -13407,6 +13428,27 @@ class MainWindow(QMainWindow):
 
     # ── Immer im Vordergrund ──────────────────────────────────────────────
     on_top = False
+
+    def suspend_on_top(self):
+        """Kurz nicht mehr ganz oben liegen (z. B. für die Windows-Einstellungen) – bis NeoNote wieder aktiv wird."""
+        if not self.on_top or not IS_WIN:
+            return
+        self._ontop_suspended = True
+        for w in QApplication.topLevelWidgets():
+            if w.isVisible() and w.isWindow():
+                win_topmost(w, False)
+
+    def _resume_on_top(self, state=None):
+        """NeoNote ist wieder aktiv: Hauptfenster und offene Dialoge wieder ganz nach oben (Dialoge darüber)."""
+        if state is not None and state != Qt.ApplicationActive:
+            return
+        if getattr(self, "_ontop_suspended", False):
+            self._ontop_suspended = False
+            if self.on_top:
+                win_topmost(self, True)
+                for w in QApplication.topLevelWidgets():
+                    if w is not self and w.isVisible() and w.windowType() in (Qt.Dialog, Qt.Window, Qt.Sheet):
+                        win_topmost(w, True)
 
     def set_on_top(self, on, initial=False):
         on = bool(on)
@@ -17472,10 +17514,25 @@ def win_claim_free_types(exts=None):
     return took, mine, other
 
 
+def win_registered_types():
+    """Hat NeoNote bei Windows Dateitypen angemeldet? (Sonst wäre die Seite „Standard-Apps ▸ NeoNote“ leer.)"""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"Software\NeoNote\Capabilities\FileAssociations", 0,
+                            winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
+            return winreg.QueryInfoKey(k)[1] > 0
+    except Exception:
+        return False
+
+
 def win_open_default_apps():
     """Windows-Einstellungen direkt bei „Standard-Apps ▸ NeoNote“ öffnen (Windows 11; sonst die Übersicht).
     Direkt über ShellExecute – der Explorer versteht Links mit „?…“ nicht und öffnet sonst nur ein Ordnerfenster."""
-    for uri in (DEFAULT_APPS_URI, "ms-settings:defaultapps"):
+    for w in QApplication.topLevelWidgets():         # „Immer im Vordergrund“ würde die Einstellungen verdecken
+        if hasattr(w, "suspend_on_top"):
+            w.suspend_on_top()
+    uris = [DEFAULT_APPS_URI, "ms-settings:defaultapps"] if win_registered_types() else ["ms-settings:defaultapps"]
+    for uri in uris:
         try:
             os.startfile(uri)
             return
@@ -17648,6 +17705,20 @@ class SetupWorker(QThread):
                     pass
                 setv(cls + r"\Applications\NeoNote.exe\SupportedTypes", e, "")
                 setv(r"Software\NeoNote\Capabilities\FileAssociations", e, prog)
+        else:
+            # ohne Verknüpfung: Reste früherer Installationen entfernen – sonst zeigt Windows unter
+            # „Standard-Apps ▸ NeoNote“ eine leere Seite (Meldung von Holgi)
+            for path in (r"Software\NeoNote\Capabilities\FileAssociations", r"Software\NeoNote\Capabilities"):
+                try:
+                    winreg.DeleteKeyEx(HK, path, winreg.KEY_WOW64_64KEY, 0)
+                except OSError:
+                    pass
+            try:
+                with winreg.OpenKey(HK, r"Software\RegisteredApplications", 0,
+                                    winreg.KEY_SET_VALUE | winreg.KEY_WOW64_64KEY) as k:
+                    winreg.DeleteValue(k, "NeoNote")
+            except OSError:
+                pass
         try:
             ctypes.windll.shell32.SHChangeNotify(0x08000000, 0, None, None)
         except Exception:
