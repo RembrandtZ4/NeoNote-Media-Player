@@ -800,8 +800,6 @@
  "OK": "OK",
  "Einstellungen übernehmen, Fenster bleibt offen": "Apply settings and keep this window open",
  "Kurzinfos und Menüs im selben Look (durchscheinend, runde Ecken)": "Tooltips and menus in the same look (translucent, rounded corners)",
- "Immer im Vordergrund (Strg+Umschalt+T)": "Always on top (Ctrl+Shift+T)",
- "Immer im Vordergrund\tStrg+Umschalt+T": "Always on top\tCtrl+Shift+T",
  "NeoNote ist installiert und öffnet jetzt {0} Formate. Für {1} weitere hat Windows schon ein Programm festgelegt – die kannst du in den Einstellungen, die sich gerade öffnen, bei NeoNote einzeln umstellen.": "NeoNote is installed and now opens {0} formats. For {1} more, Windows already has an app set – you can switch those one by one for NeoNote in the settings that are opening now.",
  "NeoNote ist installiert und öffnet jetzt alle Musik- und Videodateien.": "NeoNote is installed and now opens all music and video files.",
  "NeoNote öffnet jetzt {0} Formate. Für {1} weitere hat Windows schon ein Programm festgelegt – die stellst du in den Windows-Einstellungen, die sich gerade öffnen, bei NeoNote einzeln um.": "NeoNote now opens {0} formats. For {1} more, Windows already has an app set – switch those one by one for NeoNote in the Windows settings that are opening now.",
@@ -890,5 +888,9 @@
  "Firewall freigeben": "Open firewall",
  "Keine Firewall aktiv – Geräte im Heimnetz sind erreichbar.": "No firewall active – devices in your home network can be reached.",
  "Firewall ({0}): für Casting freigegeben ✓": "Firewall ({0}): open for casting ✓",
- "Firewall ({0}) aktiv – Casting ist noch nicht freigegeben.": "Firewall ({0}) active – casting is not allowed yet."
+ "Firewall ({0}) aktiv – Casting ist noch nicht freigegeben.": "Firewall ({0}) active – casting is not allowed yet.",
+ "Immer im Vordergrund (Strg+Alt+T)": "Always on top (Ctrl+Alt+T)",
+ "Immer im Vordergrund: an": "Always on top: on",
+ "Immer im Vordergrund: aus": "Always on top: off",
+ "Immer im Vordergrund\tStrg+Alt+T": "Always on top\tCtrl+Alt+T"
 }

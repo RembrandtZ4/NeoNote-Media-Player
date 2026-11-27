@@ -12338,8 +12338,8 @@ class MainWindow(QMainWindow):
             # „Immer im Vordergrund“ erst setzen, wenn NeoNote nach dem Start ein paar Sekunden flüssig läuft:
             # friert es vorher ein, liegt sonst ein hängendes Fenster über allem (Windows Server/VM, Meldung von Holgi).
             # Im sicheren Modus bleibt es ganz aus.
-            self.btn_pin.blockSignals(True); self.btn_pin.setChecked(True); self.btn_pin.blockSignals(False)
-            if not SAFE_MODE:
+            if not SAFE_MODE:                      # im sicheren Modus aus – die Stecknadel zeigt das auch
+                self.btn_pin.blockSignals(True); self.btn_pin.setChecked(True); self.btn_pin.blockSignals(False)
                 QTimer.singleShot(4000, lambda: self.settings.value("ui/on_top", False, type=bool)
                                   and self.set_on_top(True, initial=True))
         splash_step(tr_("Wende das Design an …"), 44)
@@ -13450,8 +13450,10 @@ class MainWindow(QMainWindow):
                     if w is not self and w.isVisible() and w.windowType() in (Qt.Dialog, Qt.Window, Qt.Sheet):
                         win_topmost(w, True)
 
-    def set_on_top(self, on, initial=False):
+    def set_on_top(self, on, initial=False, notify=False):
         on = bool(on)
+        if notify or (not initial and on != self.on_top):   # nie unbemerkt umschalten
+            self.flash(tr_("Immer im Vordergrund: an") if on else tr_("Immer im Vordergrund: aus"))
         self.settings.setValue("ui/on_top", on)
         self.btn_pin.setChecked(on)
         self._icons = [(b, ("pinned" if on else "pin") if b is self.btn_pin else n, sz) for b, n, sz in self._icons]
@@ -13992,7 +13994,7 @@ class MainWindow(QMainWindow):
         self.top_menu.setPopupMode(QToolButton.InstantPopup)
         tl.addSpacing(4); tl.addWidget(self.top_queue); tl.addWidget(self.top_gear); tl.addWidget(self.top_menu)
         tl.addSpacing(8)
-        self.btn_pin = self._icon_btn("pin", 16, tr_("Immer im Vordergrund (Strg+Umschalt+T)"),
+        self.btn_pin = self._icon_btn("pin", 16, tr_("Immer im Vordergrund (Strg+Alt+T)"),
                                       lambda on: self.set_on_top(on), checkable=True, obj="winbtn")
         self.btn_min = self._icon_btn("minimize", 16, tr_("Minimieren"), self.showMinimized, obj="winbtn")
         self.btn_max = self._icon_btn("maximize", 16, tr_("Maximieren"), self.toggle_maximize, obj="winbtn")
@@ -14046,7 +14048,7 @@ class MainWindow(QMainWindow):
         self.act_autodj.triggered.connect(lambda on: self.set_autodj(on))
         tm.addSeparator()
         tm.addActions(m.actions())
-        self.act_ontop = QAction(tr_("Immer im Vordergrund\tStrg+Umschalt+T"), tm)
+        self.act_ontop = QAction(tr_("Immer im Vordergrund\tStrg+Alt+T"), tm)
         self.act_ontop.setCheckable(True)
         self.act_ontop.triggered.connect(lambda on: self.set_on_top(on))
         tm.insertAction(about_sep, self.act_ontop)
@@ -14237,7 +14239,7 @@ class MainWindow(QMainWindow):
         self.btn_queue.setChecked(self.queue_visible); self.top_queue.setChecked(self.queue_visible)
         self.qpanel.setVisible(self.queue_visible)
         for seq, slot in (("Ctrl+L", lambda: self.set_queue_visible(not self.queue_visible)),
-                          ("F11", self.toggle_fullscreen), ("Ctrl+O", self.open_dialog), ("Ctrl+M", self.show_mini), ("Ctrl+E", self.open_equalizer), ("Ctrl+T", self.toggle_lyrics), ("Ctrl+I", self.toggle_info), ("Ctrl+Shift+V", self.cycle_vis_style), ("Ctrl+Shift+T", lambda: self.set_on_top(not self.on_top)),
+                          ("F11", self.toggle_fullscreen), ("Ctrl+O", self.open_dialog), ("Ctrl+M", self.show_mini), ("Ctrl+E", self.open_equalizer), ("Ctrl+T", self.toggle_lyrics), ("Ctrl+I", self.toggle_info), ("Ctrl+Shift+V", self.cycle_vis_style), ("Ctrl+Alt+T", lambda: self.set_on_top(not self.on_top, notify=True)),
                           ("Ctrl+P", self.toggle_play), ("Ctrl+Right", self.next_track),
                           ("Ctrl+Left", self.prev_track), ("Ctrl+F", self.search.setFocus),
                           ("Alt+Left", self.go_back), ("Alt+Right", self.go_forward),
