@@ -10,6 +10,8 @@
 - **Picture quality** (Settings ▸ Video): “High” uses sharper scaling filters, smooths banding in color gradients and converts HDR more accurately – for videos played with mpv, takes effect immediately. Default stays “Default”, as it needs a stronger graphics card.
 
 ### 🐞 Bug fixes
+- **Casting: jumping within some M4A files restarted the track** (e.g. long mixes whose index sits at the end of the file): NeoNote now delivers such files to the device with the index in front. The file on your disk stays unchanged.
+- **Waveform and visualization now also work while casting** (DLNA, AirPlay, Chromecast). Before, they stayed empty because the device plays the sound.
 - **Casting stopped after a few minutes** (DLNA and AirPlay, e.g. with Yamaha receivers): NeoNote no longer opens a new connection for every status query (hundreds within minutes made some receivers hang), sends a regular keep-alive over AirPlay, and if a device still stops mid-track, NeoNote reconnects and continues at the same spot. Streaming problems are now also noted in the log.
 - Tooltips with longer text (e.g. on the info and casting buttons) were cut off at the right edge. Fixed.
 

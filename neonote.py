@@ -3846,6 +3846,124 @@ def lan_ip_for(host):
         s.close()
 
 
+class _FastStartFile:
+    """MP4/M4A, deren Inhaltsverzeichnis (moov) hinter den Tondaten (mdat) steht, so ausliefern, als stünde es
+    vorne („faststart“). Manche Geräte (z. B. Yamaha-Receiver) können solche Dateien sonst nicht nachladen und
+    nicht springen. Die Datei selbst bleibt unverändert – umgestellt wird nur beim Senden."""
+
+    CONTAINERS = {b"moov", b"trak", b"mdia", b"minf", b"stbl"}
+
+    @staticmethod
+    def _atoms(f, start, end):
+        import struct
+        out, pos = [], start
+        while pos + 8 <= end:
+            f.seek(pos)
+            hdr = f.read(16)
+            if len(hdr) < 8:
+                break
+            size, typ = struct.unpack(">I4s", hdr[:8])
+            head = 8
+            if size == 1:
+                if len(hdr) < 16:
+                    break
+                size, head = struct.unpack(">Q", hdr[8:16])[0], 16
+            elif size == 0:
+                size = end - pos
+            if size < head or pos + size > end:
+                break
+            out.append((typ, pos, size, head))
+            pos += size
+        return out
+
+    @classmethod
+    def make(cls, path):
+        """Gibt ein _FastStartFile zurück – oder None, wenn nichts umzustellen ist (oder es nicht geht)."""
+        import struct
+        try:
+            total = os.path.getsize(path)
+            with open(path, "rb") as f:
+                top = cls._atoms(f, 0, total)
+                types = [t for t, *_ in top]
+                if b"moov" not in types or b"mdat" not in types or types.index(b"moov") < types.index(b"mdat"):
+                    return None
+                if sum(sz for _, _, sz, _ in top) != total:
+                    return None                       # Datei unvollständig/ungewöhnlich → lieber unverändert
+                _, mpos, msize, _ = top[types.index(b"moov")]
+                if msize > 64 * 1024 * 1024:
+                    return None
+                f.seek(mpos)
+                moov = bytearray(f.read(msize))
+        except OSError:
+            return None
+        delta = msize                                 # alles hinter dem neuen moov rückt um seine Größe nach hinten
+
+        def patch(buf, start, end):
+            pos = start
+            while pos + 8 <= end:
+                size, typ = struct.unpack_from(">I4s", buf, pos)
+                head = 8
+                if size == 1:
+                    size, head = struct.unpack_from(">Q", buf, pos + 8)[0], 16
+                if size < head or pos + size > end:
+                    raise ValueError("kaputtes Atom")
+                if typ in cls.CONTAINERS:
+                    patch(buf, pos + head, pos + size)
+                elif typ == b"stco":
+                    n = struct.unpack_from(">I", buf, pos + head + 4)[0]
+                    for i in range(n):
+                        o = pos + head + 8 + 4 * i
+                        v = struct.unpack_from(">I", buf, o)[0] + delta
+                        if v > 0xFFFFFFFF:
+                            raise ValueError("zu groß für stco")
+                        struct.pack_into(">I", buf, o, v)
+                elif typ == b"co64":
+                    n = struct.unpack_from(">I", buf, pos + head + 4)[0]
+                    for i in range(n):
+                        o = pos + head + 8 + 8 * i
+                        struct.pack_into(">Q", buf, o, struct.unpack_from(">Q", buf, o)[0] + delta)
+                pos += size
+        try:
+            patch(moov, 8 if struct.unpack_from(">I", moov, 0)[0] != 1 else 16, len(moov))
+        except (ValueError, struct.error):
+            return None
+        segs = []                                     # (Bytes) oder (Startbyte in der Datei, Länge)
+        for typ, pos, size, _ in top:
+            if typ == b"moov":
+                continue
+            if typ == b"mdat" and moov is not None:
+                segs.append(bytes(moov)); moov = None
+            segs.append((pos, size))
+        return cls(path, segs)
+
+    def __init__(self, path, segs):
+        self.path, self.segs = path, segs
+        self.size = sum(len(s) if isinstance(s, bytes) else s[1] for s in segs)
+
+    def chunks(self, start, end):
+        """Bytes start…end (einschließlich) in Stücken liefern."""
+        pos = 0
+        with open(self.path, "rb") as f:
+            for s in self.segs:
+                n = len(s) if isinstance(s, bytes) else s[1]
+                a, b = max(start, pos), min(end + 1, pos + n)
+                if a < b:
+                    if isinstance(s, bytes):
+                        yield s[a - pos:b - pos]
+                    else:
+                        f.seek(s[0] + a - pos)
+                        left = b - a
+                        while left > 0:
+                            c = f.read(min(65536, left))
+                            if not c:
+                                return
+                            yield c
+                            left -= len(c)
+                pos += n
+                if pos > end:
+                    return
+
+
 class CastServer:
     """Kleiner HTTP-Server: liefert nur die Dateien, die gerade gecastet werden (zufällige, geheime Pfade)."""
 
@@ -3877,7 +3995,8 @@ class CastServer:
                 if not mime.startswith("image/"):
                     srv.note(f"Gerät {self.client_address[0]} holt {self.command} {self.headers.get('Range') or 'alles'}")
                 try:
-                    size = len(src) if isinstance(src, bytes) else os.path.getsize(src)
+                    size = (len(src) if isinstance(src, bytes) else src.size if isinstance(src, _FastStartFile)
+                            else os.path.getsize(src))
                 except OSError:
                     self.send_error(404); return
                 start, end, code = 0, size - 1, 200
@@ -3909,6 +4028,11 @@ class CastServer:
                     left = end - start + 1
                     if isinstance(src, bytes):
                         self.wfile.write(src[start:end + 1])
+                        return
+                    if isinstance(src, _FastStartFile):
+                        for chunk in src.chunks(start, end):
+                            self.wfile.write(chunk)
+                            left -= len(chunk)
                         return
                     with open(src, "rb") as f:
                         f.seek(start)
@@ -3943,8 +4067,18 @@ class CastServer:
             self._notes += 1
             crash_note(f"Streamen: {text}")
 
+    _fast = {}
+
     def publish(self, src, mime, name):
         """Datei (Pfad) oder Bytes freigeben → Pfad auf dem Server. Ältere Freigaben verfallen."""
+        if isinstance(src, str) and Path(src).suffix.lower() in (".m4a", ".mp4", ".m4b", ".m4v", ".mov", ".alac"):
+            key = (src, os.path.getmtime(src) if os.path.exists(src) else 0)
+            if key not in self._fast:
+                fs = _FastStartFile.make(src)
+                self._fast = {key: fs}                # nur die letzte merken (Inhaltsverzeichnis im Speicher)
+                if fs is not None:
+                    crash_note(f"Streamen: {Path(src).name} – Inhaltsverzeichnis wird nach vorn gestellt")
+            src = self._fast[key] or src
         token = self._secrets.token_urlsafe(16)
         self.files[token] = (src, mime)
         while len(self.files) > 8:
@@ -5686,6 +5820,10 @@ class Engine(QObject):
         self._mv_failed = False
         self.mp2 = None                 # zweites mpv für Musik: Überblenden
         self.cast = None                # CastBackend, solange auf ein Gerät im Heimnetz gestreamt wird
+        self.vis_mp = None              # stummes mpv, das beim Streamen nur für Waveform/Visualisierung mitläuft
+        self._vis_bands = False
+        self._vis_sync = QTimer(self, interval=500)
+        self._vis_sync.timeout.connect(self._vis_sync_tick)
         self.crossfade_ms = 0
         self.speed = 1.0
         self.device, self.bitperfect = "auto", False
@@ -5782,11 +5920,16 @@ class Engine(QObject):
             pass
 
     def set_vis_bands(self, on):
+        self._vis_bands = bool(on)
         for be in (self.mp, self.mp2):
             if be is not None:
                 be.set_bands(on and not self.bitperfect)
+        if self.vis_mp is not None:
+            self.vis_mp.set_bands(on)
 
     def bands(self):
+        if self.cast is not None:
+            return self.vis_mp.bands() if self.vis_mp is not None else None
         return self.mp.bands() if self.on_mpv() else None
 
     def set_crossfade(self, seconds):
@@ -5946,9 +6089,61 @@ class Engine(QObject):
         self.cast = cast_backend_for(device)(self, device, server, meta_cb)
         self._connect(self.cast)
         self.b = self.cast
+        self._vis_sync.start()
         return self.cast
 
+    # ── Beim Streamen: Pegel lokal messen (das Gerät liefert keine) ──────────
+    def _vis_backend(self):
+        if self.vis_mp is None and self.mp is not None:
+            try:
+                be = MpvBackend(self)
+                be.m["ao"] = "null"                  # kein Ton am PC – nur messen
+                be.set_filter(False, [0] * 10, 0)
+                be.set_volume(0.0, True)
+                be.set_bands(self._vis_bands)
+                self.vis_mp = be
+            except Exception as e:
+                crash_note(f"Streamen: Messung für die Waveform nicht möglich: {e}")
+                self.vis_mp = None
+        return self.vis_mp
+
+    def _vis_sync_tick(self):
+        """Das stumme mpv im Gleichschritt mit dem Gerät halten (Titel, Spielen/Pause, Stelle)."""
+        c = self.cast
+        if c is None:
+            self._vis_sync.stop()
+            return
+        src = getattr(c, "_src", "") or ""
+        want = (c.playbackState() == QMediaPlayer.PlayingState and src and "://" not in src
+                and getattr(c, "_seen_playing", False))
+        v = self.vis_mp
+        if not want:
+            if v is not None and v.playbackState() == QMediaPlayer.PlayingState:
+                v.pause()
+            return
+        v = self._vis_backend()
+        if v is None:
+            return
+        if getattr(v, "_src", "") != src:
+            v.setSource(QUrl.fromLocalFile(src))
+            v.play()
+            return
+        if v.playbackState() != QMediaPlayer.PlayingState:
+            v.play()
+        if abs(v.position() - c.position()) > 1500:
+            v.setPosition(c.position())
+
+    def _vis_stop(self):
+        self._vis_sync.stop()
+        v, self.vis_mp = self.vis_mp, None
+        if v is not None:
+            try:
+                v.stop(); v.shutdown()
+            except Exception:
+                pass
+
     def stop_cast(self):
+        self._vis_stop()
         c, self.cast = self.cast, None
         if c is None:
             return
@@ -5992,6 +6187,8 @@ class Engine(QObject):
 
     def level(self):
         """Pegel für die Waveform – nur über mpv messbar, sonst None."""
+        if self.cast is not None:
+            return self.vis_mp.level() if self.vis_mp is not None else None
         if self.on_mpv_video():
             return self.mv.level()
         return self.mp.level() if self.on_mpv() else None
@@ -6010,6 +6207,7 @@ class Engine(QObject):
         return getattr(self.b, name)
 
     def shutdown(self):
+        self._vis_stop()
         if self.cast is not None:
             self.cast.shutdown()
         if self.mv:
@@ -17551,7 +17749,7 @@ class MainWindow(QMainWindow):
             return
         playing = self.player.playbackState() == QMediaPlayer.PlayingState
         want = (self.vis_style != "off" and self.np_mode and not self.video.has_video and self.cur is not None
-                and not self.player.bitperfect and self.player.on_mpv())
+                and not self.player.bitperfect and (self.player.on_mpv() or self.player.cast is not None))
         self.player.set_vis_bands(want)
         if want and playing:
             self._bvis_timer.start()
