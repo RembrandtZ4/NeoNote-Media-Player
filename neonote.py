@@ -7128,6 +7128,73 @@ class CrashReportDialog(QDialog):
         lay.addWidget(bb)
 
 
+class LogDialog(QDialog):
+    """Protokoll live mitlesen (z. B. beim Streamen) – ohne Terminal. Neue Zeilen erscheinen von selbst."""
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle(tr_("NeoNote-Protokoll"))
+        self.resize(760, 520)
+        self.path = DATA_DIR / "crash-current.log"
+        self._pos = 0
+        lay = QVBoxLayout(self); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(10)
+        hint = QLabel(tr_("Hier schreibt NeoNote mit, was beim Abspielen und Streamen passiert – hilfreich, um "
+                          "Fehler zu finden. Neue Einträge erscheinen automatisch."))
+        hint.setObjectName("hint"); hint.setWordWrap(True); lay.addWidget(hint)
+        self.box = QPlainTextEdit(); self.box.setReadOnly(True)
+        self.box.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.box.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
+        lay.addWidget(self.box, 1)
+        bb = QDialogButtonBox()
+        self.copy = bb.addButton(tr_("Alles kopieren"), QDialogButtonBox.ActionRole)
+        folder = bb.addButton(tr_("Ordner öffnen"), QDialogButtonBox.ActionRole)
+        bb.addButton(QDialogButtonBox.Close).clicked.connect(self.close)
+        self.copy.clicked.connect(self._copy)
+        folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(DATA_DIR))))
+        lay.addWidget(bb)
+        self._timer = QTimer(self, interval=1000)
+        self._timer.timeout.connect(self._refresh)
+        self._timer.start()
+        self._refresh()
+
+    def _refresh(self):
+        try:
+            with open(self.path, "rb") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                if size < self._pos:                     # Datei neu angelegt → von vorn
+                    self._pos = 0
+                    self.box.clear()
+                if size == self._pos:
+                    return
+                f.seek(self._pos)
+                new = f.read(size - self._pos)
+        except OSError:
+            if not self.box.toPlainText():
+                self.box.setPlainText(tr_("Noch keine Einträge."))
+            return
+        cut = new.rfind(b"\n") + 1                      # nur ganze Zeilen; der Rest kommt beim nächsten Mal
+        if cut == 0:
+            return
+        self._pos += cut
+        text = new[:cut].decode("utf-8", "replace").rstrip("\n")
+        sb = self.box.verticalScrollBar()
+        at_end = sb.value() >= sb.maximum() - 4         # nur mitlaufen, wenn man unten ist
+        if self.box.toPlainText() == tr_("Noch keine Einträge."):
+            self.box.clear()
+        self.box.appendPlainText(text)
+        if at_end:
+            sb.setValue(sb.maximum())
+
+    def _copy(self):
+        QApplication.clipboard().setText(self.box.toPlainText())
+        self.copy.setText(tr_("Kopiert ✓"))
+        QTimer.singleShot(2000, lambda: self.copy.setText(tr_("Alles kopieren")))
+
+    def closeEvent(self, e):
+        self._timer.stop()
+        super().closeEvent(e)
+
+
 class WhatsNewDialog(QDialog):
     def __init__(self, parent, info):
         super().__init__(parent)
@@ -14091,6 +14158,15 @@ class MainWindow(QMainWindow):
                 pass
         return super().nativeEvent(etype, message)
 
+    def show_log(self):
+        """Nicht modal: Man kann weiter abspielen/streamen und dabei zuschauen."""
+        d = getattr(self, "_log_dlg", None)
+        if d is None:
+            d = self._log_dlg = LogDialog(self)
+            d.finished.connect(lambda *_: setattr(self, "_log_dlg", None))
+            d.setAttribute(Qt.WA_DeleteOnClose)
+        d.show(); d.raise_(); d.activateWindow()
+
     def open_settings(self, tab=0):
         t0 = time.perf_counter()
         d = SettingsDialog(self, tab)
@@ -14399,6 +14475,7 @@ class MainWindow(QMainWindow):
         m.addAction(tr_("Einstellungen…"), self.open_settings)
         m.addAction(tr_("Darstellung…"), lambda: self.open_settings(SettingsDialog.TAB_LOOK))
         about_sep = m.addSeparator()
+        m.addAction(tr_("Protokoll anzeigen…"), self.show_log)
         m.addAction(tr_("Über {0}").format(APP_NAME), lambda: self.open_settings(SettingsDialog.TAB_ABOUT))
         org.setMenu(m)
         # dasselbe Menü als ☰ neben dem Zahnrad – in der Befehlsleiste und oben, wenn sie ausgeblendet ist

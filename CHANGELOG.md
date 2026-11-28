@@ -5,6 +5,7 @@
 ## Next version (in progress)
 
 ### ⚡ Improvements
+- **Log viewer** (Organize ▸ Show log…): shows live what NeoNote records during playback and casting – with “Copy all” for bug reports. No terminal needed anymore.
 - **Better search:** searching in the Artist, Album, Genre and Folder views now finds songs too (before, only artist and album names). Several words can be combined across fields (“queen bohemian”), accents and punctuation no longer matter (“beyonce” finds Beyoncé, “acdc” finds AC/DC, “sweet child o mine” finds “Sweet Child o' Mine”), and “No results” is shown instead of an empty view.
 - **Picture quality** (Settings ▸ Video): “High” uses sharper scaling filters, smooths banding in color gradients and converts HDR more accurately – for videos played with mpv, takes effect immediately. Default stays “Default”, as it needs a stronger graphics card.
 

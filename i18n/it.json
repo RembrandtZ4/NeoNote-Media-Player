@@ -895,5 +895,11 @@
  "<b>Bildqualität</b>": "<b>Qualità dell'immagine</b>",
  "Hoch (braucht eine stärkere Grafikkarte)": "Alta (richiede una scheda grafica più potente)",
  "„Hoch“ nutzt schärfere Filter beim Vergrößern und Verkleinern, glättet Streifen in Farbverläufen (z. B. Himmel bei stark komprimierten Videos) und rechnet HDR genauer um. Das Bild wird dabei nicht verfälscht. Ruckelt ein Video, zurück auf „Standard“ stellen. Gilt nur für Videos über mpv und wirkt sofort.": "«Alta» usa filtri più nitidi per ingrandire e ridurre, attenua le bande nelle sfumature (ad es. il cielo nei video molto compressi) e converte l'HDR in modo più preciso. L'immagine non viene alterata. Se un video scatta, torna a «Predefinito». Vale solo per i video riprodotti con mpv e ha effetto subito.",
- "Keine Treffer für „{0}“": "Nessun risultato per «{0}»"
+ "Keine Treffer für „{0}“": "Nessun risultato per «{0}»",
+ "Protokoll anzeigen…": "Mostra registro…",
+ "NeoNote-Protokoll": "Registro di NeoNote",
+ "Hier schreibt NeoNote mit, was beim Abspielen und Streamen passiert – hilfreich, um Fehler zu finden. Neue Einträge erscheinen automatisch.": "Qui NeoNote annota cosa succede durante la riproduzione e la trasmissione – utile per trovare errori. Le nuove voci compaiono automaticamente.",
+ "Alles kopieren": "Copia tutto",
+ "Ordner öffnen": "Apri cartella",
+ "Noch keine Einträge.": "Ancora nessuna voce."
 }

@@ -895,5 +895,11 @@
  "<b>Bildqualität</b>": "<b>Beeldkwaliteit</b>",
  "Hoch (braucht eine stärkere Grafikkarte)": "Hoog (vereist een krachtigere grafische kaart)",
  "„Hoch“ nutzt schärfere Filter beim Vergrößern und Verkleinern, glättet Streifen in Farbverläufen (z. B. Himmel bei stark komprimierten Videos) und rechnet HDR genauer um. Das Bild wird dabei nicht verfälscht. Ruckelt ein Video, zurück auf „Standard“ stellen. Gilt nur für Videos über mpv und wirkt sofort.": "‘Hoog’ gebruikt scherpere filters bij vergroten en verkleinen, egaliseert strepen in kleurverlopen (bijv. de lucht in sterk gecomprimeerde video's) en zet HDR nauwkeuriger om. Het beeld wordt niet vervalst. Hapert een video, zet het dan terug op ‘Standaard’. Geldt alleen voor video's via mpv en werkt direct.",
- "Keine Treffer für „{0}“": "Geen resultaten voor ‘{0}’"
+ "Keine Treffer für „{0}“": "Geen resultaten voor ‘{0}’",
+ "Protokoll anzeigen…": "Logboek tonen…",
+ "NeoNote-Protokoll": "NeoNote-logboek",
+ "Hier schreibt NeoNote mit, was beim Abspielen und Streamen passiert – hilfreich, um Fehler zu finden. Neue Einträge erscheinen automatisch.": "Hier houdt NeoNote bij wat er gebeurt tijdens afspelen en streamen – handig om fouten te vinden. Nieuwe regels verschijnen automatisch.",
+ "Alles kopieren": "Alles kopiëren",
+ "Ordner öffnen": "Map openen",
+ "Noch keine Einträge.": "Nog geen regels."
 }

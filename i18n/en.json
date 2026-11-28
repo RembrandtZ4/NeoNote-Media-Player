@@ -895,5 +895,11 @@
  "<b>Bildqualität</b>": "<b>Picture quality</b>",
  "Hoch (braucht eine stärkere Grafikkarte)": "High (needs a stronger graphics card)",
  "„Hoch“ nutzt schärfere Filter beim Vergrößern und Verkleinern, glättet Streifen in Farbverläufen (z. B. Himmel bei stark komprimierten Videos) und rechnet HDR genauer um. Das Bild wird dabei nicht verfälscht. Ruckelt ein Video, zurück auf „Standard“ stellen. Gilt nur für Videos über mpv und wirkt sofort.": "“High” uses sharper filters for scaling up and down, smooths banding in color gradients (e.g. skies in heavily compressed videos) and converts HDR more accurately. The picture is not altered. If a video stutters, switch back to “Default”. Only applies to videos played with mpv and takes effect immediately.",
- "Keine Treffer für „{0}“": "No results for “{0}”"
+ "Keine Treffer für „{0}“": "No results for “{0}”",
+ "Protokoll anzeigen…": "Show log…",
+ "NeoNote-Protokoll": "NeoNote log",
+ "Hier schreibt NeoNote mit, was beim Abspielen und Streamen passiert – hilfreich, um Fehler zu finden. Neue Einträge erscheinen automatisch.": "NeoNote records here what happens during playback and casting – helpful for finding bugs. New entries appear automatically.",
+ "Alles kopieren": "Copy all",
+ "Ordner öffnen": "Open folder",
+ "Noch keine Einträge.": "No entries yet."
 }
