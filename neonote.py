@@ -1032,7 +1032,7 @@ class GlassDialogs(QObject):
                 return True                         # abgeschaltet (Einstellungen ▸ Darstellung)
         if (t == QEvent.Show and IS_WIN and obj.isWidgetType() and obj.isWindow() and obj is not self.win
                 and getattr(self.win, "on_top", False) and not getattr(self.win, "_ontop_suspended", False)
-                and obj.windowType() in (Qt.Dialog, Qt.Window, Qt.Sheet)):
+                and obj.windowType() in (Qt.Dialog, Qt.Window, Qt.Sheet) and not obj.property("nnNoTop")):
             # sonst öffnet sich das Fenster HINTER dem Hauptfenster – ist es modal, wirkt NeoNote eingefroren
             QTimer.singleShot(0, lambda o=obj: win_topmost(o, True))
         if t in (QEvent.Polish, QEvent.Show, QEvent.Resize) and obj.isWidgetType() and (obj.inherits("QTipLabel") or isinstance(obj, QMenu)):
@@ -7327,9 +7327,13 @@ class CrashReportDialog(QDialog):
 
 
 class LogDialog(QDialog):
-    """Protokoll live mitlesen (z. B. beim Streamen) – ohne Terminal. Neue Zeilen erscheinen von selbst."""
-    def __init__(self, parent):
-        super().__init__(parent)
+    """Protokoll live mitlesen (z. B. beim Streamen) – ohne Terminal. Neue Zeilen erscheinen von selbst.
+    Eigenständiges Fenster (ohne Elternfenster): Es darf hinter den Player rutschen, statt immer obenauf zu liegen."""
+    def __init__(self, parent=None):
+        super().__init__(None)
+        self.setWindowFlags(Qt.Window | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint)
+        self.setProperty("nnNoTop", True)
+        self.setWindowIcon(app_icon())
         self.setWindowTitle(tr_("NeoNote-Protokoll"))
         self.resize(760, 520)
         self.path = DATA_DIR / "crash-current.log"
@@ -17818,6 +17822,8 @@ class MainWindow(QMainWindow):
                 self.tray.showMessage(APP_NAME, tr_("NeoNote läuft in der Systemleiste weiter."), app_icon(), 4000)
             return
         self.mini.close()
+        if getattr(self, "_log_dlg", None) is not None:
+            self._log_dlg.close()
         if getattr(self, "tray", None):
             self.tray.hide()
         self.save_session()
