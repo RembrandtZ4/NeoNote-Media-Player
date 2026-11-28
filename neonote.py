@@ -3763,14 +3763,52 @@ def dlna_discover(timeout=3.0):
     return sorted(devs.values(), key=lambda d: d.name.lower())
 
 
-def dlna_soap(url, stype, action, args=(), timeout=6.0):
+def _soap_error(action, code, data):
+    desc = ""
+    try:
+        err = _cast_xml(data)
+        desc = " ".join(x for x in (_xtext(err, "errorCode"), _xtext(err, "errorDescription")) if x)
+    except Exception:
+        pass
+    return RuntimeError(f"{action}: {desc or code}")
+
+
+def dlna_soap(url, stype, action, args=(), timeout=6.0, pool=None):
+    """UPnP-Befehl senden. Mit pool (dict) bleibt die Verbindung zum Gerät offen: Bei der sekündlichen
+    Statusabfrage öffnet NeoNote sonst Hunderte Verbindungen, und manche Receiver (z. B. Yamaha) bleiben
+    dann nach ein paar Minuten mitten im Titel hängen."""
     body = "".join(f"<{k}>{html.escape(str(v), quote=False)}</{k}>" for k, v in args)
     env = ('<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
            's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body>'
            f'<u:{action} xmlns:u="{stype}">{body}</u:{action}></s:Body></s:Envelope>').encode("utf-8")
-    req = urllib.request.Request(url, data=env, method="POST", headers={
-        "Content-Type": 'text/xml; charset="utf-8"', "SOAPAction": f'"{stype}#{action}"',
-        "User-Agent": f"NeoNote/{APP_VERSION} UPnP/1.1"})
+    hdrs = {"Content-Type": 'text/xml; charset="utf-8"', "SOAPAction": f'"{stype}#{action}"',
+            "User-Agent": f"NeoNote/{APP_VERSION} UPnP/1.1"}
+    if pool is not None:
+        import http.client
+        u = urllib.parse.urlsplit(url)
+        key = (u.hostname, u.port or 80)
+        path = (u.path or "/") + ("?" + u.query if u.query else "")
+        for attempt in (0, 1):
+            conn = pool.get(key)
+            fresh = conn is None
+            if fresh:
+                conn = pool[key] = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=timeout)
+            try:
+                conn.request("POST", path, body=env, headers=hdrs)
+                r = conn.getresponse()
+                data = r.read()
+                if r.will_close:
+                    conn.close(); pool.pop(key, None)
+                break
+            except (http.client.HTTPException, OSError):
+                conn.close(); pool.pop(key, None)
+                if attempt or fresh:         # frische Verbindung klappt auch nicht → wirklich ein Fehler
+                    raise
+        if r.status >= 400:
+            raise _soap_error(action, r.status, data) from None
+        resp = _xfind(_cast_xml(data), action + "Response")
+        return {_xtag(c): (c.text or "") for c in resp} if resp is not None else {}
+    req = urllib.request.Request(url, data=env, method="POST", headers=hdrs)
     try:
         with _LAN.open(req, timeout=timeout) as r:
             data = r.read(256 * 1024)
@@ -3825,6 +3863,8 @@ class CastServer:
                 if entry is None:
                     self.send_error(404); return
                 src, mime = entry
+                if not mime.startswith("image/"):
+                    srv.note(f"Gerät {self.client_address[0]} holt {self.command} {self.headers.get('Range') or 'alles'}")
                 try:
                     size = len(src) if isinstance(src, bytes) else os.path.getsize(src)
                 except OSError:
@@ -3855,6 +3895,7 @@ class CastServer:
                 if head:
                     return
                 try:
+                    left = end - start + 1
                     if isinstance(src, bytes):
                         self.wfile.write(src[start:end + 1])
                         return
@@ -3867,8 +3908,10 @@ class CastServer:
                                 break
                             self.wfile.write(chunk)
                             left -= len(chunk)
-                except (BrokenPipeError, ConnectionResetError, OSError):
-                    pass                                    # Gerät hat abgebrochen (z. B. beim Springen)
+                except (BrokenPipeError, ConnectionResetError, OSError) as e:
+                    if not mime.startswith("image/"):       # Gerät hat abgebrochen (z. B. beim Springen)
+                        srv.note(f"Gerät {self.client_address[0]} bricht ab ({type(e).__name__}), "
+                                 f"{end - start + 1 - left} von {end - start + 1} Bytes gesendet")
 
         try:
             self.httpd = ThreadingHTTPServer(("0.0.0.0", CAST_HTTP_PORT), Handler)
@@ -3880,6 +3923,14 @@ class CastServer:
     @property
     def port(self):
         return self.httpd.server_address[1]
+
+    _notes = 0
+
+    def note(self, text):
+        """Fürs Protokoll – höchstens 200 Einträge pro Sitzung, damit es nicht überläuft."""
+        if self._notes < 200:
+            self._notes += 1
+            crash_note(f"Streamen: {text}")
 
     def publish(self, src, mime, name):
         """Datei (Pfad) oder Bytes freigeben → Pfad auf dem Server. Ältere Freigaben verfallen."""
@@ -4127,14 +4178,49 @@ class CastBackend(_CastBase):
 
     def __init__(self, parent, device, server, meta_cb=None):
         super().__init__(parent, device, server, meta_cb)
+        self._pool = {}                              # offene Verbindung(en) zum Gerät
+        self._poll.setInterval(2000)                 # die Anzeige läuft dazwischen ohnehin weiter
+        self._cur = None                             # (Adresse, Beschreibung) des laufenden Titels
+        self._dev_state = None
+        self._rel_last, self._rel_t, self._rel_moved = -1, 0.0, False
+        self._trans_t = None
+        self._recover_n, self._recover_t = 0, 0.0
         if device.rc_url:
             self._call("volume?", self._rc, "GetVolume", [("Channel", "Master")])
 
     def _av(self, action, args=()):
-        return dlna_soap(self.dev.av_url, self.dev.av_type, action, [("InstanceID", 0)] + list(args))
+        return dlna_soap(self.dev.av_url, self.dev.av_type, action, [("InstanceID", 0)] + list(args), pool=self._pool)
 
     def _rc(self, action, args=()):
-        return dlna_soap(self.dev.rc_url, self.dev.rc_type, action, [("InstanceID", 0)] + list(args))
+        return dlna_soap(self.dev.rc_url, self.dev.rc_type, action, [("InstanceID", 0)] + list(args), pool=self._pool)
+
+    def _reload(self, uri, didl, pos_ms):
+        """Nach einem Hänger: Titel neu ans Gerät geben und weiterspielen (die Stelle setzt die Statusabfrage)."""
+        self._load(uri, didl)
+        self._av("Play", [("Speed", "1")])
+        return pos_ms
+
+    def _recover(self, reason):
+        """Gerät hat mitten im Titel aufgehört: neu laden und an derselben Stelle weiterspielen –
+        aber nicht endlos (z. B. wenn am Gerät selbst gestoppt wurde)."""
+        now = time.monotonic()
+        if not self._cur or self._recover_n >= 3 or (self._recover_n and now - self._recover_t < 15):
+            crash_note(f"Streamen ({self.dev.name}): {reason} – gebe auf")
+            self._started = False
+            self._update_state()
+            self.lost.emit(reason)
+            return
+        self._recover_n += 1
+        self._recover_t = now
+        pos = int(self._rel_last if self._rel_last > 0 else self._pos)   # zuletzt am Gerät gehörte Stelle
+        crash_note(f"Streamen ({self.dev.name}): {reason} bei {fmt_time(pos / 1000)} → neu starten "
+                   f"({self._recover_n}. Versuch)")
+        self._gen += 1                               # alte Statusantworten verwerfen
+        self._seen_playing = False
+        self._seek_pending = pos if pos > 2000 else None
+        self._rel_last, self._rel_moved, self._trans_t = -1, False, None
+        uri, didl = self._cur
+        self._call("play", self._reload, uri, didl, pos)
 
     def _prepare(self, src):
         """Adresse fürs Gerät und Beschreibung (DIDL-Lite) mit Titel, Interpret, Album und Cover."""
@@ -4186,6 +4272,9 @@ class CastBackend(_CastBase):
         if meta.get("duration"):
             self._dur = int(meta["duration"])
             self.durationChanged.emit(self._dur)
+        self._cur = (uri, didl)
+        self._recover_n = 0
+        self._rel_last, self._rel_moved, self._trans_t = -1, False, None
         self._set_status(QMediaPlayer.LoadingMedia)
         self._call("load", self._load, uri, didl)
 
@@ -4247,6 +4336,10 @@ class CastBackend(_CastBase):
                 return
             if what in ("volume", "volume?", "stop") or gen != self._gen:
                 return
+            if what == "play" and self._cur and self._recover_n < 3:
+                crash_note(f"Streamen ({self.dev.name}): Play abgelehnt: {r}")
+                self._recover(f"{self.dev.name} hat das Abspielen abgelehnt")
+                return
             self._failed(what, r)
             return
         self._fails = 0 if tag == "poll" else self._fails
@@ -4263,6 +4356,17 @@ class CastBackend(_CastBase):
         elif tag == "poll":
             pi, ti = r
             state = (ti.get("CurrentTransportState") or "").upper()
+            now = time.monotonic()
+            if state != self._dev_state:
+                crash_note(f"Streamen ({self.dev.name}): Gerät meldet {state or '?'} bei {pi.get('RelTime', '?')}")
+                self._dev_state = state
+            if state == "TRANSITIONING" and self._seen_playing and self._started and not self._paused:
+                self._trans_t = self._trans_t or now
+                if now - self._trans_t > 20:              # lädt seit 20 s nach: hängt
+                    self._recover(f"{self.dev.name} lädt nicht weiter")
+                    return
+            else:
+                self._trans_t = None
             dur = _hms_ms(pi.get("TrackDuration", ""))
             if dur > 0 and abs(dur - self._dur) > 1000:
                 self._dur = dur
@@ -4271,6 +4375,16 @@ class CastBackend(_CastBase):
                 first = not self._seen_playing
                 self._seen_playing = True
                 rel = _hms_ms(pi.get("RelTime", ""))
+                if rel != self._rel_last:
+                    if self._rel_last >= 0 and rel > self._rel_last:
+                        self._rel_moved = True
+                    self._rel_last, self._rel_t = rel, now
+                    if self._recover_n and now - self._recover_t > 60:
+                        self._recover_n = 0                  # läuft wieder stabil
+                elif (self._rel_moved and not first and not self._paused and now - self._rel_t > 12
+                      and (not self._dur or rel < self._dur - 3000)):
+                    self._recover(f"{self.dev.name} spielt nicht weiter")   # „spielt“, steht aber
+                    return
                 if rel or first:
                     self._pos, self._pos_t = rel, time.monotonic()
                     self.positionChanged.emit(self._pos)
@@ -4285,11 +4399,24 @@ class CastBackend(_CastBase):
                 self._paused = True; self._update_state()     # am Gerät pausiert
             elif (state in ("STOPPED", "NO_MEDIA_PRESENT") and self._started and not self._paused
                   and self._seen_playing):
-                self._finished()                              # Titel zu Ende (oder am Gerät beendet)
+                if self._dur and self._pos < self._dur - 10000:
+                    self._recover(f"{self.dev.name} hat mitten im Titel aufgehört")
+                else:
+                    self._finished()                          # Titel zu Ende
 
     def shutdown(self, stop_device=True):
         if stop_device and not self._closed:
             self._call("stop", self._av, "Stop")
+        pool = self._pool
+
+        def close_pool():
+            for c in list(pool.values()):
+                try:
+                    c.close()
+                except Exception:
+                    pass
+            pool.clear()
+        self._call("bye", close_pool)
         super().shutdown(stop_device)
 
 
@@ -4948,8 +5075,13 @@ class _Rtsp:
         self.instance = secrets.token_hex(8).upper()
         self.active_remote = str(secrets.randbelow(2 ** 31))
         self._rx = b""
+        self.lock = threading.Lock()
 
     def request(self, method, uri=None, headers=None, body=b""):
+        with self.lock:
+            return self._request(method, uri, headers, body)
+
+    def _request(self, method, uri=None, headers=None, body=b""):
         self.cseq += 1
         h = {"CSeq": str(self.cseq), "User-Agent": f"NeoNote/{APP_VERSION}", "Client-Instance": self.instance,
              "DACP-ID": self.instance, "Active-Remote": self.active_remote}
@@ -5035,6 +5167,20 @@ class _RaopSession:
         except ValueError:
             pass
         self.first = True
+        self.broken = None                      # Fehler, falls das Gerät die Verbindung geschlossen hat
+        threading.Thread(target=self._keepalive_loop, name="NeoNote-AirPlay-Keepalive", daemon=True).start()
+
+    def _keepalive_loop(self):
+        """Lebenszeichen: Ohne regelmäßige RTSP-Nachricht legen manche Receiver (z. B. Yamaha) nach ein paar
+        Minuten auf – mitten im Titel, nur der Ton bricht ab."""
+        while not self.closed.wait(15):
+            try:
+                self.rtsp.request("OPTIONS", "*")
+            except Exception as e:
+                if not self.closed.is_set():
+                    self.broken = e
+                    crash_note(f"Streamen (AirPlay {self.host}): Verbindung weg: {type(e).__name__}: {e}")
+                return
 
     def _timing_loop(self):
         import struct
@@ -5184,7 +5330,14 @@ class AirPlayBackend(_CastBase):
                     pcm = dec.read(_AP_BYTES, stop)
                     if not pcm or stop.is_set():
                         break
-                    sess.send_frame(pcm)
+                    if sess.broken is not None:
+                        raise ConnectionError(str(sess.broken))
+                    try:
+                        sess.send_frame(pcm)
+                    except OSError as e:                  # kurzer Netzfehler: Paket fällt aus, Ton läuft weiter
+                        if not getattr(sess, "_send_err", False):
+                            sess._send_err = True
+                            crash_note(f"Streamen (AirPlay): Senden: {e}")
                     self._frames += _AP_FRAMES
                     now = time.monotonic()
                     if now >= next_sync:
@@ -5224,7 +5377,44 @@ class AirPlayBackend(_CastBase):
         elif kind == "error":
             gen, err = data
             if gen == self._gen:
-                self._failed("play", err)
+                if isinstance(err, OSError) and self._started and not self._paused:   # ConnectionError ⊂ OSError
+                    self._reconnect(err)
+                else:
+                    self._failed("play", err)
+
+    def _reconnect(self, err):
+        """Gerät hat aufgelegt: neu verbinden und an derselben Stelle weiterspielen (nicht endlos)."""
+        now = time.monotonic()
+        n, t = getattr(self, "_rc_n", 0), getattr(self, "_rc_t", 0.0)
+        if n and now - t > 120:
+            n = 0                                         # lief zwischendurch lange stabil
+        if n >= 3 or (n and now - t < 15):
+            crash_note(f"Streamen ({self.dev.name}, AirPlay): {err} – gebe auf")
+            self._started = False
+            self._update_state()
+            self.lost.emit(str(err))
+            return
+        self._rc_n, self._rc_t = n + 1, now
+        pos = self._played_ms()
+        crash_note(f"Streamen ({self.dev.name}, AirPlay): {err} bei {fmt_time(pos / 1000)} → neu verbinden "
+                   f"({n + 1}. Versuch)")
+        self._gen += 1
+        self._seen_playing = False
+        self._pos = pos
+        self._call("play", self._reconnect_and_start, pos)
+
+    def _reconnect_and_start(self, pos):
+        self._stop_stream()
+        old, self.sess = self.sess, None
+        if old is not None:
+            try:
+                old.close()
+            except Exception:
+                pass
+        self._connect()
+        self._needs_flush = False
+        self._start_stream(pos)
+        return True
 
     # ── QMediaPlayer-Schnittstelle ────────────────────────────────────────
     def setSource(self, url):
@@ -5270,9 +5460,16 @@ class AirPlayBackend(_CastBase):
     def _flush_and_start(self, start_ms):
         if self.sess is None:
             raise RuntimeError(tr_("Keine Verbindung zum Gerät"))
-        if getattr(self, "_needs_flush", False):
-            self._needs_flush = False
-            self.sess.flush()
+        if self.sess.broken is not None:                  # Gerät hat inzwischen aufgelegt (z. B. lange Pause)
+            crash_note(f"Streamen ({self.dev.name}, AirPlay): Verbindung war weg → neu verbinden")
+            return self._reconnect_and_start(start_ms)
+        try:
+            if getattr(self, "_needs_flush", False):
+                self._needs_flush = False
+                self.sess.flush()
+        except OSError as e:
+            crash_note(f"Streamen ({self.dev.name}, AirPlay): {e} → neu verbinden")
+            return self._reconnect_and_start(start_ms)
         self._start_stream(start_ms)
         return True
 

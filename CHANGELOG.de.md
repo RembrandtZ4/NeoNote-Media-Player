@@ -9,6 +9,7 @@
 - **Bildqualität** (Einstellungen ▸ Video): „Hoch“ nutzt schärfere Skalierfilter, glättet Streifen in Farbverläufen und rechnet HDR genauer um – für Videos über mpv, wirkt sofort. Voreingestellt bleibt „Standard“, weil „Hoch“ eine stärkere Grafikkarte braucht.
 
 ### 🐞 Behobene Fehler
+- **Streamen brach nach ein paar Minuten ab** (DLNA und AirPlay, z. B. bei Yamaha-Receivern): NeoNote öffnet für die Statusabfrage nicht mehr jedes Mal eine neue Verbindung (Hunderte in wenigen Minuten brachten manche Receiver ins Stocken), schickt bei AirPlay regelmäßig ein Lebenszeichen, und hört ein Gerät trotzdem mitten im Titel auf, verbindet NeoNote neu und spielt an derselben Stelle weiter. Probleme beim Streamen stehen jetzt auch im Protokoll.
 - Kurzinfos mit längerem Text (z. B. an den Knöpfen für Infos und Streamen) wurden am rechten Rand abgeschnitten. Behoben.
 
 ## 1.3.3 – 27.11.2026
