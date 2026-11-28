@@ -4178,8 +4178,9 @@ class CastBackend(_CastBase):
 
     def __init__(self, parent, device, server, meta_cb=None):
         super().__init__(parent, device, server, meta_cb)
-        self._pool = {}                              # offene Verbindung(en) zum Gerät
-        self._poll.setInterval(2000)                 # die Anzeige läuft dazwischen ohnehin weiter
+        self._pool = {}
+        self._poll.setInterval(2000)                 # halb so viele Anfragen; die Anzeige läuft dazwischen weiter
+        self._play_t = None                          # seit wann das Gerät ununterbrochen spielt
         self._cur = None                             # (Adresse, Beschreibung) des laufenden Titels
         self._dev_state = None
         self._rel_last, self._rel_t, self._rel_moved = -1, 0.0, False
@@ -4189,10 +4190,10 @@ class CastBackend(_CastBase):
             self._call("volume?", self._rc, "GetVolume", [("Channel", "Master")])
 
     def _av(self, action, args=()):
-        return dlna_soap(self.dev.av_url, self.dev.av_type, action, [("InstanceID", 0)] + list(args), pool=self._pool)
+        return dlna_soap(self.dev.av_url, self.dev.av_type, action, [("InstanceID", 0)] + list(args))
 
     def _rc(self, action, args=()):
-        return dlna_soap(self.dev.rc_url, self.dev.rc_type, action, [("InstanceID", 0)] + list(args), pool=self._pool)
+        return dlna_soap(self.dev.rc_url, self.dev.rc_type, action, [("InstanceID", 0)] + list(args))
 
     def _reload(self, uri, didl, pos_ms):
         """Nach einem Hänger: Titel neu ans Gerät geben und weiterspielen (die Stelle setzt die Statusabfrage)."""
@@ -4204,7 +4205,7 @@ class CastBackend(_CastBase):
         """Gerät hat mitten im Titel aufgehört: neu laden und an derselben Stelle weiterspielen –
         aber nicht endlos (z. B. wenn am Gerät selbst gestoppt wurde)."""
         now = time.monotonic()
-        if not self._cur or self._recover_n >= 3 or (self._recover_n and now - self._recover_t < 15):
+        if not self._cur or self._recover_n >= 2 or (self._recover_n and now - self._recover_t < 60):
             crash_note(f"Streamen ({self.dev.name}): {reason} – gebe auf")
             self._started = False
             self._update_state()
@@ -4217,6 +4218,7 @@ class CastBackend(_CastBase):
                    f"({self._recover_n}. Versuch)")
         self._gen += 1                               # alte Statusantworten verwerfen
         self._seen_playing = False
+        self._play_t = None
         self._seek_pending = pos if pos > 2000 else None
         self._rel_last, self._rel_moved, self._trans_t = -1, False, None
         uri, didl = self._cur
@@ -4274,6 +4276,7 @@ class CastBackend(_CastBase):
             self.durationChanged.emit(self._dur)
         self._cur = (uri, didl)
         self._recover_n = 0
+        self._play_t = None
         self._rel_last, self._rel_moved, self._trans_t = -1, False, None
         self._set_status(QMediaPlayer.LoadingMedia)
         self._call("load", self._load, uri, didl)
@@ -4336,10 +4339,6 @@ class CastBackend(_CastBase):
                 return
             if what in ("volume", "volume?", "stop") or gen != self._gen:
                 return
-            if what == "play" and self._cur and self._recover_n < 3:
-                crash_note(f"Streamen ({self.dev.name}): Play abgelehnt: {r}")
-                self._recover(f"{self.dev.name} hat das Abspielen abgelehnt")
-                return
             self._failed(what, r)
             return
         self._fails = 0 if tag == "poll" else self._fails
@@ -4360,9 +4359,12 @@ class CastBackend(_CastBase):
             if state != self._dev_state:
                 crash_note(f"Streamen ({self.dev.name}): Gerät meldet {state or '?'} bei {pi.get('RelTime', '?')}")
                 self._dev_state = state
+            if state == "PLAYING":
+                self._play_t = self._play_t or now
+            steady = self._play_t is not None and now - self._play_t >= 60      # lief mindestens 1 Minute
             if state == "TRANSITIONING" and self._seen_playing and self._started and not self._paused:
                 self._trans_t = self._trans_t or now
-                if now - self._trans_t > 20:              # lädt seit 20 s nach: hängt
+                if now - self._trans_t > 20 and steady:    # lädt seit 20 s nach: hängt
                     self._recover(f"{self.dev.name} lädt nicht weiter")
                     return
             else:
@@ -4381,7 +4383,7 @@ class CastBackend(_CastBase):
                     self._rel_last, self._rel_t = rel, now
                     if self._recover_n and now - self._recover_t > 60:
                         self._recover_n = 0                  # läuft wieder stabil
-                elif (self._rel_moved and not first and not self._paused and now - self._rel_t > 12
+                elif (steady and self._rel_moved and not first and not self._paused and now - self._rel_t > 12
                       and (not self._dur or rel < self._dur - 3000)):
                     self._recover(f"{self.dev.name} spielt nicht weiter")   # „spielt“, steht aber
                     return
@@ -4399,10 +4401,11 @@ class CastBackend(_CastBase):
                 self._paused = True; self._update_state()     # am Gerät pausiert
             elif (state in ("STOPPED", "NO_MEDIA_PRESENT") and self._started and not self._paused
                   and self._seen_playing):
-                if self._dur and self._pos < self._dur - 10000:
+                self._play_t = None
+                if steady and self._dur and self._pos < self._dur - 10000:
                     self._recover(f"{self.dev.name} hat mitten im Titel aufgehört")
                 else:
-                    self._finished()                          # Titel zu Ende
+                    self._finished()                          # Titel zu Ende (oder am Gerät beendet) – wie bisher
 
     def shutdown(self, stop_device=True):
         if stop_device and not self._closed:
