@@ -10,6 +10,7 @@
 - **Bildqualität** (Einstellungen ▸ Video): „Hoch“ nutzt schärfere Skalierfilter, glättet Streifen in Farbverläufen und rechnet HDR genauer um – für Videos über mpv, wirkt sofort. Voreingestellt bleibt „Standard“, weil „Hoch“ eine stärkere Grafikkarte braucht.
 
 ### 🐞 Behobene Fehler
+- **Windows: DLNA-Geräte wurden nicht gefunden** (z. B. erschien ein Yamaha-Receiver nur über AirPlay): NeoNote schickt die Suche jetzt ausdrücklich über jeden Netzwerkadapter. Das Ergebnis der Suche steht im Protokoll.
 - **Streamen: Springen in manchen M4A-Dateien startete den Titel von vorn** (z. B. lange Mixe, deren Inhaltsverzeichnis am Dateiende steht): NeoNote liefert solche Dateien dem Gerät jetzt mit dem Inhaltsverzeichnis vorne aus. Die Datei auf der Festplatte bleibt unverändert.
 - **Waveform und Visualisierung funktionieren jetzt auch beim Streamen** (DLNA, AirPlay, Chromecast). Vorher blieben sie leer, weil das Gerät den Ton abspielt.
 - **Streamen brach nach ein paar Minuten ab** (DLNA und AirPlay, z. B. bei Yamaha-Receivern): Über AirPlay meldet NeoNote dem Gerät jetzt alle paar Sekunden den Fortschritt des Titels, so wie iTunes – ohne das hat der Yamaha nach etwa 7 Minuten aufgelegt. Legt ein Gerät trotzdem auf, verbindet NeoNote sich innerhalb weniger Sekunden neu und spielt an derselben Stelle weiter. Über DLNA fragt NeoNote den Status nur noch halb so oft ab, und hört das Gerät nach einer Weile mitten im Titel auf, startet NeoNote an derselben Stelle neu. Probleme beim Streamen stehen jetzt auch im Protokoll.
