@@ -12,7 +12,7 @@
 ### 🐞 Behobene Fehler
 - **Streamen: Springen in manchen M4A-Dateien startete den Titel von vorn** (z. B. lange Mixe, deren Inhaltsverzeichnis am Dateiende steht): NeoNote liefert solche Dateien dem Gerät jetzt mit dem Inhaltsverzeichnis vorne aus. Die Datei auf der Festplatte bleibt unverändert.
 - **Waveform und Visualisierung funktionieren jetzt auch beim Streamen** (DLNA, AirPlay, Chromecast). Vorher blieben sie leer, weil das Gerät den Ton abspielt.
-- **Streamen brach nach ein paar Minuten ab** (DLNA und AirPlay, z. B. bei Yamaha-Receivern): NeoNote öffnet für die Statusabfrage nicht mehr jedes Mal eine neue Verbindung (Hunderte in wenigen Minuten brachten manche Receiver ins Stocken), schickt bei AirPlay regelmäßig ein Lebenszeichen, und hört ein Gerät trotzdem mitten im Titel auf, verbindet NeoNote neu und spielt an derselben Stelle weiter. Probleme beim Streamen stehen jetzt auch im Protokoll.
+- **Streamen brach nach ein paar Minuten ab** (DLNA und AirPlay, z. B. bei Yamaha-Receivern): Über AirPlay meldet NeoNote dem Gerät jetzt alle paar Sekunden den Fortschritt des Titels, so wie iTunes – ohne das hat der Yamaha nach etwa 7 Minuten aufgelegt. Legt ein Gerät trotzdem auf, verbindet NeoNote sich innerhalb weniger Sekunden neu und spielt an derselben Stelle weiter. Über DLNA fragt NeoNote den Status nur noch halb so oft ab, und hört das Gerät nach einer Weile mitten im Titel auf, startet NeoNote an derselben Stelle neu. Probleme beim Streamen stehen jetzt auch im Protokoll.
 - Kurzinfos mit längerem Text (z. B. an den Knöpfen für Infos und Streamen) wurden am rechten Rand abgeschnitten. Behoben.
 
 ## 1.3.3 – 27.11.2026

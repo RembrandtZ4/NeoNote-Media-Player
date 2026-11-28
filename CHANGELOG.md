@@ -12,7 +12,7 @@
 ### 🐞 Bug fixes
 - **Casting: jumping within some M4A files restarted the track** (e.g. long mixes whose index sits at the end of the file): NeoNote now delivers such files to the device with the index in front. The file on your disk stays unchanged.
 - **Waveform and visualization now also work while casting** (DLNA, AirPlay, Chromecast). Before, they stayed empty because the device plays the sound.
-- **Casting stopped after a few minutes** (DLNA and AirPlay, e.g. with Yamaha receivers): NeoNote no longer opens a new connection for every status query (hundreds within minutes made some receivers hang), sends a regular keep-alive over AirPlay, and if a device still stops mid-track, NeoNote reconnects and continues at the same spot. Streaming problems are now also noted in the log.
+- **Casting stopped after a few minutes** (DLNA and AirPlay, e.g. with Yamaha receivers): over AirPlay, NeoNote now reports the track progress every few seconds like iTunes does – without it, the Yamaha hung up after about 7 minutes. If a device still hangs up, NeoNote reconnects within seconds and continues at the same spot. Over DLNA, NeoNote asks the device for its status half as often, and if it stops mid-track after playing for a while, NeoNote restarts it at the same spot. Streaming problems are now also noted in the log.
 - Tooltips with longer text (e.g. on the info and casting buttons) were cut off at the right edge. Fixed.
 
 ## 1.3.3 – 2026-11-27
