@@ -3607,11 +3607,22 @@ def cast_firewall_commands(kind):
 
 
 def _bind_udp(sock, port):
-    """Festen Port nehmen (für Firewall-Freigaben), sonst irgendeinen freien."""
+    """Festen Port nehmen (für Firewall-Freigaben), sonst irgendeinen freien. Beim Neuverbinden ist der Port der
+    vorigen Verbindung evtl. noch kurz belegt – darum ein paar Mal versuchen statt auf einen zufälligen
+    (von der Firewall blockierten) Port auszuweichen."""
+    import socket
     try:
-        sock.bind(("", port))
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     except OSError:
-        sock.bind(("", 0))
+        pass
+    for _ in range(20):
+        try:
+            sock.bind(("", port))
+            return
+        except OSError:
+            time.sleep(0.1)
+    crash_note(f"Streamen: Port {port} belegt – nehme einen anderen (Firewall-Freigabe greift dann nicht)")
+    sock.bind(("", 0))
 _UPNP_RENDERER = "urn:schemas-upnp-org:device:MediaRenderer:1"
 _DLNA_FLAGS = "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"
 _CAST_MIME = {
@@ -5146,8 +5157,10 @@ class _RaopSession:
         self.latency = _AP_LATENCY
         self.sent = {}                          # seq → Paket (zum Nachsenden)
         self.closed = threading.Event()
-        threading.Thread(target=self._timing_loop, name="NeoNote-AirPlay-Timing", daemon=True).start()
-        threading.Thread(target=self._control_loop, name="NeoNote-AirPlay-Control", daemon=True).start()
+        self._threads = [threading.Thread(target=self._timing_loop, name="NeoNote-AirPlay-Timing", daemon=True),
+                         threading.Thread(target=self._control_loop, name="NeoNote-AirPlay-Control", daemon=True)]
+        for t in self._threads:
+            t.start()
         r = self.rtsp
         r.request("OPTIONS", "*")
         sdp = (f"v=0\r\no=iTunes {r.sid} 0 IN IP4 {local_ip}\r\ns=iTunes\r\nc=IN IP4 {host}\r\nt=0 0\r\n"
@@ -5171,7 +5184,11 @@ class _RaopSession:
             pass
         self.first = True
         self.broken = None                      # Fehler, falls das Gerät die Verbindung geschlossen hat
-        threading.Thread(target=self._keepalive_loop, name="NeoNote-AirPlay-Keepalive", daemon=True).start()
+        ka = threading.Thread(target=self._keepalive_loop, name="NeoNote-AirPlay-Keepalive", daemon=True)
+        self._threads.append(ka)
+        ka.start()
+        crash_note(f"Streamen (AirPlay {host}): verbunden, Ports {self.control.getsockname()[1]}/"
+                   f"{self.timing.getsockname()[1]}, Puffer {self.latency / _AP_RATE:.1f} s")
 
     def _keepalive_loop(self):
         """Lebenszeichen: Ohne regelmäßige RTSP-Nachricht legen manche Receiver (z. B. Yamaha) nach ein paar
@@ -5272,7 +5289,10 @@ class _RaopSession:
         except Exception:
             pass
         self.rtsp.close()
-        for s in (self.audio, self.control, self.timing):
+        for t in getattr(self, "_threads", []):     # erst warten, bis niemand mehr auf den Ports lauscht …
+            if t is not threading.current_thread():
+                t.join(timeout=2)
+        for s in (self.audio, self.control, self.timing):   # … dann sind sie fürs Neuverbinden sofort frei
             try:
                 s.close()
             except Exception:
