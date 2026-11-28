@@ -3730,6 +3730,42 @@ def dlna_describe(location, host, timeout=3.0):
     return CastDevice(name, host, location, av[0], av[1], rc[0], rc[1], model, _xtext(dev, "UDN"))
 
 
+def lan_ipv4s():
+    """Eigene IPv4-Adressen im Heimnetz (alle Adapter) – ohne Loopback und ohne „169.254“ (kein DHCP)."""
+    import socket
+    ips = []
+
+    def add(ip):
+        if ip and not ip.startswith(("127.", "169.254.")) and ip not in ips:
+            ips.append(ip)
+    try:
+        add(lan_ip_for("239.255.255.250"))            # der Adapter, den das System für Multicast nimmt
+    except OSError:
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            add(info[4][0])
+    except OSError:
+        pass
+    return ips
+
+
+def _multicast_send(s, pkt, group, ips):
+    """Über jeden Adapter einzeln senden: Windows nimmt sonst nur einen – mit WSL, Hyper-V, VirtualBox oder
+    VPN oft den falschen, und die Geräte im Heimnetz hören die Anfrage nie."""
+    import socket
+    sent = False
+    for ip in ips or [None]:
+        try:
+            if ip:
+                s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(ip))
+            s.sendto(pkt, group)
+            sent = True
+        except OSError:
+            pass
+    return sent
+
+
 def dlna_discover(timeout=3.0):
     """Geräte im Heimnetz suchen, die Medien abspielen können (SSDP: „MediaRenderer“)."""
     import socket
@@ -3741,14 +3777,12 @@ def dlna_discover(timeout=3.0):
         except OSError:
             s.bind(("", 0))
         s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+        ips = lan_ipv4s()
         for st in (_UPNP_RENDERER, "urn:schemas-upnp-org:service:AVTransport:1"):
             msg = ("M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\n"
                    f"MX: 2\r\nST: {st}\r\nUSER-AGENT: NeoNote/{APP_VERSION} UPnP/1.1\r\n\r\n").encode()
             for _ in range(2):
-                try:
-                    s.sendto(msg, ("239.255.255.250", 1900))
-                except OSError:
-                    pass
+                _multicast_send(s, msg, ("239.255.255.250", 1900), ips)
         s.settimeout(0.3)
         locs, end = {}, time.monotonic() + timeout
         while time.monotonic() < end:
@@ -3761,7 +3795,10 @@ def dlna_discover(timeout=3.0):
                 if k.strip().lower() == "location" and v.strip():
                     locs.setdefault(v.strip(), addr[0])
     finally:
+        port = s.getsockname()[1] if s.fileno() != -1 else "?"
         s.close()
+    crash_note(f"Streamen: DLNA-Suche über {', '.join(ips) or 'Standard'} (Port {port}) – "
+               f"{len(set(locs.values()))} Gerät(e) antworten: {', '.join(sorted(set(locs.values()))) or '–'}")
     devs = {}
     for loc, host in locs.items():
         try:
@@ -4655,11 +4692,9 @@ def mdns_browse(services=_MDNS_SERVICES, timeout=2.5):
                 return
             pkt = struct.pack("!HHHHHH", 0, 0, len(qs), 0, 0, 0)
             pkt += b"".join(_dns_encode(n) + struct.pack("!HH", t, 0x8001) for n, t in qs)
-            try:
-                s.sendto(pkt, ("224.0.0.251", 5353))
-            except OSError:
-                pass
+            _multicast_send(s, pkt, ("224.0.0.251", 5353), ips)
 
+        ips = lan_ipv4s()
         query([(svc, 12) for svc in services])
         start, asked = time.monotonic(), False
         while time.monotonic() - start < timeout:
