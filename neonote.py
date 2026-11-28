@@ -5190,12 +5190,33 @@ class _RaopSession:
         crash_note(f"Streamen (AirPlay {host}): verbunden, Ports {self.control.getsockname()[1]}/"
                    f"{self.timing.getsockname()[1]}, Puffer {self.latency / _AP_RATE:.1f} s")
 
+    progress_cb = None                          # liefert (Anfang, jetzt, Ende) in RTP-Zeit, solange ein Titel läuft
+
     def _keepalive_loop(self):
         """Lebenszeichen: Ohne regelmäßige RTSP-Nachricht legen manche Receiver (z. B. Yamaha) nach ein paar
-        Minuten auf – mitten im Titel, nur der Ton bricht ab."""
-        while not self.closed.wait(15):
+        Minuten auf. Wie iTunes melden wir dabei den Fortschritt des Titels; sonst (Pause) ein einfaches OPTIONS."""
+        n, logged = 0, False
+        while not self.closed.wait(5):
+            n += 1
+            prog = None
+            if self.progress_cb is not None:
+                try:
+                    prog = self.progress_cb()
+                except Exception:
+                    prog = None
             try:
-                self.rtsp.request("OPTIONS", "*")
+                if prog:
+                    try:
+                        self.rtsp.request("SET_PARAMETER", headers={"Content-Type": "text/parameters"},
+                                          body=("progress: %d/%d/%d\r\n" % prog).encode())
+                        if not logged:
+                            logged = True
+                            crash_note(f"Streamen (AirPlay {self.host}): Fortschritt wird gemeldet")
+                    except RuntimeError as e:            # Gerät kennt das nicht → wieder nur OPTIONS
+                        crash_note(f"Streamen (AirPlay {self.host}): Fortschritt abgelehnt ({e})")
+                        self.progress_cb = None
+                elif n % 3 == 0:
+                    self.rtsp.request("OPTIONS", "*")
             except Exception as e:
                 if not self.closed.is_set():
                     self.broken = e
@@ -5319,7 +5340,20 @@ class AirPlayBackend(_CastBase):
 
     def _connect(self):
         self.sess = _RaopSession(self.dev.host, getattr(self.dev, "port", 7000) or 7000, self.ip)
+        self.sess.progress_cb = self._progress
         return True
+
+    def _progress(self):
+        """(Anfang, jetzt, Ende) des Titels in RTP-Zeit fürs Gerät – None, wenn gerade nichts läuft."""
+        rtp0 = getattr(self, "_rtp0", None)
+        if (rtp0 is None or not self._started or self._paused or not self._seen_playing or not self._dur
+                or self._closed):
+            return None
+        k = _AP_RATE / 1000.0
+        start = (rtp0 - int(self._base_ms * k)) & 0xFFFFFFFF
+        now = (start + int(self._played_ms() * k)) & 0xFFFFFFFF
+        end = (start + int(self._dur * k)) & 0xFFFFFFFF
+        return start, now, end
 
     # ── Übertragung ───────────────────────────────────────────────────────
     def _stop_stream(self):
@@ -5347,6 +5381,7 @@ class AirPlayBackend(_CastBase):
                     sess.set_volume(*self._vol)
                 t0 = time.monotonic()
                 self._t0 = t0
+                self._rtp0 = sess.rtptime                  # RTP-Zeit des ersten Pakets dieses Abschnitts
                 next_sync = 0
                 self._evt.emit("started", gen)
                 while not stop.is_set():
